@@ -1,0 +1,64 @@
+export type Role = "owner" | "editor" | "commenter" | "viewer" | "public";
+export type AccessMode = "invite" | "public";
+
+export type Project = {
+  id: string;
+  owner_id: string;
+  name: string;
+  slug: string;
+  access_mode: AccessMode;
+  published: boolean;
+  live_version_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VersionMeta = {
+  id: string;
+  number: number;
+  summary: string | null;
+  prompt: string | null;
+  source: "ai" | "restore";
+  created_at: string;
+};
+
+export type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  version_id: string | null;
+  created_at: string;
+};
+
+export type Member = {
+  email: string;
+  role: "viewer" | "commenter" | "editor";
+  user_id: string | null;
+  created_at: string;
+};
+
+export type Comment = {
+  id: string;
+  thread_id: string;
+  author_email: string;
+  body: string;
+  created_at: string;
+};
+
+export type Thread = {
+  id: string;
+  version_id: string;
+  x: number;
+  y: number;
+  status: "open" | "resolved";
+  created_at: string;
+  comments: Comment[];
+};
+
+export function canBuild(role: Role | null) {
+  return role === "owner" || role === "editor";
+}
+
+export function canComment(role: Role | null) {
+  return role === "owner" || role === "editor" || role === "commenter";
+}

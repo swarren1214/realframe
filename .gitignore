@@ -1,0 +1,9 @@
+*.tsbuildinfo
+.env*.local
+.next
+.source.tgz
+.vercel
+next-env.d.ts
+node_modules
+.env*
+!.env.example
