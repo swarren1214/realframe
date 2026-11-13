@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export function LoginForm({ next = "/projects", heading = "Sign in to Realframe" }: { next?: string; heading?: string }) {
+export function LoginForm({ next = "/projects", heading = "Sign in or create an account" }: { next?: string; heading?: string }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
@@ -31,12 +31,12 @@ export function LoginForm({ next = "/projects", heading = "Sign in to Realframe"
       {state === "sent" ? (
         <div role="status" className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
           <p className="font-semibold">Check your inbox</p>
-          <p className="mt-1">We sent a sign-in link to {email}. It expires in an hour.</p>
+          <p className="mt-1">We sent a link to {email}. Open it on this device to finish signing in. It expires in an hour.</p>
         </div>
       ) : (
         <form onSubmit={submit} className="mt-5 flex flex-col gap-3">
           <label htmlFor="email" className="text-sm font-semibold">
-            Work email
+            Email
           </label>
           <input
             id="email"
@@ -53,8 +53,11 @@ export function LoginForm({ next = "/projects", heading = "Sign in to Realframe"
             disabled={state === "sending"}
             className="min-h-12 rounded-lg bg-ember-700 text-[15px] font-semibold text-white hover:bg-ember-800 disabled:opacity-60"
           >
-            {state === "sending" ? "Sending…" : "Email me a sign-in link"}
+            {state === "sending" ? "Sending…" : "Continue with email"}
           </button>
+          <p className="text-xs text-stone-500">
+            New to Realframe? We&apos;ll create your account and email you a link. No password needed.
+          </p>
           {state === "error" && (
             <p role="alert" className="text-sm text-red-700">
               {error}

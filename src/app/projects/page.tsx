@@ -12,6 +12,8 @@ export default async function ProjectsPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  const { data: profile } = await supabase.from("profiles").select("display_name, onboarded_at").maybeSingle();
+  if (profile && !profile.onboarded_at) redirect("/welcome");
 
   const { data: projects } = await supabase
     .from("projects")
@@ -26,7 +28,9 @@ export default async function ProjectsPage() {
       <header className="flex items-center gap-4 border-b border-stone-200 bg-white px-6 py-3">
         <Logo href="/projects" />
         <div className="flex-1" />
-        <span className="text-sm text-stone-600">{user.email}</span>
+        <Link href="/welcome?edit=1" className="text-sm text-stone-600 no-underline hover:underline" title={user.email}>
+          {profile?.display_name || user.email}
+        </Link>
         <form action="/auth/signout" method="post">
           <button className="min-h-10 rounded-lg border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50">
             Sign out

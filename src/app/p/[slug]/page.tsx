@@ -88,7 +88,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ slug: s
       ? { data: [] }
       : await supabase
           .from("comment_threads")
-          .select("id, version_id, x, y, status, created_at, comments(id, thread_id, author_email, body, created_at)")
+          .select("id, version_id, x, y, status, created_at, comments(id, thread_id, author_email, author_name, body, created_at)")
           .eq("project_id", p.id)
           .order("created_at");
 

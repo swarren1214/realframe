@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
-import type { Member, Message, Project, Role, Thread, VersionMeta } from "@/lib/types";
+import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type VersionMeta } from "@/lib/types";
 import {
   deleteProject,
   inviteMember,
@@ -39,8 +39,10 @@ export function Studio(props: {
   threads: Thread[];
   initialHtml: string | null;
   initialVersionId: string | null;
+  quota: { limit: number; remaining: number } | null;
 }) {
-  const { project, role, versions, messages, members, threads } = props;
+  const { project, role, versions, messages, members, threads, quota } = props;
+  const outOfQuota = quota !== null && quota.remaining <= 0;
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [selectedId, setSelectedId] = useState<string | null>(props.initialVersionId);
@@ -272,15 +274,22 @@ export function Studio(props: {
               className="w-full resize-none rounded-xl border border-stone-300 p-3 text-sm outline-none focus:border-ember-700"
             />
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-xs text-stone-500">⌘↵ to send</span>
+              <span className="text-xs text-stone-500">
+                {quota ? `${quota.remaining} of ${quota.limit} builds left today` : "⌘↵ to send"}
+              </span>
               <button
                 type="submit"
-                disabled={busy || !prompt.trim()}
+                disabled={busy || !prompt.trim() || outOfQuota}
                 className="min-h-10 rounded-lg bg-ember-700 px-4 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
               >
                 {busy ? "Building…" : versions.length ? "Update" : "Build"}
               </button>
             </div>
+            {outOfQuota && !error && (
+              <p className="mt-2 text-sm text-stone-600">
+                You've used today's {quota?.limit} builds. More free up as each one passes 24 hours.
+              </p>
+            )}
             {error && (
               <p role="alert" className="mt-2 text-sm text-red-700">
                 {error}
@@ -426,7 +435,7 @@ export function Studio(props: {
                           .sort((a, b) => a.created_at.localeCompare(b.created_at))
                           .map((c) => (
                             <p key={c.id} className="text-sm leading-relaxed">
-                              <strong className="font-semibold">{c.author_email.split("@")[0]}</strong> {c.body}
+                              <strong className="font-semibold">{authorLabel(c)}</strong> {c.body}
                             </p>
                           ))}
                       </article>

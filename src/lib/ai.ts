@@ -46,7 +46,9 @@ export function parseResponse(text: string): GenerateResult {
   return { html, summary };
 }
 
-export async function generatePrototype(input: GenerateInput): Promise<GenerateResult> {
+export async function generatePrototype(
+  input: GenerateInput,
+): Promise<GenerateResult & { usage: { input: number | null; output: number | null } }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
   const client = new Anthropic({ apiKey });
@@ -67,5 +69,8 @@ export async function generatePrototype(input: GenerateInput): Promise<GenerateR
   const text = message.content
     .map((block) => (block.type === "text" ? block.text : ""))
     .join("");
-  return parseResponse(text);
+  return {
+    ...parseResponse(text),
+    usage: { input: message.usage?.input_tokens ?? null, output: message.usage?.output_tokens ?? null },
+  };
 }

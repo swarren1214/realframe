@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
-import { canComment, type Project, type Role, type Thread } from "@/lib/types";
+import { authorLabel, canComment, type Project, type Role, type Thread } from "@/lib/types";
 
 type Version = { id: string; number: number; html: string; summary: string | null; created_at: string };
 
@@ -292,7 +292,7 @@ export function Review({
                     .sort((a, b) => a.created_at.localeCompare(b.created_at))
                     .map((c) => (
                       <div key={c.id} className="text-sm leading-relaxed">
-                        <span className="font-semibold">{c.author_email.split("@")[0]}</span>{" "}
+                        <span className="font-semibold">{authorLabel(c)}</span>{" "}
                         <span className="text-xs text-stone-500">
                           {new Date(c.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                         </span>

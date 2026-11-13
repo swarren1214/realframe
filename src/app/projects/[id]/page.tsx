@@ -18,7 +18,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   const { data: role } = await supabase.rpc("project_role", { p: id });
   if (role !== "owner" && role !== "editor") redirect(`/p/${project.slug}`);
 
-  const [versions, messages, members, threads, latest] = await Promise.all([
+  const [versions, messages, members, threads, latest, quota] = await Promise.all([
     supabase
       .from("versions")
       .select("id, number, summary, prompt, source, created_at")
@@ -30,11 +30,13 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       : Promise.resolve({ data: [] as Member[] }),
     supabase
       .from("comment_threads")
-      .select("id, version_id, x, y, status, created_at, comments(id, thread_id, author_email, body, created_at)")
+      .select("id, version_id, x, y, status, created_at, comments(id, thread_id, author_email, author_name, body, created_at)")
       .eq("project_id", id)
       .order("created_at"),
     supabase.from("versions").select("id, html").eq("project_id", id).order("number", { ascending: false }).limit(1),
+    supabase.rpc("generation_quota"),
   ]);
+  const q = (quota.data as { daily_limit: number; used: number; remaining: number }[] | null)?.[0] ?? null;
 
   return (
     <Studio
@@ -47,6 +49,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       threads={(threads.data ?? []) as Thread[]}
       initialHtml={latest.data?.[0]?.html ?? null}
       initialVersionId={latest.data?.[0]?.id ?? null}
+      quota={q ? { limit: q.daily_limit, remaining: q.remaining } : null}
     />
   );
 }

@@ -41,6 +41,7 @@ export type Comment = {
   id: string;
   thread_id: string;
   author_email: string;
+  author_name: string | null;
   body: string;
   created_at: string;
 };
@@ -61,4 +62,8 @@ export function canBuild(role: Role | null) {
 
 export function canComment(role: Role | null) {
   return role === "owner" || role === "editor" || role === "commenter";
+}
+
+export function authorLabel(c: { author_name: string | null; author_email: string }) {
+  return c.author_name?.trim() || c.author_email.split("@")[0];
 }

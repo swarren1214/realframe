@@ -34,6 +34,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .order("created_at", { ascending: false })
     .limit(8);
 
+  // Reserve one generation against the caller's daily limit before spending anything.
+  const { data: claimId, error: claimError } = await supabase.rpc("claim_generation", { p_project: id });
+  if (claimError || !claimId) {
+    if (claimError?.message.includes("daily_limit_reached")) {
+      return NextResponse.json(
+        { error: "You've reached today's limit for prototype updates. It resets on a rolling 24-hour basis.", code: "daily_limit" },
+        { status: 429 },
+      );
+    }
+    return NextResponse.json({ error: claimError?.message ?? "Couldn't start the build." }, { status: 500 });
+  }
+
   await supabase.from("messages").insert({ project_id: id, role: "user", content: prompt, created_by: user.id });
 
   try {
@@ -51,6 +63,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     if (error || !version) throw new Error(error?.message ?? "Could not save the version.");
     const v = version as { id: string; number: number };
+    await supabase.rpc("finish_generation", {
+      p_id: claimId,
+      p_status: "succeeded",
+      p_input_tokens: result.usage.input,
+      p_output_tokens: result.usage.output,
+    });
     await supabase.from("messages").insert({
       project_id: id,
       role: "assistant",
@@ -61,6 +79,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ versionId: v.id, number: v.number, summary: result.summary });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed.";
+    await supabase.rpc("finish_generation", { p_id: claimId, p_status: "failed", p_input_tokens: null, p_output_tokens: null });
     await supabase
       .from("messages")
       .insert({ project_id: id, role: "assistant", content: `That didn't work: ${message}`, created_by: user.id });

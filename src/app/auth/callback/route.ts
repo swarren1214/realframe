@@ -20,6 +20,11 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type) {
     ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
   }
-  const target = ok ? next : `/?error=link`;
+  let target = ok ? next : `/?error=link`;
+  if (ok) {
+    // First sign-in: ask for a name before anything else.
+    const { data: profile } = await supabase.from("profiles").select("onboarded_at").maybeSingle();
+    if (profile && !profile.onboarded_at) target = `/welcome?next=${encodeURIComponent(next)}`;
+  }
   return NextResponse.redirect(new URL(target, url.origin));
 }
