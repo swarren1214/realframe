@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eyebrow } from "@/components/Eyebrow";
 import { createProject } from "./actions";
+import { BuiltForSelect } from "@/components/devices/BuiltForSelect";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,10 @@ export default async function ProjectsPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  const { data: profile } = await supabase.from("profiles").select("display_name, onboarded_at, plan").maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, onboarded_at, plan")
+    .maybeSingle();
   if (profile && !profile.onboarded_at) redirect("/welcome");
 
   const { data: projects } = await supabase
@@ -34,7 +38,9 @@ export default async function ProjectsPage() {
       <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-5xl px-2 pt-10">
         <div className="flex items-center gap-3">
-          <h1 className="font-display text-2xl font-bold tracking-tight">Your prototypes</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            Your prototypes
+          </h1>
           <div className="flex-1" />
           <ImportDialog
             trigger={
@@ -45,7 +51,10 @@ export default async function ProjectsPage() {
             }
           />
         </div>
-        <form action={createProject} className="glass mt-5 flex flex-wrap items-center gap-2 rounded-full p-1.5 pl-2">
+        <form
+          action={createProject}
+          className="glass mt-5 flex flex-wrap items-center gap-2 rounded-full p-1.5 pl-2"
+        >
           <label htmlFor="name" className="sr-only">
             Prototype name
           </label>
@@ -57,14 +66,21 @@ export default async function ProjectsPage() {
             placeholder="Name a new prototype, e.g. Dispatch Board v2"
             className="h-10 min-w-0 flex-1 border-transparent bg-transparent hover:border-transparent focus:ring-0"
           />
+          <BuiltForSelect />
           <Button variant="default" size="lg" type="submit">
             <Plus />
             New prototype
           </Button>
         </form>
 
-        <ProjectList title="Created by you" items={mine} empty="No prototypes yet. Name one above to start." />
-        {shared.length > 0 && <ProjectList title="Shared with you" items={shared} shared />}
+        <ProjectList
+          title="Created by you"
+          items={mine}
+          empty="No prototypes yet. Name one above to start."
+        />
+        {shared.length > 0 && (
+          <ProjectList title="Shared with you" items={shared} shared />
+        )}
       </main>
     </div>
   );
@@ -77,7 +93,13 @@ function ProjectList({
   shared,
 }: {
   title: string;
-  items: { id: string; name: string; slug: string; published: boolean; updated_at: string }[];
+  items: {
+    id: string;
+    name: string;
+    slug: string;
+    published: boolean;
+    updated_at: string;
+  }[];
   empty?: string;
   shared?: boolean;
 }) {
@@ -102,7 +124,9 @@ function ProjectList({
                   className="mb-3 h-20 rounded-2xl bg-gradient-to-br from-ember-100 via-raspberry-100 to-violet-100"
                 />
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-semibold text-stone-900">{p.name}</span>
+                  <span className="truncate text-sm font-semibold text-stone-900">
+                    {p.name}
+                  </span>
                   {p.published && (
                     <Badge variant="success">
                       <BadgeDot />
@@ -118,7 +142,11 @@ function ProjectList({
                 </div>
                 <p className="mt-1 flex items-center gap-1 text-xs text-stone-500">
                   <Clock className="size-3" aria-hidden="true" />
-                  Updated {new Date(p.updated_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                  Updated{" "}
+                  {new Date(p.updated_at).toLocaleString("en-US", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
                 </p>
               </Link>
             </li>

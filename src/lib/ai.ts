@@ -28,6 +28,8 @@ export type GenerateInput = {
   prompt: string;
   /** Extra direction used to push variants apart. */
   variantHint?: string;
+  /** Project-level direction appended to the system prompt: target devices, design system. */
+  context?: string;
   currentHtml: string | null;
   history: { role: "user" | "assistant"; content: string }[];
 };
@@ -35,23 +37,32 @@ export type GenerateInput = {
 export type GenerateResult = { html: string; summary: string };
 
 export function parseResponse(text: string): GenerateResult {
-  const summary = text.match(/<summary>([\s\S]*?)<\/summary>/i)?.[1]?.trim() ?? "Updated the prototype.";
+  const summary =
+    text.match(/<summary>([\s\S]*?)<\/summary>/i)?.[1]?.trim() ??
+    "Updated the prototype.";
   let html = text.match(/<document>([\s\S]*?)<\/document>/i)?.[1]?.trim() ?? "";
   if (!html) {
     const start = text.search(/<!doctype html|<html/i);
     const end = text.toLowerCase().lastIndexOf("</html>");
     if (start >= 0 && end > start) html = text.slice(start, end + 7);
   }
-  html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/, "").trim();
+  html = html
+    .replace(/^```(?:html)?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
   if (!/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) {
-    throw new Error("The model did not return a complete HTML document. Try again.");
+    throw new Error(
+      "The model did not return a complete HTML document. Try again.",
+    );
   }
   return { html, summary };
 }
 
 export async function generatePrototype(
   input: GenerateInput,
-): Promise<GenerateResult & { usage: { input: number | null; output: number | null } }> {
+): Promise<
+  GenerateResult & { usage: { input: number | null; output: number | null } }
+> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
   const client = new Anthropic({ apiKey });
@@ -66,16 +77,21 @@ export async function generatePrototype(
     if (last && last.role === m.role) last.content += `\n\n${m.content}`;
     else history.push({ role: m.role, content: m.content });
   }
-  if (history.length && history[history.length - 1].role === "user") history.pop();
+  if (history.length && history[history.length - 1].role === "user")
+    history.pop();
   const request = input.currentHtml
     ? `Here is the current prototype:\n<current_document>\n${input.currentHtml}\n</current_document>\n\nRequested change: ${input.prompt}`
     : `Build this prototype: ${input.prompt}`;
-  const directed = input.variantHint ? `${request}\n\nDesign direction for this variant: ${input.variantHint}` : request;
+  const directed = input.variantHint
+    ? `${request}\n\nDesign direction for this variant: ${input.variantHint}`
+    : request;
 
   const stream = client.messages.stream({
     model,
     max_tokens: 32000,
-    system: SYSTEM_PROMPT,
+    system: input.context
+      ? `${SYSTEM_PROMPT}\n\nAbout this project:\n${input.context}`
+      : SYSTEM_PROMPT,
     messages: [...history, { role: "user", content: directed }],
   });
   const message = await stream.finalMessage();
@@ -84,6 +100,9 @@ export async function generatePrototype(
     .join("");
   return {
     ...parseResponse(text),
-    usage: { input: message.usage?.input_tokens ?? null, output: message.usage?.output_tokens ?? null },
+    usage: {
+      input: message.usage?.input_tokens ?? null,
+      output: message.usage?.output_tokens ?? null,
+    },
   };
 }

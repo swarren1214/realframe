@@ -11,6 +11,7 @@ export type Project = {
   live_version_id: string | null;
   has_password?: boolean;
   guest_comments?: boolean;
+  devices?: unknown;
   created_at: string;
   updated_at: string;
 };

@@ -118,11 +118,20 @@ import {
   restoreVersion as raw_restoreVersion,
   setAccessMode as raw_setAccessMode,
   setGuestComments as raw_setGuestComments,
+  updateDeviceSettings as raw_updateDeviceSettings,
   setProjectPassword as raw_setProjectPassword,
   updateSlug as raw_updateSlug,
   unpublish as raw_unpublish,
 } from "../actions";
 import { unwrapped } from "@/lib/safe-action";
+import { readSettings } from "@/lib/devices";
+import {
+  DevicePicker,
+  DeviceStage,
+  RotateButton,
+  useDeviceView,
+} from "@/components/devices/DeviceView";
+import { DeviceSettingsDialog } from "@/components/devices/DeviceSettingsDialog";
 
 const contentUrl = unwrapped(raw_contentUrl);
 const deleteProject = unwrapped(raw_deleteProject);
@@ -136,6 +145,7 @@ const renameProject = unwrapped(raw_renameProject);
 const restoreVersion = unwrapped(raw_restoreVersion);
 const setAccessMode = unwrapped(raw_setAccessMode);
 const setGuestComments = unwrapped(raw_setGuestComments);
+const updateDeviceSettings = unwrapped(raw_updateDeviceSettings);
 const setProjectPassword = unwrapped(raw_setProjectPassword);
 const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
@@ -154,12 +164,6 @@ type Run = (
   key?: string,
   done?: Done,
 ) => void;
-const DEVICES = [
-  { id: "desktop", label: "Desktop", width: "100%", icon: Monitor },
-  { id: "tablet", label: "Tablet", width: "820px", icon: Tablet },
-  { id: "phone", label: "Phone", width: "390px", icon: Smartphone },
-] as const;
-type DeviceId = (typeof DEVICES)[number]["id"];
 
 const STARTERS = [
   "A dispatch board for field techs: one column per tech, an unassigned queue, drag jobs between columns, and flag jobs at risk of missing their SLA.",
@@ -213,7 +217,12 @@ export function Studio(props: {
       ? { [props.initialVersionId]: props.initialSrc }
       : {},
   );
-  const [device, setDevice] = useState<DeviceId>("desktop");
+  const [deviceSettings, setDeviceSettings] = useState(() =>
+    readSettings(project.devices),
+  );
+  const view = useDeviceView(project.id, deviceSettings);
+  const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("versions");
   const [prompt, setPrompt] = useState("");
@@ -426,7 +435,6 @@ export function Studio(props: {
   const reviewUrl = host
     ? reviewUrlFor(project.slug, host)
     : `/p/${project.slug}`;
-  const width = DEVICES.find((d) => d.id === device)!.width;
   const isLive =
     project.published && selected && project.live_version_id === selected.id;
 
@@ -476,24 +484,26 @@ export function Studio(props: {
           <Badge>Not published</Badge>
         )}
         <div className="flex-1" />
-        <ToggleGroup
-          type="single"
-          aria-label="Preview size"
-          value={device}
-          onValueChange={(v) => v && setDevice(v as DeviceId)}
-        >
-          {DEVICES.map(({ id, label, icon: Icon }) => (
-            <ToggleGroupItem
-              key={id}
-              value={id}
-              aria-label={label}
-              title={label}
-            >
-              <Icon />
-              <span className="hidden xl:inline">{label}</span>
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <DevicePicker
+          view={view}
+          measure={measure}
+          onOpenSettings={
+            isOwner ? () => setDeviceSettingsOpen(true) : undefined
+          }
+        />
+        <RotateButton view={view} />
+        {isOwner && (
+          <DeviceSettingsDialog
+            open={deviceSettingsOpen}
+            onOpenChange={setDeviceSettingsOpen}
+            settings={deviceSettings}
+            onSave={async (next) => {
+              const saved = await updateDeviceSettings(project.id, next);
+              setDeviceSettings(saved);
+              notify.success("Device settings saved");
+            }}
+          />
+        )}
         <Button asChild variant="ghost">
           <Link href={`/projects/${project.id}/canvas`}>
             <LayoutGrid />
@@ -815,6 +825,11 @@ export function Studio(props: {
                   ? "Click an element to edit it. Links and buttons are paused while editing."
                   : selected?.summary}
               </span>
+              {hasPreview && view.scale !== "dynamic" && (
+                <span className="hidden text-xs tabular-nums text-stone-500 md:inline">
+                  {view.scale === "fit" ? `Fit · ${measure.percent}%` : "100%"}
+                </span>
+              )}
               {hasPreview && !editMode && (
                 <Button
                   size="sm"
@@ -845,31 +860,40 @@ export function Studio(props: {
             )}
             <div
               className={cn(
-                "mx-auto min-h-0 w-full flex-1 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300",
+                "flex min-h-0 w-full flex-1 flex-col",
+                !hasPreview &&
+                  "overflow-hidden rounded-3xl border border-stone-200 bg-white",
                 presenting && hasPreview && PRESENT_FRAME_CLASS,
               )}
-              style={{ maxWidth: presenting && hasPreview ? undefined : width }}
             >
-              {src ? (
-                <PrototypeFrame
-                  src={src}
-                  title={`${project.name} v${selected?.number}`}
-                />
-              ) : html ? (
-                editMode && editor.editableHtml ? (
-                  <PrototypeFrame
-                    ref={editor.frame}
-                    html={editor.editableHtml}
-                    title={`${project.name} v${selected?.number} (editing)`}
-                    editMode
-                    onSelectElement={editor.setSelected}
-                  />
-                ) : (
-                  <PrototypeFrame
-                    html={html}
-                    title={`${project.name} v${selected?.number}`}
-                  />
-                )
+              {hasPreview ? (
+                <DeviceStage
+                  view={view}
+                  presenting={presenting}
+                  onMeasure={setMeasure}
+                >
+                  {src ? (
+                    <PrototypeFrame
+                      src={src}
+                      title={`${project.name} v${selected?.number}`}
+                    />
+                  ) : html ? (
+                    editMode && editor.editableHtml ? (
+                      <PrototypeFrame
+                        ref={editor.frame}
+                        html={editor.editableHtml}
+                        title={`${project.name} v${selected?.number} (editing)`}
+                        editMode
+                        onSelectElement={editor.setSelected}
+                      />
+                    ) : (
+                      <PrototypeFrame
+                        html={html}
+                        title={`${project.name} v${selected?.number}`}
+                      />
+                    )
+                  ) : null}
+                </DeviceStage>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-[13px] text-stone-500">
                   {selected ? (

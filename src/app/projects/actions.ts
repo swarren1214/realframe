@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { makeSlug } from "@/lib/slug";
 import { isReservedSlug } from "@/lib/hosts";
+import { readSettings, type DeviceSettings } from "@/lib/devices";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -15,6 +16,19 @@ async function requireUser() {
   return { supabase, user };
 }
 
+/** The new-prototype form's "Built for" choice, as device settings. */
+function builtFor(choice: string): DeviceSettings {
+  const kinds: Record<string, DeviceSettings["kinds"]> = {
+    phone: ["phone"],
+    tablet: ["tablet"],
+    mobile: ["tablet", "phone"],
+    desktop: ["desktop"],
+  };
+  return readSettings({
+    kinds: kinds[choice] ?? ["desktop", "tablet", "phone"],
+  });
+}
+
 export async function createProject(formData: FormData) {
   const { supabase, user } = await requireUser();
   const name =
@@ -23,7 +37,12 @@ export async function createProject(formData: FormData) {
       .slice(0, 80) || "Untitled prototype";
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, slug: makeSlug(name), owner_id: user.id })
+    .insert({
+      name,
+      slug: makeSlug(name),
+      owner_id: user.id,
+      devices: builtFor(String(formData.get("built_for") ?? "")),
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -259,6 +278,20 @@ export const setProjectPassword = action(
           : error.message,
       );
     revalidatePath(`/projects/${projectId}`);
+  },
+);
+
+export const updateDeviceSettings = action(
+  async (projectId: string, raw: DeviceSettings) => {
+    const settings = readSettings(raw);
+    const { supabase } = await requireUser();
+    const { error } = await supabase
+      .from("projects")
+      .update({ devices: settings })
+      .eq("id", projectId);
+    if (error) throw new Error(error.message);
+    revalidatePath(`/projects/${projectId}`);
+    return settings;
   },
 );
 
