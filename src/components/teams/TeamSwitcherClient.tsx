@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Plus, Settings, Users } from "lucide-react";
+import { Check, ChevronDown, Mail, Plus, Settings, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -64,9 +64,12 @@ export function TeamBadge({
 export function TeamSwitcherClient({
   teams,
   currentId,
+  invites = 0,
 }: {
   teams: Team[];
   currentId: string;
+  /** Open team invites for the signed-in person. */
+  invites?: number;
 }) {
   const router = useRouter();
   const current = teams.find((t) => t.id === currentId)!;
@@ -118,6 +121,14 @@ export function TeamSwitcherClient({
             <span className="max-w-[12rem] truncate font-semibold">
               {teamLabel(current)}
             </span>
+            {invites > 0 && (
+              <span
+                className="grid size-4.5 min-w-4.5 place-items-center rounded-full bg-raspberry-600 px-1 text-[10px] font-bold text-white"
+                aria-label={`${invites} team invite${invites === 1 ? "" : "s"}`}
+              >
+                {invites}
+              </span>
+            )}
             <ChevronDown className="text-stone-400" />
           </Button>
         </DropdownMenuTrigger>
@@ -140,6 +151,17 @@ export function TeamSwitcherClient({
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
+          {invites > 0 && (
+            <DropdownMenuItem asChild>
+              <Link href="/invites">
+                <Mail />
+                Invites
+                <span className="ml-auto rounded-full bg-raspberry-600 px-1.5 text-[10px] font-bold text-white">
+                  {invites}
+                </span>
+              </Link>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={() => setCreating(true)}>
             <Plus />
             Create team

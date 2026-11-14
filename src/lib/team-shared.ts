@@ -12,6 +12,7 @@ export type TeamMember = {
   email: string;
   user_id: string | null;
   role: TeamRole;
+  status: "pending" | "active";
   created_at: string;
   name?: string | null;
 };

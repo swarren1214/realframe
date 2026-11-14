@@ -11,12 +11,11 @@ export * from "@/lib/team-shared";
 export const TEAM_COOKIE = "rf_team";
 /** The teams the signed-in person belongs to, and the one they're working in (from a cookie). */
 export async function loadTeams(supabase: SupabaseClient, userId: string) {
-  // Invites sent to this email before they signed in become memberships now.
-  await supabase.rpc("claim_team_invites");
   const { data } = await supabase
     .from("team_members")
     .select("role, teams(id, name, personal)")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "active");
   type Row = {
     role: TeamRole;
     teams: { id: string; name: string; personal: boolean } | null;
@@ -46,4 +45,18 @@ export async function loadTeamDevices(
     .eq("team_id", teamId)
     .order("created_at");
   return ((data ?? []) as TeamDeviceRow[]).map(toDevice);
+}
+
+export type TeamInvite = {
+  team_id: string;
+  team_name: string;
+  role: TeamRole;
+  invited_by: string | null;
+  created_at: string;
+};
+
+/** Team invites waiting for the signed-in person to accept or decline. */
+export async function loadInvites(supabase: SupabaseClient) {
+  const { data } = await supabase.rpc("my_team_invites");
+  return (data ?? []) as TeamInvite[];
 }

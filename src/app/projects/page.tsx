@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eyebrow } from "@/components/Eyebrow";
 import { createProject } from "./actions";
-import { loadTeams, teamLabel } from "@/lib/teams";
+import { loadInvites, loadTeams, teamLabel } from "@/lib/teams";
+import { InviteCards } from "@/components/teams/InviteCards";
 import { DesignSystemSelect } from "@/components/design-systems/DesignSystemSelect";
 import { swatches, type Tokens } from "@/lib/design-systems/types";
 import { BuiltForSelect } from "@/components/devices/BuiltForSelect";
@@ -33,7 +34,7 @@ export default async function ProjectsPage() {
     .maybeSingle();
   if (profile && !profile.onboarded_at) redirect("/welcome");
 
-  const [{ data: projects }, { teams, current }] = await Promise.all([
+  const [{ data: projects }, { teams, current }, invites] = await Promise.all([
     supabase
       .from("projects")
       .select(
@@ -41,6 +42,7 @@ export default async function ProjectsPage() {
       )
       .order("updated_at", { ascending: false }),
     loadTeams(supabase, user.id),
+    loadInvites(supabase),
   ]);
 
   const { data: systems } = current
@@ -79,6 +81,11 @@ export default async function ProjectsPage() {
     <div className="min-h-screen px-4 pb-16">
       <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-5xl px-2 pt-10">
+        {invites.length > 0 && (
+          <div className="mb-6">
+            <InviteCards invites={invites} compact />
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <h1 className="font-display text-2xl font-bold tracking-tight">
             {current && !current.personal ? current.name : "Your prototypes"}

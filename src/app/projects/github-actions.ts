@@ -1,4 +1,5 @@
 "use server";
+import { loadTeams } from "@/lib/teams";
 import { action } from "@/lib/safe-action";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -168,7 +169,12 @@ export const connectRepo = action(async (input: ConnectInput) => {
     const name = clean(input.name, 80) || repo.name;
     const { data, error } = await supabase
       .from("projects")
-      .insert({ name, slug: makeSlug(name), owner_id: user.id })
+      .insert({
+        name,
+        slug: makeSlug(name),
+        owner_id: user.id,
+        team_id: (await loadTeams(supabase, user.id)).current?.id ?? null,
+      })
       .select("id, owner_id")
       .single();
     if (error) throw new Error(error.message);

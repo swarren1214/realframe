@@ -39,7 +39,8 @@ export default async function DesignSystemsPage() {
     supabase
       .from("team_members")
       .select("email", { count: "exact", head: true })
-      .eq("team_id", current.id),
+      .eq("team_id", current.id)
+      .eq("status", "active"),
   ]);
   const usage: Record<string, number> = {};
   for (const u of used ?? [])

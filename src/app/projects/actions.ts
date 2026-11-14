@@ -385,7 +385,12 @@ async function projectForImport(projectId: string | null, name: string) {
   const clean = name.trim().slice(0, 80) || "Imported prototype";
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name: clean, slug: makeSlug(clean), owner_id: user.id })
+    .insert({
+      name: clean,
+      slug: makeSlug(clean),
+      owner_id: user.id,
+      team_id: (await loadTeams(supabase, user.id)).current?.id ?? null,
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);

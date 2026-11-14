@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/?next=/billing", origin), 303);
+  if (!user)
+    return NextResponse.redirect(new URL("/?next=/billing", origin), 303);
 
   const admin = createAdminClient();
   const { data: profile } = await admin
@@ -18,7 +19,8 @@ export async function POST(request: NextRequest) {
     .select("plan, stripe_customer_id, display_name")
     .eq("id", user.id)
     .single();
-  if (profile?.plan === "pro") return NextResponse.redirect(new URL("/billing", origin), 303);
+  if (profile?.plan === "pro")
+    return NextResponse.redirect(new URL("/billing", origin), 303);
 
   const stripe = getStripe();
   let customerId = profile?.stripe_customer_id ?? null;
@@ -32,7 +34,10 @@ export async function POST(request: NextRequest) {
       { idempotencyKey: `customer-${user.id}` },
     );
     customerId = customer.id;
-    await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", user.id);
+    await admin
+      .from("profiles")
+      .update({ stripe_customer_id: customerId })
+      .eq("id", user.id);
   }
 
   const session = await stripe.checkout.sessions.create({
@@ -41,7 +46,9 @@ export async function POST(request: NextRequest) {
     client_reference_id: user.id,
     line_items: [{ price: PRO_PRICE_ID, quantity: 1 }],
     allow_promotion_codes: true,
-    subscription_data: { metadata: { supabase_user_id: user.id, app: "realframe" } },
+    subscription_data: {
+      metadata: { supabase_user_id: user.id, app: "realframe" },
+    },
     success_url: `${origin}/billing?upgraded=1`,
     cancel_url: `${origin}/billing`,
   });

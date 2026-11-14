@@ -10,6 +10,7 @@ import type {
   VersionMeta,
 } from "@/lib/types";
 import { Studio } from "./Studio";
+import type { Teammate } from "@/components/teams/TransferDialog";
 import { loadTeamDevices, loadTeams } from "@/lib/teams";
 import { swatches, type Tokens } from "@/lib/design-systems/types";
 import { AccountMenu } from "@/components/AccountMenu";
@@ -82,7 +83,7 @@ export default async function StudioPage({
       .eq("project_id", id)
       .order("number", { ascending: false })
       .limit(1),
-    supabase.rpc("generation_quota"),
+    supabase.rpc("build_quota", { p_project: id }),
     supabase
       .from("variants")
       .select("id, group_id, position, prompt, summary, html, created_at")
@@ -104,25 +105,29 @@ export default async function StudioPage({
       .order("queued_at", { ascending: false })
       .limit(8),
   ]);
-  const [teamDevices, { teams }, { data: systems }] = await Promise.all([
-    loadTeamDevices(supabase, project.team_id),
-    loadTeams(supabase, user.id),
-    project.team_id
-      ? supabase
-          .from("design_systems")
-          .select("id, name, tokens, is_default, synced_at")
-          .eq("team_id", project.team_id)
-          .order("created_at")
-      : Promise.resolve({
-          data: [] as {
-            id: string;
-            name: string;
-            tokens: Tokens;
-            is_default: boolean;
-            synced_at: string | null;
-          }[],
-        }),
-  ]);
+  const [teamDevices, { teams }, { data: systems }, { data: teammates }] =
+    await Promise.all([
+      loadTeamDevices(supabase, project.team_id),
+      loadTeams(supabase, user.id),
+      project.team_id
+        ? supabase
+            .from("design_systems")
+            .select("id, name, tokens, is_default, synced_at")
+            .eq("team_id", project.team_id)
+            .order("created_at")
+        : Promise.resolve({
+            data: [] as {
+              id: string;
+              name: string;
+              tokens: Tokens;
+              is_default: boolean;
+              synced_at: string | null;
+            }[],
+          }),
+      project.team_id
+        ? supabase.rpc("team_profiles", { t: project.team_id })
+        : Promise.resolve({ data: [] }),
+    ]);
   const allDesignSystemNames = Object.fromEntries(
     (systems ?? []).map((d) => [d.id, d.name]),
   );
@@ -143,7 +148,11 @@ export default async function StudioPage({
   const q =
     (
       quota.data as
-        | { plan: "free" | "pro"; build_limit: number; remaining: number }[]
+        | {
+            plan: "free" | "pro" | "team";
+            build_limit: number;
+            remaining: number;
+          }[]
         | null
     )?.[0] ?? null;
 
@@ -176,6 +185,11 @@ export default async function StudioPage({
       designSystems={designSystems}
       allDesignSystemNames={allDesignSystemNames}
       teams={role === "owner" ? teams : undefined}
+      teammates={
+        role === "owner" && project.team_id
+          ? ((teammates ?? []) as Teammate[])
+          : undefined
+      }
     />
   );
 }

@@ -31,6 +31,7 @@ import {
   Undo2,
   UserPlus,
   Users,
+  UserRoundCheck,
   X,
 } from "lucide-react";
 import { Mark } from "@/components/Logo";
@@ -135,6 +136,10 @@ import {
 import { DeviceSettingsDialog } from "@/components/devices/DeviceSettingsDialog";
 import { MoveToTeamDialog } from "@/components/teams/MoveToTeamDialog";
 import {
+  TransferDialog,
+  type Teammate,
+} from "@/components/teams/TransferDialog";
+import {
   Dots,
   type DsOption,
 } from "@/components/design-systems/DesignSystemSelect";
@@ -193,7 +198,11 @@ export function Studio(props: {
   initialVersionId: string | null;
   /** Content-domain URL when the latest version is an imported app. */
   initialSrc?: string | null;
-  quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
+  quota: {
+    plan: "free" | "pro" | "team";
+    limit: number;
+    remaining: number;
+  } | null;
   variants: Variant[];
   /** The GitHub repository this prototype builds from, and its recent builds. */
   source?: Source | null;
@@ -202,6 +211,8 @@ export function Studio(props: {
   teamDevices?: Device[];
   /** Teams the owner can move this prototype into. */
   teams?: Team[];
+  /** People on the prototype's team, for transferring ownership. */
+  teammates?: Teammate[];
   /** The team's design systems, for the composer's picker and version badges. */
   designSystems?: DsOption[];
   allDesignSystemNames?: Record<string, string>;
@@ -243,6 +254,7 @@ export function Studio(props: {
   );
   const view = useDeviceView(project.id, deviceSettings, teamDevices);
   const [moving, setMoving] = useState(false);
+  const [transferring, setTransferring] = useState(false);
   const dsNames = props.allDesignSystemNames ?? {};
   const [dsId, setDsId] = useState<string | null>(
     project.design_system_id ?? null,
@@ -597,6 +609,12 @@ export function Studio(props: {
                   Move to team…
                 </DropdownMenuItem>
               )}
+              {props.teammates && (
+                <DropdownMenuItem onSelect={() => setTransferring(true)}>
+                  <UserRoundCheck />
+                  Transfer ownership…
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
@@ -610,6 +628,16 @@ export function Studio(props: {
         )}
         {props.accountMenu}
       </header>
+      {props.teammates && (
+        <TransferDialog
+          open={transferring}
+          onOpenChange={setTransferring}
+          projectId={project.id}
+          projectName={project.name}
+          ownerId={project.owner_id}
+          teammates={props.teammates}
+        />
+      )}
       {props.teams && (
         <MoveToTeamDialog
           open={moving}
@@ -653,6 +681,11 @@ export function Studio(props: {
             {quota?.plan === "free" && (
               <span className="ml-auto text-[11px] text-stone-500">
                 {quota.remaining}/{quota.limit} free builds left
+              </span>
+            )}
+            {quota?.plan === "team" && (
+              <span className="ml-auto rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-medium text-raspberry-800">
+                Team Pro
               </span>
             )}
           </div>
@@ -867,12 +900,14 @@ export function Studio(props: {
                 </form>
               </div>
             )}
-            {outOfQuota && quota?.plan === "pro" && !error && (
-              <p className="mt-2 text-xs text-stone-600">
-                You&apos;ve hit the daily safety limit of {quota.limit} builds.
-                It frees up on a rolling 24-hour basis.
-              </p>
-            )}
+            {outOfQuota &&
+              (quota?.plan === "pro" || quota?.plan === "team") &&
+              !error && (
+                <p className="mt-2 text-xs text-stone-600">
+                  You&apos;ve hit the daily safety limit of {quota.limit}{" "}
+                  builds. It frees up on a rolling 24-hour basis.
+                </p>
+              )}
             {error && (
               <p role="alert" className="mt-2 text-xs text-red-700">
                 {error}

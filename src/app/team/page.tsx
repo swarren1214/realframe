@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { AppHeader } from "@/components/AppHeader";
 import { loadTeams, type TeamDeviceRow, type TeamMember } from "@/lib/teams";
 import { TeamSettings } from "./TeamSettings";
@@ -26,7 +27,7 @@ export default async function TeamPage() {
   ] = await Promise.all([
     supabase
       .from("team_members")
-      .select("email, user_id, role, created_at")
+      .select("email, user_id, role, status, created_at")
       .eq("team_id", current.id)
       .order("created_at"),
     supabase
@@ -40,6 +41,72 @@ export default async function TeamPage() {
       .eq("team_id", current.id),
     supabase.rpc("team_profiles", { t: current.id }),
   ]);
+  // GitHub: accounts this person connected, and which ones the team shares.
+  const admin = createAdminClient();
+  const { data: billingRow } = await admin
+    .from("teams")
+    .select(
+      "plan, seats, subscription_status, current_period_start, current_period_end, cancel_at_period_end, stripe_customer_id",
+    )
+    .eq("id", current.id)
+    .single();
+  const periodFrom =
+    billingRow?.current_period_start ??
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  const { data: usageRows } =
+    billingRow?.plan === "team"
+      ? await admin
+          .from("generations")
+          .select("billed_micros")
+          .eq("team_id", current.id)
+          .gte("created_at", periodFrom)
+      : { data: [] as { billed_micros: number | null }[] };
+  const activeMembers = ((members ?? []) as { status: string }[]).filter(
+    (m) => m.status === "active",
+  ).length;
+  const billing = {
+    plan: (billingRow?.plan ?? "free") as "free" | "team",
+    seats:
+      billingRow?.plan === "team"
+        ? Number(billingRow.seats ?? activeMembers)
+        : activeMembers,
+    status: billingRow?.subscription_status ?? null,
+    periodEnd: billingRow?.current_period_end ?? null,
+    cancelAtPeriodEnd: Boolean(billingRow?.cancel_at_period_end),
+    hasCustomer: Boolean(billingRow?.stripe_customer_id),
+    usageMicros: (usageRows ?? []).reduce(
+      (n, r) => n + Number(r.billed_micros ?? 0),
+      0,
+    ),
+  };
+  const [{ data: mine }, { data: shared }] = await Promise.all([
+    admin
+      .from("github_installation_users")
+      .select(
+        "installation_id, github_installations(account_login, account_type)",
+      )
+      .eq("user_id", user.id),
+    admin
+      .from("team_github_installations")
+      .select(
+        "installation_id, shared_by, github_installations(account_login, account_type)",
+      )
+      .eq("team_id", current.id),
+  ]);
+  type Inst = { account_login: string; account_type: string } | null;
+  const github = {
+    mine: (mine ?? []).map((r) => ({
+      id: r.installation_id as number,
+      login:
+        (r.github_installations as unknown as Inst)?.account_login ?? "GitHub",
+    })),
+    shared: (shared ?? []).map((r) => ({
+      id: r.installation_id as number,
+      login:
+        (r.github_installations as unknown as Inst)?.account_login ?? "GitHub",
+      byMe: r.shared_by === user.id,
+    })),
+  };
   const profiles = Object.fromEntries(
     (
       (people ?? []) as {
@@ -60,6 +127,8 @@ export default async function TeamPage() {
         devices={(devices ?? []) as TeamDeviceRow[]}
         prototypes={prototypes ?? 0}
         profiles={profiles}
+        github={github}
+        billing={billing}
       />
     </div>
   );
