@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL(`/?next=/api/github/setup`, origin));
+  if (!user) return NextResponse.redirect(new URL(`/login?next=/api/github/setup`, origin));
 
   const { data: firstId } = await createAdminClient().rpc("first_user_id");
   if (firstId !== user.id) return new NextResponse("Only the Realframe owner can set up GitHub.", { status: 403 });

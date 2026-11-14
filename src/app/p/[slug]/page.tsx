@@ -360,7 +360,7 @@ function PasswordGate({
           ? `Signed in as ${signedInAs}, which doesn't have access to this prototype.`
           : "Were you invited by email? "}
         {!signedInAs && (
-          <a href={`/?next=/p/${slug}`} className="font-semibold">
+          <a href={`/login?next=/p/${slug}`} className="font-semibold">
             Sign in instead
           </a>
         )}

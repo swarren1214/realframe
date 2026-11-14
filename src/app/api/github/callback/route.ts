@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL(`/?next=${encodeURIComponent(next)}`, origin));
+  if (!user) return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, origin));
   if (!state || state.uid !== user.id) return back("That GitHub link expired. Try connecting again.");
 
   const installationId = Number(params.get("installation_id") ?? state.installationId ?? 0) || null;

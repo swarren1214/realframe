@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/?next=/team", origin), 303);
+  if (!user) return NextResponse.redirect(new URL("/login?next=/team", origin), 303);
   const { data: role } = await supabase.rpc("team_role", { t: teamId });
   if (role !== "admin")
     return NextResponse.redirect(

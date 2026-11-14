@@ -14,7 +14,7 @@ export default async function InvitesPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/?next=/invites");
+  if (!user) redirect("/login?next=/invites");
   const [{ data: profile }, invites] = await Promise.all([
     supabase.from("profiles").select("plan").eq("id", user.id).maybeSingle(),
     loadInvites(supabase),

@@ -20,7 +20,7 @@ export default async function DesignSystemPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/?next=/design-systems/${id}`);
+  if (!user) redirect(`/login?next=/design-systems/${id}`);
   const [{ data: profile }, { data: ds }, { teams }] = await Promise.all([
     supabase.from("profiles").select("plan").eq("id", user.id).maybeSingle(),
     supabase

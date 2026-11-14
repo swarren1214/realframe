@@ -7,3 +7,6 @@ next-env.d.ts
 node_modules
 .env*
 !.env.example
+/test-results
+/playwright-report
+/blob-report

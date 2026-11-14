@@ -13,7 +13,7 @@ export async function renderTeamPage(view: TeamView, next: string) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/?next=${next}`);
+  if (!user) redirect(`/login?next=${next}`);
   const [{ data: profile }, { current }] = await Promise.all([
     supabase
       .from("profiles")

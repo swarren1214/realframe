@@ -30,7 +30,7 @@ export default async function StudioPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/?next=/projects/${id}`);
+  if (!user) redirect(`/login?next=/projects/${id}`);
 
   const { data: project } = await supabase
     .from("projects")

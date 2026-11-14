@@ -34,7 +34,7 @@ export default async function BillingPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/?next=/billing");
+  if (!user) redirect("/login?next=/billing");
 
   const [{ data: profile }, { data: quotaRows }] = await Promise.all([
     supabase
