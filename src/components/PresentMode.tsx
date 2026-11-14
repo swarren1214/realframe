@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Maximize, Minimize2, Share, X } from "lucide-react";
-import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { Button } from "@/components/ui/button";
 
 type FsDoc = Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => Promise<void> };
@@ -41,12 +40,19 @@ function exitFullscreen() {
   (d.exitFullscreen?.() ?? d.webkitExitFullscreen?.())?.catch(() => {});
 }
 
+/** Classes that turn a prototype's existing frame wrapper into the full-screen view, so the
+ * prototype isn't reloaded and keeps its state. */
+export const PRESENT_FRAME_CLASS =
+  "!fixed !inset-0 z-50 !m-0 !max-w-none !rounded-none !border-0 bg-black !shadow-none " +
+  "pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]";
+
 /**
- * The prototype edge to edge with no Realframe chrome, inside the device's safe areas.
- * The page itself goes full screen where the browser allows it; on iPhone, where it doesn't,
- * we point people to Add to Home Screen, which opens the review link as a full-screen web app.
+ * Controls for full-screen present mode: exit, go full screen, and hints. Pair it with
+ * PRESENT_FRAME_CLASS on the frame's wrapper. The page itself goes full screen where the
+ * browser allows it; on iPhone, where it doesn't, we point people to Add to Home Screen,
+ * which opens the review link as a full-screen web app.
  */
-export function PresentMode({ html, src, title, onExit }: { html?: string; src?: string | null; title: string; onExit: () => void }) {
+export function PresentControls({ onExit }: { onExit: () => void }) {
   const [hint, setHint] = useState<"none" | "tap" | "homescreen">("none");
   const [full, setFull] = useState(false);
   const exitRef = useRef(onExit);
@@ -92,15 +98,8 @@ export function PresentMode({ html, src, title, onExit }: { html?: string; src?:
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${title}, full screen`}
-      className="fixed inset-0 z-50 bg-black pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]"
-    >
-      <PrototypeFrame html={html} src={src} title={title} />
-
-      <div className="group absolute right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
+    <>
+      <div className="fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
         {!full && canFullscreen() && (
           <Button
             variant="secondary"
@@ -128,7 +127,7 @@ export function PresentMode({ html, src, title, onExit }: { html?: string; src?:
       {hint !== "none" && (
         <div
           role="status"
-          className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-xs text-white shadow-lg backdrop-blur"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[60] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-xs text-white shadow-lg backdrop-blur"
         >
           {hint === "tap" ? (
             <>
@@ -154,6 +153,6 @@ export function PresentMode({ html, src, title, onExit }: { html?: string; src?:
           </Button>
         </div>
       )}
-    </div>
+    </>
   );
 }

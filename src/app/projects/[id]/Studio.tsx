@@ -57,7 +57,7 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { ImportDialog } from "@/components/ImportDialog";
-import { PresentMode, enterFullscreen } from "@/components/PresentMode";
+import { PRESENT_FRAME_CLASS, PresentControls, enterFullscreen } from "@/components/PresentMode";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
@@ -269,9 +269,6 @@ export function Studio(props: {
 
   return (
     <div className="flex h-screen flex-col">
-      {presenting && hasPreview && (
-        <PresentMode html={html} src={src} title={`${project.name} v${selected?.number ?? ""}`} onExit={() => setPresenting(false)} />
-      )}
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
         <Link href="/projects" aria-label="All prototypes" className="rounded-full p-1 hover:bg-stone-900/5">
           <Mark size={26} />
@@ -513,9 +510,13 @@ export function Studio(props: {
                 </Button>
               )}
             </div>
+            {presenting && hasPreview && <PresentControls onExit={() => setPresenting(false)} />}
             <div
-              className="mx-auto h-full w-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300"
-              style={{ maxWidth: width }}
+              className={cn(
+                "mx-auto h-full w-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300",
+                presenting && hasPreview && PRESENT_FRAME_CLASS,
+              )}
+              style={{ maxWidth: presenting && hasPreview ? undefined : width }}
             >
               {src ? (
                 <PrototypeFrame src={src} title={`${project.name} v${selected?.number}`} />

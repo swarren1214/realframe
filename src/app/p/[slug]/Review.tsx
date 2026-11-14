@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { PresentMode, enterFullscreen } from "@/components/PresentMode";
+import { PRESENT_FRAME_CLASS, PresentControls, enterFullscreen } from "@/components/PresentMode";
 import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
 import { authorLabel, canComment, type Project, type Role, type Thread } from "@/lib/types";
@@ -165,20 +165,6 @@ export function Review({
     router.refresh();
   }
 
-  if (presenting) {
-    return (
-      <PresentMode
-        html={version.html}
-        src={version.src}
-        title={`${project.name} v${version.number}`}
-        onExit={() => {
-          setPresenting(false);
-          if (present) window.history.replaceState(null, "", window.location.pathname);
-        }}
-      />
-    );
-  }
-
   return (
     <div className="flex h-screen flex-col">
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
@@ -252,7 +238,22 @@ export function Review({
             }
           }}
         >
-          <div className="h-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+          {presenting && (
+            <PresentControls
+              onExit={() => {
+                setPresenting(false);
+                if (present) window.history.replaceState(null, "", window.location.pathname);
+              }}
+            />
+          )}
+          <div
+            role={presenting ? "dialog" : undefined}
+            aria-label={presenting ? `${project.name}, full screen` : undefined}
+            className={cn(
+              "h-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]",
+              presenting && PRESENT_FRAME_CLASS,
+            )}
+          >
             <PrototypeFrame
               html={version.html}
               src={version.src}
