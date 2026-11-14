@@ -45,15 +45,25 @@ export function RequestReviewDialog({
   version,
   suggested,
   trigger,
+  open: openProp,
+  onOpenChange,
 }: {
   projectId: string;
   version: { id: string; number: number };
   /** People already on the prototype, offered as one-click additions. */
   suggested: string[];
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
+  /** Control it from outside (e.g. a menu item) instead of the trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (o: boolean) => {
+    setOpenState(o);
+    onOpenChange?.(o);
+  };
   const [emails, setEmails] = useState("");
   const [due, setDue] = useState("");
   const [rule, setRule] = useState<"all" | "any">("all");

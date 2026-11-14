@@ -279,6 +279,23 @@ export function Studio(props: {
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
+  // Phones only: whether the panel drawer is open.
+  const [panelOpen, setPanelOpen] = useState(versions.length === 0);
+  const [reviewing, setReviewing] = useState(false);
+  // A new or picked version closes the drawer so the preview shows it.
+  const shownVersion = useRef(selectedId);
+  useEffect(() => {
+    if (shownVersion.current === selectedId) return;
+    shownVersion.current = selectedId;
+    setPanelOpen(false);
+  }, [selectedId]);
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setPanelOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
   const [prompt, setPrompt] = useState("");
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
@@ -454,7 +471,9 @@ export function Studio(props: {
       // Only worth a toast if they looked away while it built.
       if (document.hidden || Date.now() - startedAt > 20_000)
         notify.success(
-          many ? `${variantCount} variants ready to compare` : "New version ready",
+          many
+            ? `${variantCount} variants ready to compare`
+            : "New version ready",
         );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -478,7 +497,8 @@ export function Studio(props: {
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok)
+      throw new Error(data.error || `Request failed (${res.status})`);
     setPrompt("");
     router.refresh();
   }
@@ -492,11 +512,15 @@ export function Studio(props: {
     const res = await fetch(`/api/projects/${project.id}/plan`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: text, baseVersionId: selected?.id ?? null }),
+      body: JSON.stringify({
+        prompt: text,
+        baseVersionId: selected?.id ?? null,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     setPlanning(false);
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok)
+      throw new Error(data.error || `Request failed (${res.status})`);
     setPrompt("");
     router.refresh(); // shows the prompt in the chat
     const runId = data.runId as string;
@@ -627,8 +651,8 @@ export function Studio(props: {
     project.published && selected && project.live_version_id === selected.id;
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
+    <div className="flex h-dvh flex-col">
+      <header className="glass mx-2 mt-2 flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 lg:mx-3 lg:mt-3 lg:gap-2 lg:pl-3">
         <Link
           href="/projects"
           aria-label="All prototypes"
@@ -661,17 +685,17 @@ export function Studio(props: {
             });
           }}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-          className="h-8 min-w-0 max-w-56 rounded-full border border-transparent px-2.5 text-sm font-semibold hover:border-stone-200 focus:border-raspberry-600 focus:outline-none"
+          className="h-8 min-w-0 flex-1 rounded-full border border-transparent px-2 text-sm font-semibold lg:max-w-56 lg:flex-none lg:px-2.5 hover:border-stone-200 focus:border-raspberry-600 focus:outline-none"
         />
         {project.published && live ? (
-          <Badge variant="success">
+          <Badge variant="success" className="max-lg:hidden">
             <BadgeDot />
             Live v{live.number}
           </Badge>
         ) : (
-          <Badge>Not published</Badge>
+          <Badge className="max-lg:hidden">Not published</Badge>
         )}
-        <div className="flex-1" />
+        <div className="flex-1 max-lg:hidden" />
         <DevicePicker
           view={view}
           measure={measure}
@@ -693,7 +717,7 @@ export function Studio(props: {
             }}
           />
         )}
-        <Button asChild variant="ghost">
+        <Button asChild variant="ghost" className="max-lg:hidden">
           <Link href={`/projects/${project.id}/canvas`}>
             <LayoutGrid />
             Canvas
@@ -705,7 +729,7 @@ export function Studio(props: {
           </Link>
         </Button>
         {project.published && (
-          <Button asChild variant="ghost">
+          <Button asChild variant="ghost" className="max-lg:hidden">
             <a href={reviewUrl} target="_blank" rel="noreferrer">
               <ExternalLink />
               Review link
@@ -728,9 +752,12 @@ export function Studio(props: {
             }
           >
             {isLive ? <Check /> : <Rocket />}
-            {isLive
-              ? `v${selected.number} is live`
-              : `Publish v${selected.number}`}
+            <span className="max-sm:hidden">
+              {isLive
+                ? `v${selected.number} is live`
+                : `Publish v${selected.number}`}
+            </span>
+            <span className="sm:hidden">{isLive ? "Live" : "Publish"}</span>
           </Button>
         )}
         {(role === "owner" || role === "editor") && selected && (
@@ -740,15 +767,17 @@ export function Studio(props: {
             suggested={members
               .filter((m) => m.role !== "editor")
               .map((m) => m.email)}
+            open={reviewing}
+            onOpenChange={setReviewing}
             trigger={
-              <Button variant="outline">
+              <Button variant="outline" className="max-lg:hidden">
                 <Send />
                 Request review
               </Button>
             }
           />
         )}
-        {isOwner && (
+        {(isOwner || role === "editor" || project.published) && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button
@@ -761,37 +790,64 @@ export function Studio(props: {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => copyWithToast(reviewUrl)}
-                disabled={!project.published}
-              >
-                <Copy />
-                Copy review link
-              </DropdownMenuItem>
-              {(props.teams?.length ?? 0) > 1 && (
-                <DropdownMenuItem onSelect={() => setMoving(true)}>
-                  <Users />
-                  Move to team…
+              <div className="lg:hidden">
+                {(role === "owner" || role === "editor") && selected && (
+                  <DropdownMenuItem onSelect={() => setReviewing(true)}>
+                    <Send />
+                    Request review
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${project.id}/canvas`}>
+                    <LayoutGrid />
+                    Canvas
+                  </Link>
                 </DropdownMenuItem>
+                {project.published && (
+                  <DropdownMenuItem asChild>
+                    <a href={reviewUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink />
+                      Open review page
+                    </a>
+                  </DropdownMenuItem>
+                )}
+                {isOwner && <DropdownMenuSeparator />}
+              </div>
+              {isOwner && (
+                <>
+                  <DropdownMenuItem
+                    onSelect={() => copyWithToast(reviewUrl)}
+                    disabled={!project.published}
+                  >
+                    <Copy />
+                    Copy review link
+                  </DropdownMenuItem>
+                  {(props.teams?.length ?? 0) > 1 && (
+                    <DropdownMenuItem onSelect={() => setMoving(true)}>
+                      <Users />
+                      Move to team…
+                    </DropdownMenuItem>
+                  )}
+                  {props.teammates && (
+                    <DropdownMenuItem onSelect={() => setTransferring(true)}>
+                      <UserRoundCheck />
+                      Transfer ownership…
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 />
+                    Delete prototype
+                  </DropdownMenuItem>
+                </>
               )}
-              {props.teammates && (
-                <DropdownMenuItem onSelect={() => setTransferring(true)}>
-                  <UserRoundCheck />
-                  Transfer ownership…
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setConfirmDelete(true)}
-              >
-                <Trash2 />
-                Delete prototype
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {props.accountMenu}
+        <div className="max-lg:hidden">{props.accountMenu}</div>
       </header>
       {props.teammates && (
         <TransferDialog
@@ -832,7 +888,7 @@ export function Studio(props: {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="flex min-h-0 flex-1 gap-3 p-3">
+      <div className="flex min-h-0 flex-1 gap-3 p-2 lg:p-3">
         {variants.length > 0 ? (
           <VariantCompare
             variants={variants}
@@ -853,8 +909,8 @@ export function Studio(props: {
             }
           />
         ) : (
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
-            <div className="mb-3 flex items-center gap-2">
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-2 lg:p-4">
+            <div className="mb-2 flex items-center gap-2 lg:mb-3">
               {selected && (
                 <Badge>
                   {editMode
@@ -862,7 +918,7 @@ export function Studio(props: {
                     : `v${selected.number}`}
                 </Badge>
               )}
-              <span className="min-w-0 flex-1 truncate text-xs text-stone-500">
+              <span className="min-w-0 flex-1 truncate text-xs text-stone-500 max-sm:invisible">
                 {editMode
                   ? "Click an element to edit it. Links and buttons are paused while editing."
                   : selected?.summary}
@@ -883,7 +939,7 @@ export function Studio(props: {
                   }}
                 >
                   <Expand />
-                  Full screen
+                  <span className="max-sm:sr-only">Full screen</span>
                 </Button>
               )}
               {html && (
@@ -893,7 +949,9 @@ export function Studio(props: {
                   onClick={() => (editMode ? exitEdit() : setEditMode(true))}
                 >
                   {editMode ? <X /> : <PencilRuler />}
-                  {editMode ? "Exit editing" : "Edit visually"}
+                  <span className="max-sm:sr-only">
+                    {editMode ? "Exit editing" : "Edit visually"}
+                  </span>
                 </Button>
               )}
             </div>
@@ -950,7 +1008,7 @@ export function Studio(props: {
                       </div>
                       {buildRunning
                         ? "Building from GitHub. v1 appears here when it's done."
-                        : "Your prototype will appear here. Describe it on the left to build v1."}
+                        : "Your prototype will appear here. Describe it in Chat to build v1."}
                     </>
                   )}
                 </div>
@@ -970,7 +1028,7 @@ export function Studio(props: {
         {editMode ? (
           <aside
             aria-label="Visual editor"
-            className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]"
+            className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:fixed max-lg:inset-x-2 max-lg:bottom-2 max-lg:z-40 max-lg:h-[45dvh] lg:w-[320px] xl:w-[360px]"
           >
             <Inspector
               selected={editor.selected}
@@ -983,613 +1041,689 @@ export function Studio(props: {
             />
           </aside>
         ) : (
-          <Tabs
-            value={tab}
-            onValueChange={(v) => setTab(v as Tab)}
-            aria-label="Project panel"
-            className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem] xl:w-[380px]"
-          >
-            <div className="border-b border-stone-100 p-3">
-              <TabsList>
-                {(
-                  [
-                    ["chat", "Chat", Sparkles, 0],
-                    ["versions", "Versions", History, versions.length],
-                    ["comments", "Comments", MessageSquare, openThreads],
-                    ["share", "Share", Share2, 0],
-                  ] as const
-                ).map(([id, label, Icon, count]) => (
-                  <TabsTrigger key={id} value={id} className="gap-1 px-1.5">
-                    <Icon />
-                    {label}
-                    {id === "chat" && busy && tab !== "chat" && (
-                      <span
-                        className="size-1.5 animate-pulse rounded-full bg-raspberry-600"
-                        aria-label="Building"
-                      />
-                    )}
-                    {count > 0 && (
-                      <span className="grid h-4 min-w-4 place-items-center rounded-full bg-foreground/8 px-1 text-[10px] font-semibold tabular-nums text-stone-600">
-                        {count}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-
-            <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
-              {(quota?.plan === "free" || quota?.plan === "team") && (
-                <div className="flex items-center gap-2 px-4 pt-3 text-[11px] text-stone-500">
-                  {quota.plan === "free" ? (
-                    <span>
-                      {quota.remaining}/{quota.limit} free builds left
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-raspberry-50 px-2 py-0.5 font-medium text-raspberry-800">
-                      Team Pro
-                    </span>
-                  )}
-                </div>
+          <>
+            {/* Phones: the panel is a drawer over the preview. */}
+            <div
+              aria-hidden="true"
+              onClick={() => setPanelOpen(false)}
+              className={cn(
+                "fixed inset-0 z-30 bg-stone-950/30 backdrop-blur-[2px] transition-opacity duration-(--duration-base) lg:hidden dark:bg-black/60",
+                panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
               )}
-              <div className="flex-1 space-y-4 overflow-y-auto p-4">
-                {messages.length === 0 && !busy && (
-                  <div className="space-y-2">
-                    <p className="text-[13px] text-stone-600">
-                      Describe what to build, or start from one of these:
-                    </p>
-                    {STARTERS.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setPrompt(s)}
-                        className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
-                      >
-                        <Sparkles
-                          className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
-                          aria-hidden="true"
-                        />
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {messages.map((m) => {
-                  const v = m.version_id
-                    ? versions.find((x) => x.id === m.version_id)
-                    : null;
-                  return m.role === "user" ? (
-                    <div
-                      key={m.id}
-                      className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
-                    >
-                      {m.content}
-                    </div>
-                  ) : (
-                    <div
-                      key={m.id}
-                      className="space-y-2 text-[13px] leading-relaxed text-stone-800"
-                    >
-                      <p className="whitespace-pre-line">{m.content}</p>
-                      {v && (
-                        <Button size="sm" onClick={() => setSelectedId(v.id)}>
-                          <History />v{v.number}
-                          {v.id === project.live_version_id ? " · Live" : ""}
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-                {busy && plan && plan.length > 1 && (
-                  <PlanChecklist
-                    steps={plan}
-                    elapsed={elapsed}
-                    stopping={stopping}
-                    onStop={requestStop}
-                  />
-                )}
-                {busy && !(plan && plan.length > 1) && (
-                  <div
-                    role="status"
-                    className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
-                  >
-                    <Spinner className="mt-0.5 shrink-0" />
-                    <span>
-                      {planning
-                        ? "Planning the build"
-                        : variantCount > 1
-                          ? `Building ${variantCount} variants`
-                          : `Building ${selected ? `on v${selected.number}` : "v1"}`}
-                      … {elapsed}s
-                      <span className="block text-xs text-raspberry-800/70">
-                        Larger prototypes can take a minute or two.
-                      </span>
-                    </span>
-                  </div>
-                )}
-                <div ref={chatEnd} />
+            />
+            <Tabs
+              value={tab}
+              onValueChange={(v) => setTab(v as Tab)}
+              aria-label="Project panel"
+              className={cn(
+                "glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] lg:w-[340px] xl:w-[380px]",
+                "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[88dvh] max-lg:rounded-b-none max-lg:pb-[env(safe-area-inset-bottom)] max-lg:shadow-[0_-24px_60px_-30px_rgba(0,0,0,.5)] max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-(--ease-out)",
+                !panelOpen &&
+                  "max-lg:pointer-events-none max-lg:translate-y-full",
+              )}
+              {...(!panelOpen ? { inert: true } : {})}
+            >
+              <div className="flex items-center justify-center pt-2 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(false)}
+                  aria-label="Close panel"
+                  className="grid h-6 w-16 place-items-center rounded-full"
+                >
+                  <span className="h-1.5 w-10 rounded-full bg-stone-300" />
+                </button>
               </div>
-              <form
-                onSubmit={generate}
-                className="border-t border-stone-100 p-3"
+              <div className="border-b border-stone-100 p-3 max-lg:pt-1">
+                <TabsList>
+                  {(
+                    [
+                      ["chat", "Chat", Sparkles, 0],
+                      ["versions", "Versions", History, versions.length],
+                      ["comments", "Comments", MessageSquare, openThreads],
+                      ["share", "Share", Share2, 0],
+                    ] as const
+                  ).map(([id, label, Icon, count]) => (
+                    <TabsTrigger key={id} value={id} className="gap-1 px-1.5">
+                      <Icon />
+                      {label}
+                      {id === "chat" && busy && tab !== "chat" && (
+                        <span
+                          className="size-1.5 animate-pulse rounded-full bg-raspberry-600"
+                          aria-label="Building"
+                        />
+                      )}
+                      {count > 0 && (
+                        <span className="grid h-4 min-w-4 place-items-center rounded-full bg-foreground/8 px-1 text-[10px] font-semibold tabular-nums text-stone-600">
+                          {count}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+
+              <TabsContent
+                value="chat"
+                className="flex min-h-0 flex-1 flex-col"
               >
-                {isImportedApp && (
-                  <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
-                    <Boxes
-                      className="mt-px size-3.5 shrink-0"
-                      aria-hidden="true"
-                    />
-                    {selected?.source === "github" && props.source
-                      ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
-                      : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
-                  </p>
+                {(quota?.plan === "free" || quota?.plan === "team") && (
+                  <div className="flex items-center gap-2 px-4 pt-3 text-[11px] text-stone-500">
+                    {quota.plan === "free" ? (
+                      <span>
+                        {quota.remaining}/{quota.limit} free builds left
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-raspberry-50 px-2 py-0.5 font-medium text-raspberry-800">
+                        Team Pro
+                      </span>
+                    )}
+                  </div>
                 )}
-                <label htmlFor="prompt" className="sr-only">
-                  {versions.length
-                    ? `Describe a change to v${selected?.number ?? ""}`
-                    : "Describe your prototype"}
-                </label>
-                <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
-                  <textarea
-                    id="prompt"
-                    rows={3}
-                    maxLength={MAX_PROMPT}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                        generate();
-                    }}
-                    placeholder={
-                      versions.length
-                        ? `Describe a change to v${selected?.number ?? ""}…`
-                        : "A dispatch board for field techs…"
-                    }
-                    className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    {(props.designSystems?.length ?? 0) > 0 && (
+                <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                  {messages.length === 0 && !busy && (
+                    <div className="space-y-2">
+                      <p className="text-[13px] text-stone-600">
+                        Describe what to build, or start from one of these:
+                      </p>
+                      {STARTERS.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setPrompt(s)}
+                          className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
+                        >
+                          <Sparkles
+                            className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
+                            aria-hidden="true"
+                          />
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {messages.map((m) => {
+                    const v = m.version_id
+                      ? versions.find((x) => x.id === m.version_id)
+                      : null;
+                    return m.role === "user" ? (
+                      <div
+                        key={m.id}
+                        className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
+                      >
+                        {m.content}
+                      </div>
+                    ) : (
+                      <div
+                        key={m.id}
+                        className="space-y-2 text-[13px] leading-relaxed text-stone-800"
+                      >
+                        <p className="whitespace-pre-line">{m.content}</p>
+                        {v && (
+                          <Button size="sm" onClick={() => setSelectedId(v.id)}>
+                            <History />v{v.number}
+                            {v.id === project.live_version_id ? " · Live" : ""}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {busy && plan && plan.length > 1 && (
+                    <PlanChecklist
+                      steps={plan}
+                      elapsed={elapsed}
+                      stopping={stopping}
+                      onStop={requestStop}
+                    />
+                  )}
+                  {busy && !(plan && plan.length > 1) && (
+                    <div
+                      role="status"
+                      className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
+                    >
+                      <Spinner className="mt-0.5 shrink-0" />
+                      <span>
+                        {planning
+                          ? "Planning the build"
+                          : variantCount > 1
+                            ? `Building ${variantCount} variants`
+                            : `Building ${selected ? `on v${selected.number}` : "v1"}`}
+                        … {elapsed}s
+                        <span className="block text-xs text-raspberry-800/70">
+                          Larger prototypes can take a minute or two.
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                  <div ref={chatEnd} />
+                </div>
+                <form
+                  onSubmit={generate}
+                  className="border-t border-stone-100 p-3"
+                >
+                  {isImportedApp && (
+                    <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
+                      <Boxes
+                        className="mt-px size-3.5 shrink-0"
+                        aria-hidden="true"
+                      />
+                      {selected?.source === "github" && props.source
+                        ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
+                        : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
+                    </p>
+                  )}
+                  <label htmlFor="prompt" className="sr-only">
+                    {versions.length
+                      ? `Describe a change to v${selected?.number ?? ""}`
+                      : "Describe your prototype"}
+                  </label>
+                  <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+                    <textarea
+                      id="prompt"
+                      rows={3}
+                      maxLength={MAX_PROMPT}
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                          generate();
+                      }}
+                      placeholder={
+                        versions.length
+                          ? `Describe a change to v${selected?.number ?? ""}…`
+                          : "A dispatch board for field techs…"
+                      }
+                      className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      {(props.designSystems?.length ?? 0) > 0 && (
+                        <Select
+                          value={dsId ?? "none"}
+                          disabled={busy}
+                          onValueChange={async (v) => {
+                            const next = v === "none" ? null : v;
+                            const prev = dsId;
+                            setDsId(next);
+                            try {
+                              await setProjectDesignSystem(project.id, next);
+                              notify.info(
+                                next
+                                  ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
+                                  : "Next build uses no design system",
+                                "Earlier versions keep their look.",
+                              );
+                            } catch (e) {
+                              setDsId(prev);
+                              notify.error(
+                                e instanceof Error
+                                  ? e.message
+                                  : "Couldn't change it.",
+                              );
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            aria-label="Design system"
+                            title="The design system builds follow"
+                            className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {props.designSystems!.map((d) => (
+                              <SelectItem key={d.id} value={d.id}>
+                                <Dots colors={d.colors} />
+                                {d.name}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="none">
+                              <Sparkles className="size-4 text-stone-500" />
+                              No design system
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Select
-                        value={dsId ?? "none"}
+                        value={String(variantCount)}
+                        onValueChange={(v) =>
+                          setVariantCount(Number(v) as 1 | 2 | 3)
+                        }
                         disabled={busy}
-                        onValueChange={async (v) => {
-                          const next = v === "none" ? null : v;
-                          const prev = dsId;
-                          setDsId(next);
-                          try {
-                            await setProjectDesignSystem(project.id, next);
-                            notify.info(
-                              next
-                                ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
-                                : "Next build uses no design system",
-                              "Earlier versions keep their look.",
-                            );
-                          } catch (e) {
-                            setDsId(prev);
-                            notify.error(
-                              e instanceof Error
-                                ? e.message
-                                : "Couldn't change it.",
-                            );
-                          }
-                        }}
                       >
                         <SelectTrigger
                           size="sm"
-                          aria-label="Design system"
-                          title="The design system builds follow"
-                          className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                          aria-label="Number of variants"
+                          title="Generate alternatives to compare. Each variant counts as one build."
+                          className="border-transparent bg-secondary shadow-none hover:border-transparent"
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {props.designSystems!.map((d) => (
-                            <SelectItem key={d.id} value={d.id}>
-                              <Dots colors={d.colors} />
-                              {d.name}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="none">
-                            <Sparkles className="size-4 text-stone-500" />
-                            No design system
-                          </SelectItem>
+                          <SelectItem value="1">1 version</SelectItem>
+                          <SelectItem value="2">2 variants</SelectItem>
+                          <SelectItem value="3">3 variants</SelectItem>
                         </SelectContent>
                       </Select>
-                    )}
-                    <Select
-                      value={String(variantCount)}
-                      onValueChange={(v) =>
-                        setVariantCount(Number(v) as 1 | 2 | 3)
-                      }
-                      disabled={busy}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        aria-label="Number of variants"
-                        title="Generate alternatives to compare. Each variant counts as one build."
-                        className="border-transparent bg-secondary shadow-none hover:border-transparent"
+                      <Kbd className="ml-auto">⌘↵</Kbd>
+                      <Button
+                        variant="default"
+                        size="icon"
+                        aria-label={
+                          variantCount > 1
+                            ? "Generate variants"
+                            : versions.length
+                              ? "Update prototype"
+                              : "Build prototype"
+                        }
+                        title={
+                          variantCount > 1
+                            ? "Generate variants"
+                            : versions.length
+                              ? "Update prototype"
+                              : "Build prototype"
+                        }
+                        type="submit"
+                        loading={busy}
+                        disabled={!prompt.trim() || outOfQuota || isImportedApp}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 version</SelectItem>
-                        <SelectItem value="2">2 variants</SelectItem>
-                        <SelectItem value="3">3 variants</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Kbd className="ml-auto">⌘↵</Kbd>
-                    <Button
-                      variant="default"
-                      size="icon"
-                      aria-label={
-                        variantCount > 1
-                          ? "Generate variants"
-                          : versions.length
-                            ? "Update prototype"
-                            : "Build prototype"
-                      }
-                      title={
-                        variantCount > 1
-                          ? "Generate variants"
-                          : versions.length
-                            ? "Update prototype"
-                            : "Build prototype"
-                      }
-                      type="submit"
-                      loading={busy}
-                      disabled={!prompt.trim() || outOfQuota || isImportedApp}
-                    >
-                      <ArrowUp />
-                    </Button>
-                  </div>
-                </div>
-                {outOfQuota && quota?.plan === "free" && (
-                  <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
-                    <p className="font-semibold">
-                      You&apos;ve used this month&apos;s free builds.
-                    </p>
-                    <p className="mt-0.5 text-xs text-stone-700">
-                      Pro is $20/month with $10 of AI usage included.
-                    </p>
-                    <form
-                      action="/api/billing/checkout"
-                      method="post"
-                      className="mt-2"
-                    >
-                      <Button variant="default" size="sm" type="submit">
-                        <Sparkles />
-                        Upgrade to Pro
+                        <ArrowUp />
                       </Button>
-                    </form>
+                    </div>
                   </div>
-                )}
-                {outOfQuota &&
-                  (quota?.plan === "pro" || quota?.plan === "team") &&
-                  !error && (
-                    <p className="mt-2 text-xs text-stone-600">
-                      You&apos;ve hit the daily safety limit of {quota.limit}{" "}
-                      builds. It frees up on a rolling 24-hour basis.
+                  {outOfQuota && quota?.plan === "free" && (
+                    <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
+                      <p className="font-semibold">
+                        You&apos;ve used this month&apos;s free builds.
+                      </p>
+                      <p className="mt-0.5 text-xs text-stone-700">
+                        Pro is $20/month with $10 of AI usage included.
+                      </p>
+                      <form
+                        action="/api/billing/checkout"
+                        method="post"
+                        className="mt-2"
+                      >
+                        <Button variant="default" size="sm" type="submit">
+                          <Sparkles />
+                          Upgrade to Pro
+                        </Button>
+                      </form>
+                    </div>
+                  )}
+                  {outOfQuota &&
+                    (quota?.plan === "pro" || quota?.plan === "team") &&
+                    !error && (
+                      <p className="mt-2 text-xs text-stone-600">
+                        You&apos;ve hit the daily safety limit of {quota.limit}{" "}
+                        builds. It frees up on a rolling 24-hour basis.
+                      </p>
+                    )}
+                  {error && (
+                    <p role="alert" className="mt-2 text-xs text-red-700">
+                      {error}
                     </p>
                   )}
-                {error && (
-                  <p role="alert" className="mt-2 text-xs text-red-700">
-                    {error}
-                  </p>
-                )}
-              </form>
-            </TabsContent>
-            {tab !== "chat" && (
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <TabsContent value="versions" className="space-y-5 p-4">
-                  {(props.source || builds.length > 0) && (
-                    <div className="space-y-2">
-                      {props.source && (
-                        <SourceCard
-                          source={props.source}
-                          isOwner={isOwner}
-                          running={buildRunning}
-                          latest={builds[0]}
+                </form>
+              </TabsContent>
+              {tab !== "chat" && (
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <TabsContent value="versions" className="space-y-5 p-4">
+                    {(props.source || builds.length > 0) && (
+                      <div className="space-y-2">
+                        {props.source && (
+                          <SourceCard
+                            source={props.source}
+                            isOwner={isOwner}
+                            running={buildRunning}
+                            latest={builds[0]}
+                            now={now}
+                            onBuilt={setLogBuildId}
+                          />
+                        )}
+                        <BuildList
+                          projectId={project.id}
+                          builds={builds}
                           now={now}
+                          onShowLog={setLogBuildId}
                           onBuilt={setLogBuildId}
                         />
-                      )}
-                      <BuildList
-                        projectId={project.id}
-                        builds={builds}
-                        now={now}
-                        onShowLog={setLogBuildId}
-                        onBuilt={setLogBuildId}
-                      />
-                    </div>
-                  )}
+                      </div>
+                    )}
 
-                  <section aria-label="Versions" className="space-y-2">
-                    <div className="flex items-center gap-2 px-1">
-                      <Eyebrow>Versions</Eyebrow>
-                      <ImportDialog
-                        projectId={project.id}
-                        onImported={(id) => setSelectedId(id)}
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="-mr-2 ml-auto h-7 text-stone-600"
+                    <section aria-label="Versions" className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <Eyebrow>Versions</Eyebrow>
+                        <ImportDialog
+                          projectId={project.id}
+                          onImported={(id) => setSelectedId(id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="-mr-2 ml-auto h-7 text-stone-600"
+                            >
+                              <Upload />
+                              Import
+                            </Button>
+                          }
+                        />
+                      </div>
+                      {versions.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
+                          <span
+                            aria-hidden="true"
+                            className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
                           >
-                            <Upload />
-                            Import
-                          </Button>
-                        }
-                      />
-                    </div>
-                    {versions.length === 0 ? (
+                            <History className="size-5" />
+                          </span>
+                          <p className="text-[13px] font-medium">
+                            No versions yet
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {buildRunning
+                              ? "Your first build is running."
+                              : "Describe a prototype in the chat, or import one."}
+                          </p>
+                        </div>
+                      ) : (
+                        <ul className="space-y-1">
+                          <AnimatePresence initial={false}>
+                            {versions.map((v) => (
+                              <VersionItem
+                                key={v.id}
+                                version={v}
+                                designSystem={
+                                  v.design_system_id
+                                    ? dsNames[v.design_system_id]
+                                    : undefined
+                                }
+                                selected={v.id === selected?.id}
+                                live={
+                                  v.id === project.live_version_id &&
+                                  project.published
+                                }
+                                canRestore={v.id !== versions[0]?.id}
+                                restoring={isBusy(`restore-${v.id}`)}
+                                disabled={pending}
+                                onSelect={() => setSelectedId(v.id)}
+                                onRestore={() =>
+                                  run(
+                                    () => restoreVersion(project.id, v.id),
+                                    `restore-${v.id}`,
+                                    `Restored v${v.number} as a new version`,
+                                  )
+                                }
+                              />
+                            ))}
+                          </AnimatePresence>
+                        </ul>
+                      )}
+                    </section>
+                  </TabsContent>
+
+                  <TabsContent value="share">
+                    <SharePanel
+                      project={project}
+                      isOwner={isOwner}
+                      members={members}
+                      reviewUrl={reviewUrl}
+                      pending={pending}
+                      isBusy={isBusy}
+                      run={run}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="comments" className="space-y-1 p-3">
+                    {props.round && (
+                      <div className="mb-2">
+                        <RoundCard
+                          round={props.round}
+                          projectId={project.id}
+                          canClose={role === "owner" || role === "editor"}
+                        />
+                      </div>
+                    )}
+                    {threads.some((t) => t.status === "open") &&
+                      !isImportedApp && (
+                        <div className="flex items-center gap-2 px-1 pb-1 text-xs text-stone-600">
+                          <span className="flex-1">
+                            Pick comments to fix them in one build.
+                          </span>
+                          <button
+                            type="button"
+                            className="min-h-8 font-medium text-raspberry-700 hover:underline"
+                            onClick={() => {
+                              const open = threads
+                                .filter((t) => t.status === "open")
+                                .map((t) => t.id);
+                              setFixPick(
+                                fixPick.length === open.length
+                                  ? []
+                                  : open.slice(0, MAX_FIX_THREADS),
+                              );
+                            }}
+                          >
+                            {fixPick.length &&
+                            fixPick.length ===
+                              threads.filter((t) => t.status === "open").length
+                              ? "Clear"
+                              : "Select all open"}
+                          </button>
+                        </div>
+                      )}
+                    {threads.length === 0 && (
                       <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
                         <span
                           aria-hidden="true"
                           className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
                         >
-                          <History className="size-5" />
+                          <MessageSquare className="size-5" />
                         </span>
                         <p className="text-[13px] font-medium">
-                          No versions yet
+                          No comments yet
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {buildRunning
-                            ? "Your first build is running."
-                            : "Describe a prototype in the chat, or import one."}
+                          Reviewers pin comments on the published prototype from
+                          the review link.
                         </p>
                       </div>
-                    ) : (
-                      <ul className="space-y-1">
-                        <AnimatePresence initial={false}>
-                          {versions.map((v) => (
-                            <VersionItem
-                              key={v.id}
-                              version={v}
-                              designSystem={
-                                v.design_system_id
-                                  ? dsNames[v.design_system_id]
-                                  : undefined
-                              }
-                              selected={v.id === selected?.id}
-                              live={
-                                v.id === project.live_version_id &&
-                                project.published
-                              }
-                              canRestore={v.id !== versions[0]?.id}
-                              restoring={isBusy(`restore-${v.id}`)}
-                              disabled={pending}
-                              onSelect={() => setSelectedId(v.id)}
-                              onRestore={() =>
-                                run(
-                                  () => restoreVersion(project.id, v.id),
-                                  `restore-${v.id}`,
-                                  `Restored v${v.number} as a new version`,
-                                )
-                              }
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </ul>
                     )}
-                  </section>
-                </TabsContent>
-
-                <TabsContent value="share">
-                  <SharePanel
-                    project={project}
-                    isOwner={isOwner}
-                    members={members}
-                    reviewUrl={reviewUrl}
-                    pending={pending}
-                    isBusy={isBusy}
-                    run={run}
-                  />
-                </TabsContent>
-
-                <TabsContent value="comments" className="space-y-1 p-3">
-                  {props.round && (
-                    <div className="mb-2">
-                      <RoundCard
-                        round={props.round}
-                        projectId={project.id}
-                        canClose={role === "owner" || role === "editor"}
-                      />
-                    </div>
-                  )}
-                  {threads.some((t) => t.status === "open") &&
-                    !isImportedApp && (
-                      <div className="flex items-center gap-2 px-1 pb-1 text-xs text-stone-600">
-                        <span className="flex-1">
-                          Pick comments to fix them in one build.
-                        </span>
-                        <button
-                          type="button"
-                          className="min-h-8 font-medium text-raspberry-700 hover:underline"
-                          onClick={() => {
-                            const open = threads
-                              .filter((t) => t.status === "open")
-                              .map((t) => t.id);
-                            setFixPick(
-                              fixPick.length === open.length
-                                ? []
-                                : open.slice(0, MAX_FIX_THREADS),
-                            );
-                          }}
+                    <AnimatePresence initial={false}>
+                      {threads
+                        .slice()
+                        .reverse()
+                        .map((t, i) => {
+                          const v = versions.find((x) => x.id === t.version_id);
+                          return (
+                            <motion.article
+                              key={t.id}
+                              {...listItem}
+                              className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
+                            >
+                              <div className="flex items-center gap-1.5 text-xs">
+                                {t.status === "open" && !isImportedApp && (
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Fix comment ${threads.length - i}`}
+                                    className="size-4 accent-raspberry-700"
+                                    checked={fixPick.includes(t.id)}
+                                    disabled={
+                                      !fixPick.includes(t.id) &&
+                                      fixPick.length >= MAX_FIX_THREADS
+                                    }
+                                    onChange={(e) =>
+                                      setFixPick((p) =>
+                                        e.target.checked
+                                          ? [...p, t.id]
+                                          : p.filter((x) => x !== t.id),
+                                      )
+                                    }
+                                  />
+                                )}
+                                <span
+                                  className={cn(
+                                    "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                                    t.status === "open"
+                                      ? "btn-glow"
+                                      : "bg-stone-400",
+                                  )}
+                                >
+                                  {threads.length - i}
+                                </span>
+                                {v && <Badge>v{v.number}</Badge>}
+                                {t.addressed_version_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedId(t.addressed_version_id!)
+                                    }
+                                    className="rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-semibold text-raspberry-800 hover:bg-raspberry-100"
+                                  >
+                                    Addressed in v
+                                    {versions.find(
+                                      (x) => x.id === t.addressed_version_id,
+                                    )?.number ?? "?"}
+                                  </button>
+                                )}
+                                <span className="text-stone-500">
+                                  {t.status === "resolved"
+                                    ? "Resolved"
+                                    : "Open"}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="ml-auto h-7"
+                                  onClick={async () => {
+                                    await supabase
+                                      .from("comment_threads")
+                                      .update({
+                                        status:
+                                          t.status === "open"
+                                            ? "resolved"
+                                            : "open",
+                                        resolved_at:
+                                          t.status === "open"
+                                            ? new Date().toISOString()
+                                            : null,
+                                      })
+                                      .eq("id", t.id);
+                                    router.refresh();
+                                  }}
+                                >
+                                  {t.status === "open" ? (
+                                    <CircleCheck />
+                                  ) : (
+                                    <Undo2 />
+                                  )}
+                                  {t.status === "open" ? "Resolve" : "Reopen"}
+                                </Button>
+                              </div>
+                              {t.comments
+                                .slice()
+                                .sort((a, b) =>
+                                  a.created_at.localeCompare(b.created_at),
+                                )
+                                .map((c) => (
+                                  <p
+                                    key={c.id}
+                                    className="text-[13px] leading-relaxed"
+                                  >
+                                    <strong className="font-semibold">
+                                      {authorLabel(c)}
+                                    </strong>{" "}
+                                    {c.body}
+                                  </p>
+                                ))}
+                            </motion.article>
+                          );
+                        })}
+                    </AnimatePresence>
+                    {fixPick.length > 0 && (
+                      <div className="sticky bottom-0 space-y-2 rounded-2xl border border-raspberry-200 bg-card p-3 shadow-lg">
+                        <label htmlFor="fix-note" className="sr-only">
+                          Anything else for this build
+                        </label>
+                        <Textarea
+                          id="fix-note"
+                          rows={2}
+                          value={fixNote}
+                          onChange={(e) => setFixNote(e.target.value)}
+                          placeholder="Anything else? (optional)"
+                          className="text-[13px]"
+                        />
+                        <Button
+                          className="w-full"
+                          loading={busy}
+                          disabled={busy || outOfQuota}
+                          onClick={fixFromFeedback}
                         >
-                          {fixPick.length &&
-                          fixPick.length ===
-                            threads.filter((t) => t.status === "open").length
-                            ? "Clear"
-                            : "Select all open"}
-                        </button>
+                          <WandSparkles />
+                          Fix {fixPick.length} comment
+                          {fixPick.length === 1 ? "" : "s"}
+                        </Button>
+                        <p className="text-center text-[11px] text-stone-500">
+                          One build. If it fails, it isn&apos;t billed.
+                        </p>
                       </div>
                     )}
-                  {threads.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
-                      <span
-                        aria-hidden="true"
-                        className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
-                      >
-                        <MessageSquare className="size-5" />
-                      </span>
-                      <p className="text-[13px] font-medium">No comments yet</p>
-                      <p className="text-xs text-muted-foreground">
-                        Reviewers pin comments on the published prototype from
-                        the review link.
-                      </p>
-                    </div>
-                  )}
-                  <AnimatePresence initial={false}>
-                    {threads
-                      .slice()
-                      .reverse()
-                      .map((t, i) => {
-                        const v = versions.find((x) => x.id === t.version_id);
-                        return (
-                          <motion.article
-                            key={t.id}
-                            {...listItem}
-                            className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
-                          >
-                            <div className="flex items-center gap-1.5 text-xs">
-                              {t.status === "open" && !isImportedApp && (
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Fix comment ${threads.length - i}`}
-                                  className="size-4 accent-raspberry-700"
-                                  checked={fixPick.includes(t.id)}
-                                  disabled={
-                                    !fixPick.includes(t.id) &&
-                                    fixPick.length >= MAX_FIX_THREADS
-                                  }
-                                  onChange={(e) =>
-                                    setFixPick((p) =>
-                                      e.target.checked
-                                        ? [...p, t.id]
-                                        : p.filter((x) => x !== t.id),
-                                    )
-                                  }
-                                />
-                              )}
-                              <span
-                                className={cn(
-                                  "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                                  t.status === "open"
-                                    ? "btn-glow"
-                                    : "bg-stone-400",
-                                )}
-                              >
-                                {threads.length - i}
-                              </span>
-                              {v && <Badge>v{v.number}</Badge>}
-                              {t.addressed_version_id && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedId(t.addressed_version_id!)
-                                  }
-                                  className="rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-semibold text-raspberry-800 hover:bg-raspberry-100"
-                                >
-                                  Addressed in v
-                                  {versions.find(
-                                    (x) => x.id === t.addressed_version_id,
-                                  )?.number ?? "?"}
-                                </button>
-                              )}
-                              <span className="text-stone-500">
-                                {t.status === "resolved" ? "Resolved" : "Open"}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="ml-auto h-7"
-                                onClick={async () => {
-                                  await supabase
-                                    .from("comment_threads")
-                                    .update({
-                                      status:
-                                        t.status === "open"
-                                          ? "resolved"
-                                          : "open",
-                                      resolved_at:
-                                        t.status === "open"
-                                          ? new Date().toISOString()
-                                          : null,
-                                    })
-                                    .eq("id", t.id);
-                                  router.refresh();
-                                }}
-                              >
-                                {t.status === "open" ? (
-                                  <CircleCheck />
-                                ) : (
-                                  <Undo2 />
-                                )}
-                                {t.status === "open" ? "Resolve" : "Reopen"}
-                              </Button>
-                            </div>
-                            {t.comments
-                              .slice()
-                              .sort((a, b) =>
-                                a.created_at.localeCompare(b.created_at),
-                              )
-                              .map((c) => (
-                                <p
-                                  key={c.id}
-                                  className="text-[13px] leading-relaxed"
-                                >
-                                  <strong className="font-semibold">
-                                    {authorLabel(c)}
-                                  </strong>{" "}
-                                  {c.body}
-                                </p>
-                              ))}
-                          </motion.article>
-                        );
-                      })}
-                  </AnimatePresence>
-                  {fixPick.length > 0 && (
-                    <div className="sticky bottom-0 space-y-2 rounded-2xl border border-raspberry-200 bg-card p-3 shadow-lg">
-                      <label htmlFor="fix-note" className="sr-only">
-                        Anything else for this build
-                      </label>
-                      <Textarea
-                        id="fix-note"
-                        rows={2}
-                        value={fixNote}
-                        onChange={(e) => setFixNote(e.target.value)}
-                        placeholder="Anything else? (optional)"
-                        className="text-[13px]"
-                      />
-                      <Button
-                        className="w-full"
-                        loading={busy}
-                        disabled={busy || outOfQuota}
-                        onClick={fixFromFeedback}
-                      >
-                        <WandSparkles />
-                        Fix {fixPick.length} comment
-                        {fixPick.length === 1 ? "" : "s"}
+                    {project.published && (
+                      <Button asChild variant="ghost" size="sm" className="m-1">
+                        <a href={reviewUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink />
+                          Open the review page to reply
+                        </a>
                       </Button>
-                      <p className="text-center text-[11px] text-stone-500">
-                        One build. If it fails, it isn&apos;t billed.
-                      </p>
-                    </div>
-                  )}
-                  {project.published && (
-                    <Button asChild variant="ghost" size="sm" className="m-1">
-                      <a href={reviewUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink />
-                        Open the review page to reply
-                      </a>
-                    </Button>
-                  )}
-                </TabsContent>
-              </div>
-            )}
-          </Tabs>
+                    )}
+                  </TabsContent>
+                </div>
+              )}
+            </Tabs>
+          </>
         )}
       </div>
+
+      {/* Phones: a tab bar that opens the panel drawer on that tab. */}
+      {!editMode && variants.length === 0 && (
+        <nav
+          aria-label="Project panel"
+          className="glass mx-2 mb-2 flex shrink-0 items-center rounded-full p-1 pb-[max(.25rem,env(safe-area-inset-bottom))] lg:hidden"
+        >
+          {(
+            [
+              ["chat", "Chat", Sparkles, 0],
+              ["versions", "Versions", History, versions.length],
+              ["comments", "Comments", MessageSquare, openThreads],
+              ["share", "Share", Share2, 0],
+            ] as const
+          ).map(([id, label, Icon, count]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                setTab(id);
+                setPanelOpen(true);
+              }}
+              aria-pressed={panelOpen && tab === id}
+              className="relative flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[11px] font-medium text-stone-600 aria-pressed:bg-foreground/[.07] aria-pressed:text-foreground"
+            >
+              <Icon className="size-[18px]" />
+              {label}
+              {id === "chat" && busy && (
+                <span
+                  className="absolute right-[calc(50%-16px)] top-2 size-2 animate-pulse rounded-full bg-raspberry-600"
+                  aria-label="Building"
+                />
+              )}
+              {count > 0 && id !== "versions" && (
+                <span className="absolute right-[calc(50%-20px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-raspberry-600 px-1 text-[10px] font-semibold text-white">
+                  {count}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
@@ -2233,22 +2367,41 @@ function PlanChecklist({
           <li key={i} className="flex items-start gap-2">
             <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
               {s.status === "done" ? (
-                <Check className="size-4 text-raspberry-700" aria-hidden="true" />
+                <Check
+                  className="size-4 text-raspberry-700"
+                  aria-hidden="true"
+                />
               ) : s.status === "running" ? (
                 <Spinner className="size-3.5" />
               ) : s.status === "failed" ? (
                 <X className="size-4 text-red-700" aria-hidden="true" />
               ) : (
-                <span className="size-2 rounded-full border border-raspberry-800/40" aria-hidden="true" />
+                <span
+                  className="size-2 rounded-full border border-raspberry-800/40"
+                  aria-hidden="true"
+                />
               )}
             </span>
-            <span className={cn("leading-snug", s.status === "pending" && "text-raspberry-800/60")}>
+            <span
+              className={cn(
+                "leading-snug",
+                s.status === "pending" && "text-raspberry-800/60",
+              )}
+            >
               {s.title}
               {s.summary && (
-                <span className="block text-xs text-raspberry-800/70">{s.summary}</span>
+                <span className="block text-xs text-raspberry-800/70">
+                  {s.summary}
+                </span>
               )}
               <span className="sr-only">
-                {s.status === "done" ? " (done)" : s.status === "running" ? " (in progress)" : s.status === "failed" ? " (failed)" : ""}
+                {s.status === "done"
+                  ? " (done)"
+                  : s.status === "running"
+                    ? " (in progress)"
+                    : s.status === "failed"
+                      ? " (failed)"
+                      : ""}
               </span>
             </span>
           </li>

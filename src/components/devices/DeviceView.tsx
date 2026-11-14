@@ -324,10 +324,10 @@ export function DevicePicker({
         <Button
           variant="outline"
           aria-label={`Preview device: ${device.name}${detail ? `, ${detail}` : ""}`}
-          className="max-w-[18rem]"
+          className="max-w-[18rem] max-sm:px-2.5"
         >
           <Icon />
-          <span className="truncate">{device.name}</span>
+          <span className="truncate max-sm:hidden">{device.name}</span>
           {detail && !compact && (
             <span className="hidden font-normal text-stone-500 lg:inline">
               · {detail}
@@ -336,7 +336,7 @@ export function DevicePicker({
           <ChevronDown className="text-stone-400" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[22rem]">
+      <PopoverContent className="w-[min(22rem,calc(100vw-1.5rem))]">
         {view.list.length > 6 && (
           <label className="mb-1 flex h-9 items-center gap-2 rounded-full bg-stone-100/80 px-3 text-sm">
             <Search className="size-3.5 text-stone-400" aria-hidden="true" />
