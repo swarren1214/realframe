@@ -258,7 +258,7 @@ export function TeamSettings({
         >
           {billing.plan === "team" ? (
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-              <dl className="grid flex-1 grid-cols-3 gap-4 text-sm">
+              <dl className="grid flex-1 basis-72 grid-cols-2 gap-4 text-sm sm:grid-cols-3">
                 <div>
                   <dt className="text-xs text-stone-500">Builder seats</dt>
                   <dd className="font-semibold">
@@ -401,7 +401,7 @@ export function TeamSettings({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
-                className="min-w-0 flex-1"
+                className="min-w-0 flex-1 max-sm:basis-full"
               />
               <Select
                 value={role}
@@ -431,7 +431,7 @@ export function TeamSettings({
                   <motion.li
                     key={m.email}
                     {...listItem}
-                    className="flex items-center gap-3 py-2.5"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5"
                   >
                     <Avatar
                       url={m.user_id ? profiles[m.user_id]?.avatar : null}
@@ -441,7 +441,7 @@ export function TeamSettings({
                       )}
                       className="size-8 text-xs"
                     />
-                    <span className="min-w-0 flex-1">
+                    <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-2.75rem)]">
                       <span className="block truncate text-sm font-medium">
                         {(m.user_id && profiles[m.user_id]?.name) || m.email}
                         {self && (
@@ -492,7 +492,7 @@ export function TeamSettings({
                       >
                         <SelectTrigger
                           aria-label={`Role for ${m.email}`}
-                          className="h-8 w-28"
+                          className="h-8 w-28 max-sm:ml-11"
                           disabled={busy === `role-${m.email}`}
                         >
                           <SelectValue />
@@ -504,7 +504,9 @@ export function TeamSettings({
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge>{ROLE_LABEL[m.role]}</Badge>
+                      <Badge className="max-sm:ml-11">
+                        {ROLE_LABEL[m.role]}
+                      </Badge>
                     )}
                     {m.role === "reviewer" && (
                       <Badge className="bg-emerald-50 text-emerald-800">
@@ -805,7 +807,7 @@ export function TeamSettings({
       {view === "settings" && admin && !team.personal && (
         <Section title="Delete workspace">
           <div className="flex flex-wrap items-center gap-3">
-            <p className="min-w-0 flex-1 text-[13px] text-stone-600">
+            <p className="min-w-0 flex-1 basis-56 text-[13px] text-stone-600">
               {prototypes
                 ? `Move or delete the team's ${prototypes} prototype${prototypes === 1 ? "" : "s"} first.`
                 : "Removes the team, its devices and its design systems for everyone."}

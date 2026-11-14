@@ -192,8 +192,37 @@ export function Canvas({
         );
       else setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
+    // Two fingers on the board pinch to zoom around their midpoint.
+    let pinch: number | null = null;
+    const span = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    function onTouchMove(e: TouchEvent) {
+      if (e.touches.length !== 2) {
+        pinch = null;
+        return;
+      }
+      e.preventDefault();
+      const d = span(e.touches);
+      if (pinch) {
+        const r = el!.getBoundingClientRect();
+        setDrag(null);
+        zoomAt(
+          d / pinch,
+          (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left,
+          (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top,
+        );
+      }
+      pinch = d;
+    }
+    const endPinch = () => (pinch = null);
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", endPinch);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", endPinch);
+    };
   }, []);
 
   function onPointerMove(e: React.PointerEvent) {
@@ -307,8 +336,8 @@ export function Canvas({
   const dragging = drag !== null;
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
+    <div className="flex h-dvh flex-col">
+      <header className="glass mx-2 mt-2 flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 lg:mx-3 lg:mt-3 lg:gap-2 lg:pl-3">
         <Link
           href="/projects"
           aria-label="All prototypes"
@@ -320,14 +349,14 @@ export function Canvas({
           asChild
           variant="ghost"
           size="sm"
-          className="text-sm font-semibold text-foreground"
+          className="min-w-0 shrink text-sm font-semibold text-foreground"
         >
           <Link href={`/projects/${project.id}`}>
             <ArrowLeft />
-            {project.name}
+            <span className="truncate">{project.name}</span>
           </Link>
         </Button>
-        <Badge variant="default">
+        <Badge variant="default" className="max-md:hidden">
           Canvas{latest ? ` · v${latest.number}` : ""}
         </Badge>
         <div className="flex-1" />
@@ -341,7 +370,7 @@ export function Canvas({
               key={d.label}
               variant="ghost"
               size="sm"
-              className="h-7 hover:bg-card"
+              className="h-7 hover:bg-card max-sm:px-1.5"
               disabled={!latest}
               title={`Add a ${d.label.toLowerCase()} frame`}
               onClick={() => addFrames([d], activeFrame?.route ?? "")}
@@ -360,20 +389,20 @@ export function Canvas({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="size-7 hover:bg-card"
+            className="size-7 hover:bg-card max-sm:hidden"
             aria-label="Zoom out"
             title="Zoom out"
             onClick={() => zoomAt(1 / 1.25)}
           >
             <ZoomOut />
           </Button>
-          <span className="w-10 text-center text-xs tabular-nums text-stone-700">
+          <span className="w-10 text-center text-xs tabular-nums text-stone-700 max-sm:hidden">
             {Math.round(view.z * 100)}%
           </span>
           <Button
             variant="ghost"
             size="icon-sm"
-            className="size-7 hover:bg-card"
+            className="size-7 hover:bg-card max-sm:hidden"
             aria-label="Zoom in"
             title="Zoom in"
             onClick={() => zoomAt(1.25)}
@@ -404,9 +433,11 @@ export function Canvas({
           }}
         >
           {editing ? <X /> : <PencilRuler />}
-          {editing ? "Exit editing" : "Edit visually"}
+          <span className="max-sm:sr-only">
+            {editing ? "Exit editing" : "Edit visually"}
+          </span>
         </Button>
-        {accountMenu}
+        <div className="max-lg:hidden">{accountMenu}</div>
       </header>
       {error && (
         <p
@@ -429,7 +460,7 @@ export function Canvas({
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div
           ref={board}
-          className={`relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`relative min-w-0 flex-1 touch-none overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
           style={{
             backgroundImage:
               "radial-gradient(circle, rgba(190,24,93,.22) 1.2px, transparent 1.2px)",
@@ -653,9 +684,14 @@ export function Canvas({
           </div>
 
           {latest && frames.length > 0 && (
-            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-card/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm">
+            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-card/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm max-lg:hidden">
               Drag the background to pan · ⌘/Ctrl + scroll to zoom · click a
               frame to use it · navigate inside a frame to set its screen
+            </p>
+          )}
+          {latest && frames.length > 0 && (
+            <p className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-full bg-card/90 px-3 py-1 text-center text-[11px] text-stone-600 shadow-sm lg:hidden">
+              Drag to pan · pinch to zoom · tap a frame to use it
             </p>
           )}
         </div>
@@ -663,7 +699,7 @@ export function Canvas({
         {editing && (
           <aside
             aria-label="Visual editor"
-            className="glass flex w-[320px] rounded-[1.75rem] shrink-0 flex-col overflow-hidden"
+            className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:fixed max-lg:inset-x-2 max-lg:bottom-2 max-lg:z-40 max-lg:h-[45dvh] lg:w-[320px]"
           >
             <Inspector
               selected={editor.selected}

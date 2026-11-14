@@ -90,6 +90,15 @@ export function Review({
   const isGuest = role === "guest";
   const commenter =
     canComment(role) || (isGuest && project.guest_comments !== false);
+  // Phones only: whether the comments drawer is open.
+  const [panelOpen, setPanelOpen] = useState(false);
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setPanelOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
   const [commentMode, setCommentMode] = useState(false);
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [draftText, setDraftText] = useState("");
@@ -268,8 +277,8 @@ export function Review({
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
+    <div className="flex h-dvh flex-col">
+      <header className="glass mx-2 mt-2 flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 lg:mx-3 lg:mt-3 lg:gap-2 lg:pl-3">
         <Link
           href={userEmail ? "/projects" : "/"}
           aria-label="Realframe"
@@ -277,17 +286,17 @@ export function Review({
         >
           <Mark size={26} />
         </Link>
-        <h1 className="min-w-0 truncate text-sm font-semibold">
+        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold lg:flex-none">
           {project.name}
         </h1>
         {project.live_version_id === version.id ? (
-          <Badge variant="success">
+          <Badge variant="success" className="max-sm:hidden">
             <BadgeDot />v{version.number} · Live
           </Badge>
         ) : (
-          <Badge>v{version.number} · Draft</Badge>
+          <Badge className="max-sm:hidden">v{version.number} · Draft</Badge>
         )}
-        <div className="flex-1" />
+        <div className="flex-1 max-lg:hidden" />
         {view.list.length > 1 && <DevicePicker view={view} measure={measure} />}
         <RotateButton view={view} />
         <Button
@@ -301,10 +310,10 @@ export function Review({
           }}
         >
           <Expand />
-          Full screen
+          <span className="max-lg:sr-only">Full screen</span>
         </Button>
         {(role === "owner" || role === "editor") && (
-          <Button asChild variant="ghost">
+          <Button asChild variant="ghost" className="max-lg:hidden">
             <a href={`/projects/${project.id}`}>
               <PencilRuler />
               Open in studio
@@ -314,6 +323,7 @@ export function Review({
         {commenter && (
           <Button
             variant={commentMode ? "default" : "outline"}
+            className="max-lg:hidden"
             aria-pressed={commentMode}
             onClick={() => {
               setCommentMode((m) => !m);
@@ -325,16 +335,16 @@ export function Review({
           </Button>
         )}
         {isGuest ? (
-          <span className="px-2 text-xs text-muted-foreground">
+          <span className="px-2 text-xs text-muted-foreground max-lg:hidden">
             Viewing as {guestName}
           </span>
         ) : userEmail ? (
-          accountMenu
+          <div className="max-lg:hidden">{accountMenu}</div>
         ) : (
           <Button asChild variant="ghost">
             <a href={`/login?next=/p/${project.slug}`}>
               <LogIn />
-              Sign in
+              <span className="max-sm:sr-only">Sign in</span>
             </a>
           </Button>
         )}
@@ -349,9 +359,9 @@ export function Review({
         />
       )}
 
-      <div className="flex min-h-0 flex-1 gap-3 p-3">
+      <div className="flex min-h-0 flex-1 gap-3 p-2 lg:p-3">
         <main
-          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4"
+          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-2 lg:p-4"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setCommentMode(false);
@@ -395,7 +405,10 @@ export function Review({
                   setDraft({ x, y });
                   setCommentMode(false);
                 }}
-                onSelectPin={(id) => setSelected(id)}
+                onSelectPin={(id) => {
+                  setSelected(id);
+                  setPanelOpen(true);
+                }}
               />
             </DeviceStage>
           </div>
@@ -444,169 +457,236 @@ export function Review({
         </main>
 
         {role !== "public" && (
-          <aside
-            aria-label="Comments"
-            className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem]"
-          >
-            <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-2.5">
-              <MessageSquare
-                className="size-4 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <h2 className="text-[13px] font-semibold">Comments</h2>
-              <span className="text-xs text-muted-foreground">
-                {openCount} open
-              </span>
-              <ToggleGroup
-                type="single"
-                aria-label="Filter comments"
-                value={filter}
-                onValueChange={(v) => v && setFilter(v as typeof filter)}
-                className="ml-auto"
-              >
-                <ToggleGroupItem value="open">Open</ToggleGroupItem>
-                <ToggleGroupItem value="resolved">Resolved</ToggleGroupItem>
-                <ToggleGroupItem value="all">All</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            {error && (
-              <p
-                role="alert"
-                className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800"
-              >
-                {error}
-              </p>
-            )}
-            <div className="flex-1 space-y-1 overflow-y-auto p-2">
-              {visible.length === 0 && (
-                <div className="flex flex-col items-center gap-2 p-6 text-center text-[13px] text-muted-foreground">
-                  <MessageSquare
-                    className="size-5 text-stone-400"
-                    aria-hidden="true"
-                  />
-                  {commenter
-                    ? "No comments here yet. Click “Add comment”, then click anywhere on the prototype."
-                    : "No comments yet."}
-                </div>
+          <>
+            {/* Phones: comments open as a drawer over the prototype. */}
+            <div
+              aria-hidden="true"
+              onClick={() => setPanelOpen(false)}
+              className={cn(
+                "fixed inset-0 z-30 bg-stone-950/30 backdrop-blur-[2px] transition-opacity duration-(--duration-base) lg:hidden dark:bg-black/60",
+                panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
               )}
-              <AnimatePresence initial={false}>
-                {visible.map((t) => (
-                  <motion.article
-                    key={t.id}
-                    {...listItem}
-                    onClick={() => setSelected(t.id)}
-                    className={cn(
-                      "cursor-default space-y-2 rounded-2xl p-3 transition-colors",
-                      t.id === selected
-                        ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
-                        : "hover:bg-foreground/[.03]",
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span
-                        className={cn(
-                          "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                          t.status === "open" ? "btn-glow" : "bg-stone-400",
-                        )}
-                      >
-                        {t.n}
-                      </span>
-                      <Badge>v{versionNumbers[t.version_id] ?? "?"}</Badge>
-                      {t.version_id !== version.id && (
-                        <span className="text-muted-foreground">
-                          earlier version
+            />
+            <aside
+              aria-label="Comments"
+              {...(!panelOpen ? { inert: true } : {})}
+              className={cn(
+                "glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] lg:w-[340px]",
+                "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[80dvh] max-lg:rounded-b-none max-lg:pb-[env(safe-area-inset-bottom)] max-lg:shadow-[0_-24px_60px_-30px_rgba(0,0,0,.5)] max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-(--ease-out)",
+                !panelOpen &&
+                  "max-lg:pointer-events-none max-lg:translate-y-full",
+              )}
+            >
+              <div className="flex items-center justify-center pt-2 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(false)}
+                  aria-label="Close comments"
+                  className="grid h-6 w-16 place-items-center rounded-full"
+                >
+                  <span className="h-1.5 w-10 rounded-full bg-stone-300" />
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-2.5">
+                <MessageSquare
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <h2 className="text-[13px] font-semibold">Comments</h2>
+                <span className="text-xs text-muted-foreground">
+                  {openCount} open
+                </span>
+                <ToggleGroup
+                  type="single"
+                  aria-label="Filter comments"
+                  value={filter}
+                  onValueChange={(v) => v && setFilter(v as typeof filter)}
+                  className="ml-auto"
+                >
+                  <ToggleGroupItem value="open">Open</ToggleGroupItem>
+                  <ToggleGroupItem value="resolved">Resolved</ToggleGroupItem>
+                  <ToggleGroupItem value="all">All</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              {error && (
+                <p
+                  role="alert"
+                  className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800"
+                >
+                  {error}
+                </p>
+              )}
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
+                {visible.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 p-6 text-center text-[13px] text-muted-foreground">
+                    <MessageSquare
+                      className="size-5 text-stone-400"
+                      aria-hidden="true"
+                    />
+                    {commenter
+                      ? "No comments here yet. Click “Add comment”, then click anywhere on the prototype."
+                      : "No comments yet."}
+                  </div>
+                )}
+                <AnimatePresence initial={false}>
+                  {visible.map((t) => (
+                    <motion.article
+                      key={t.id}
+                      {...listItem}
+                      onClick={() => setSelected(t.id)}
+                      className={cn(
+                        "cursor-default space-y-2 rounded-2xl p-3 transition-colors",
+                        t.id === selected
+                          ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
+                          : "hover:bg-foreground/[.03]",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span
+                          className={cn(
+                            "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                            t.status === "open" ? "btn-glow" : "bg-stone-400",
+                          )}
+                        >
+                          {t.n}
                         </span>
-                      )}
-                      {t.addressed_version_id && (
-                        <Badge className="bg-raspberry-50 text-raspberry-800">
-                          Addressed in v
-                          {versionNumbers[t.addressed_version_id] ?? "?"}
-                        </Badge>
-                      )}
-                      {commenter && !isGuest && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto h-7"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleResolved(t);
-                          }}
-                        >
-                          {t.status === "open" ? <CircleCheck /> : <Undo2 />}
-                          {t.status === "open" ? "Resolve" : "Reopen"}
-                        </Button>
-                      )}
-                    </div>
-                    {t.comments
-                      .slice()
-                      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-                      .map((c) => (
-                        <div key={c.id} className="text-[13px] leading-relaxed">
-                          <span className="font-semibold">
-                            {authorLabel(c)}
-                          </span>{" "}
-                          <span
-                            suppressHydrationWarning
-                            className="text-[11px] text-muted-foreground"
-                          >
-                            {new Date(c.created_at).toLocaleString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
+                        <Badge>v{versionNumbers[t.version_id] ?? "?"}</Badge>
+                        {t.version_id !== version.id && (
+                          <span className="text-muted-foreground">
+                            earlier version
                           </span>
-                          <p className="whitespace-pre-wrap">{c.body}</p>
-                        </div>
-                      ))}
-                    {commenter && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          reply(t.id);
-                        }}
-                        className="flex gap-1.5"
-                      >
-                        <label htmlFor={`r-${t.id}`} className="sr-only">
-                          Reply
-                        </label>
-                        <Input
-                          id={`r-${t.id}`}
-                          value={replies[t.id] ?? ""}
-                          onChange={(e) =>
-                            setReplies((r) => ({
-                              ...r,
-                              [t.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Reply…"
-                          className="h-8 text-xs"
-                        />
-                        <Button
-                          type="submit"
-                          variant="secondary"
-                          size="icon-sm"
-                          aria-label="Send reply"
-                          title="Send reply"
-                          disabled={busy || !(replies[t.id] ?? "").trim()}
+                        )}
+                        {t.addressed_version_id && (
+                          <Badge className="bg-raspberry-50 text-raspberry-800">
+                            Addressed in v
+                            {versionNumbers[t.addressed_version_id] ?? "?"}
+                          </Badge>
+                        )}
+                        {commenter && !isGuest && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto h-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleResolved(t);
+                            }}
+                          >
+                            {t.status === "open" ? <CircleCheck /> : <Undo2 />}
+                            {t.status === "open" ? "Resolve" : "Reopen"}
+                          </Button>
+                        )}
+                      </div>
+                      {t.comments
+                        .slice()
+                        .sort((a, b) =>
+                          a.created_at.localeCompare(b.created_at),
+                        )
+                        .map((c) => (
+                          <div
+                            key={c.id}
+                            className="text-[13px] leading-relaxed"
+                          >
+                            <span className="font-semibold">
+                              {authorLabel(c)}
+                            </span>{" "}
+                            <span
+                              suppressHydrationWarning
+                              className="text-[11px] text-muted-foreground"
+                            >
+                              {new Date(c.created_at).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                            <p className="whitespace-pre-wrap">{c.body}</p>
+                          </div>
+                        ))}
+                      {commenter && (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            reply(t.id);
+                          }}
+                          className="flex gap-1.5"
                         >
-                          <Send />
-                        </Button>
-                      </form>
-                    )}
-                  </motion.article>
-                ))}
-              </AnimatePresence>
-            </div>
-            {!commenter && (
-              <p className="border-t border-stone-100 p-3 text-xs text-muted-foreground">
-                You have view access. Ask the owner for comment access.
-              </p>
-            )}
-          </aside>
+                          <label htmlFor={`r-${t.id}`} className="sr-only">
+                            Reply
+                          </label>
+                          <Input
+                            id={`r-${t.id}`}
+                            value={replies[t.id] ?? ""}
+                            onChange={(e) =>
+                              setReplies((r) => ({
+                                ...r,
+                                [t.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Reply…"
+                            className="h-8 text-xs"
+                          />
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            size="icon-sm"
+                            aria-label="Send reply"
+                            title="Send reply"
+                            disabled={busy || !(replies[t.id] ?? "").trim()}
+                          >
+                            <Send />
+                          </Button>
+                        </form>
+                      )}
+                    </motion.article>
+                  ))}
+                </AnimatePresence>
+              </div>
+              {!commenter && (
+                <p className="border-t border-stone-100 p-3 text-xs text-muted-foreground">
+                  You have view access. Ask the owner for comment access.
+                </p>
+              )}
+            </aside>
+          </>
         )}
       </div>
+
+      {/* Phones: comment actions live in a bottom bar. */}
+      {role !== "public" && !presenting && (
+        <div className="glass mx-2 mb-2 flex shrink-0 items-center gap-2 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden">
+          {commenter && (
+            <Button
+              size="lg"
+              variant={commentMode ? "default" : "outline"}
+              aria-pressed={commentMode}
+              className="flex-1"
+              onClick={() => {
+                setCommentMode((m) => !m);
+                setDraft(null);
+              }}
+            >
+              {commentMode ? <X /> : <MessageSquarePlus />}
+              {commentMode ? "Tap the spot · Cancel" : "Add comment"}
+            </Button>
+          )}
+          <Button
+            size="lg"
+            variant="ghost"
+            className={commenter ? "" : "flex-1"}
+            onClick={() => setPanelOpen(true)}
+          >
+            <MessageSquare />
+            Comments
+            {openCount > 0 && (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-raspberry-600 px-1 text-[11px] font-semibold text-white">
+                {openCount}
+              </span>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
