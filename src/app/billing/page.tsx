@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
-import { Logo } from "@/components/Logo";
+import { Check, CreditCard, PartyPopper, Sparkles, TriangleAlert } from "lucide-react";
+import { AppHeader } from "@/components/AppHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/Eyebrow";
 import { createClient } from "@/lib/supabase/server";
 import { formatUsd, type Quota } from "@/lib/billing";
 
@@ -18,7 +23,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const [{ data: profile }, { data: quotaRows }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("plan, subscription_status, cancel_at_period_end, current_period_end, stripe_customer_id")
+      .select("plan, subscription_status, cancel_at_period_end, current_period_end, stripe_customer_id, display_name")
       .eq("id", user.id)
       .single(),
     supabase.rpc("generation_quota"),
@@ -30,52 +35,61 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const buildPct = q ? Math.min(100, (q.used / Math.max(q.build_limit, 1)) * 100) : 0;
 
   return (
-    <div className="min-h-screen px-4">
-      <header className="glass mx-auto mt-4 flex max-w-5xl items-center gap-4 rounded-full px-5 py-2.5">
-        <Logo href="/projects" />
-        <div className="flex-1" />
-        <a href="/projects" className="text-sm font-medium text-stone-700">
-          Prototypes
-        </a>
-      </header>
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-10">
-        <h1 className="font-display text-3xl font-bold">Plan &amp; billing</h1>
+    <div className="min-h-screen px-4 pb-16">
+      <AppHeader plan={profile?.plan} name={profile?.display_name} email={user.email} />
+      <main className="mx-auto max-w-3xl space-y-5 px-2 pt-10">
+        <h1 className="font-display text-2xl font-bold tracking-tight">Plan &amp; billing</h1>
 
         {upgraded && (
-          <p role="status" className="rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
+            <PartyPopper className="size-4 shrink-0" aria-hidden="true" />
             {isPro
               ? "You're on Pro. Thanks for upgrading!"
-              : "Payment received. Your plan will switch to Pro in a few seconds. Refresh if it hasn't yet."}
+              : "Payment received. Your plan switches to Pro in a few seconds. Refresh if it hasn't yet."}
           </p>
         )}
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-6">
+        <Card>
           <div className="flex flex-wrap items-start gap-4">
             <div className="flex-1">
-              <p className="text-sm font-semibold uppercase tracking-wide text-stone-500">Current plan</p>
-              <p className="mt-1 font-display text-2xl font-bold">{isPro ? "Pro" : "Free"}</p>
-              <p className="mt-1 text-sm text-stone-600">
+              <Eyebrow>Current plan</Eyebrow>
+              <p className="mt-1 flex items-center gap-2 font-display text-xl font-bold">
+                {isPro ? "Pro" : "Free"}
+                {isPro && (
+                  <Badge variant="default">
+                    <Sparkles />
+                    $20/month
+                  </Badge>
+                )}
+              </p>
+              <p className="mt-1 text-[13px] text-stone-600">
                 {isPro
                   ? profile?.cancel_at_period_end && profile.current_period_end
                     ? `Cancels on ${fmtDate(profile.current_period_end)}. You keep Pro until then.`
                     : profile?.current_period_end
-                      ? `$20/month · renews ${fmtDate(profile.current_period_end)}`
-                      : "$20/month"
+                      ? `Renews ${fmtDate(profile.current_period_end)}`
+                      : "Active"
                   : "30 builds a month, free."}
-                {isPro && profile?.subscription_status === "past_due" && " Your last payment failed. Update your card to keep Pro."}
               </p>
+              {isPro && profile?.subscription_status === "past_due" && (
+                <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-amber-800">
+                  <TriangleAlert className="size-4" aria-hidden="true" />
+                  Your last payment failed. Update your card to keep Pro.
+                </p>
+              )}
             </div>
             {isPro || profile?.stripe_customer_id ? (
               <form action="/api/billing/portal" method="post">
-                <button className="min-h-11 rounded-full border border-stone-200 px-4 text-sm font-semibold hover:bg-stone-50">
+                <Button type="submit">
+                  <CreditCard />
                   Manage billing
-                </button>
+                </Button>
               </form>
             ) : null}
           </div>
 
           {q && (
-            <div className="mt-6 space-y-5 border-t border-stone-100 pt-6">
+            <div className="mt-5 space-y-3 border-t border-stone-100 pt-5">
               {isPro ? (
                 <>
                   <Meter
@@ -83,38 +97,53 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                     value={`${formatUsd(Number(q.usage_micros))} of ${formatUsd(Number(q.included_micros), 0)} included`}
                     pct={includedPct}
                   />
-                  <p className="text-sm text-stone-600">
+                  <p className="text-xs text-stone-500">
                     {overage > 0
-                      ? `${formatUsd(overage)} beyond your included usage so far. It's added to your next invoice.`
+                      ? `${formatUsd(overage)} beyond your included usage so far, added to your next invoice.`
                       : "Usage beyond what's included is billed at cost plus 50% on your next invoice."}{" "}
-                    Period: {fmtDate(q.period_start)} – {fmtDate(q.period_end)}.
+                    Period {fmtDate(q.period_start)} – {fmtDate(q.period_end)}.
                   </p>
                 </>
               ) : (
                 <>
                   <Meter label="Builds this month" value={`${q.used} of ${q.build_limit}`} pct={buildPct} />
-                  <p className="text-sm text-stone-600">Your free builds reset on {fmtDate(q.period_end)}.</p>
+                  <p className="text-xs text-stone-500">Free builds reset on {fmtDate(q.period_end)}.</p>
                 </>
               )}
             </div>
           )}
-        </section>
+        </Card>
 
         {!isPro && (
-          <section className="rounded-[2rem] border-2 border-ember-700 bg-white p-6">
-            <div className="flex flex-wrap items-center gap-4">
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-ember-700 via-raspberry-700 to-violet-700 p-6 text-white shadow-[0_24px_48px_-24px_rgba(190,24,93,.6)]">
+            <svg aria-hidden="true" viewBox="0 0 200 200" className="absolute -right-10 -top-12 size-56 opacity-30">
+              <circle cx="100" cy="100" r="80" fill="none" stroke="#fff" strokeDasharray="3 8" />
+              <circle cx="100" cy="100" r="50" fill="#fff" fillOpacity=".15" />
+            </svg>
+            <div className="relative flex flex-wrap items-end gap-5">
               <div className="flex-1">
-                <p className="font-display text-xl font-bold">Realframe Pro · $20/month</p>
-                <ul className="mt-2 space-y-1 text-sm text-stone-700">
-                  <li>· Build as much as you need, with no monthly build cap</li>
-                  <li>· $10 of AI usage included every month</li>
-                  <li>· Beyond that, pay as you go at cost plus 50%, billed monthly</li>
+                <p className="flex items-center gap-2 font-display text-lg font-bold">
+                  <Sparkles className="size-4" aria-hidden="true" />
+                  Realframe Pro · $20/month
+                </p>
+                <ul className="mt-3 space-y-1.5 text-[13px] text-white/90">
+                  {[
+                    "No monthly build cap",
+                    "Canvas: every screen and device side by side",
+                    "$10 of AI usage included every month",
+                    "Pay as you go beyond that, at cost plus 50%",
+                  ].map((t) => (
+                    <li key={t} className="flex items-center gap-2">
+                      <Check className="size-3.5 shrink-0" aria-hidden="true" />
+                      {t}
+                    </li>
+                  ))}
                 </ul>
               </div>
               <form action="/api/billing/checkout" method="post">
-                <button className="min-h-12 rounded-full btn-glow px-6 font-semibold">
+                <Button size="lg" type="submit" className="border-0 bg-white text-raspberry-800 hover:bg-white/90">
                   Upgrade to Pro
-                </button>
+                </Button>
               </form>
             </div>
           </section>
@@ -127,8 +156,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
     <div>
-      <div className="mb-1.5 flex justify-between text-sm">
-        <span className="font-semibold">{label}</span>
+      <div className="mb-1.5 flex justify-between text-[13px]">
+        <span className="font-medium">{label}</span>
         <span className="text-stone-600">{value}</span>
       </div>
       <div

@@ -1,6 +1,14 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FrameHandle, SelectedElement } from "@/components/PrototypeFrame";
+import { AlignCenter, AlignLeft, AlignRight, Eye, EyeOff, MousePointerClick, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Eyebrow } from "@/components/Eyebrow";
 import { applyEdits, describeEdits, ensureIds, px, toHex, type ElementEdit } from "@/lib/editing";
 
 /** State for one visual-editing session over a prototype document. */
@@ -44,6 +52,11 @@ export function useVisualEditor(sourceHtml: string | null | undefined) {
 }
 
 const WEIGHTS = ["300", "400", "500", "600", "700", "800"];
+const ALIGNS = [
+  { value: "left", icon: AlignLeft },
+  { value: "center", icon: AlignCenter },
+  { value: "right", icon: AlignRight },
+] as const;
 
 export function Inspector({
   selected,
@@ -64,26 +77,30 @@ export function Inspector({
 }) {
   const s = selected?.styles ?? {};
   const hidden = s.display === "none";
+  const align = s.textAlign === "start" ? "left" : s.textAlign === "end" ? "right" : s.textAlign;
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-5 overflow-y-auto p-4">
         {!selected ? (
-          <div className="rounded-3xl bg-stone-50 p-4 text-sm text-stone-600">
-            <p className="font-semibold text-stone-900">Click anything in the preview</p>
-            <p className="mt-1">
-              Change its text, colors, type, spacing and corners. Edits show instantly and are saved into the prototype&apos;s code as
-              a new version.
+          <div className="flex flex-col items-center gap-2 rounded-3xl bg-glow-soft p-5 text-center">
+            <span aria-hidden="true" className="grid size-10 place-items-center rounded-2xl bg-card text-raspberry-700 shadow-xs">
+              <MousePointerClick className="size-5" />
+            </span>
+            <p className="text-[13px] font-semibold">Click anything in the preview</p>
+            <p className="text-xs text-stone-600">
+              Change its text, colors, type, spacing and corners. Edits show instantly and save into the prototype&apos;s code as a new
+              version.
             </p>
           </div>
         ) : (
           <>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Selected</p>
-              <p className="mt-0.5 truncate text-sm">
-                <code className="rounded-lg bg-stone-100 px-1 text-xs">{selected.tag}</code>{" "}
+              <Eyebrow>Selected</Eyebrow>
+              <p className="mt-1 truncate text-[13px]">
+                <code className="rounded-md bg-secondary px-1 text-[11px]">{selected.tag}</code>{" "}
                 <span className="text-stone-600">{selected.label}</span>
               </p>
-              <p className="text-xs text-stone-500">
+              <p className="text-[11px] text-muted-foreground">
                 {selected.rect.w} × {selected.rect.h}
                 {!selected.rf && " · drawn by the prototype's script, so text edits aren't available"}
               </p>
@@ -91,13 +108,13 @@ export function Inspector({
 
             {selected.text !== null && selected.rf && (
               <Field label="Text" htmlFor="insp-text">
-                <textarea
+                <Textarea
                   id="insp-text"
                   key={`${selected.selector}-text`}
                   defaultValue={selected.text}
                   rows={3}
                   onChange={(e) => onChange({ text: e.target.value })}
-                  className="w-full resize-y rounded-2xl border border-stone-300 p-2 text-sm"
+                  className="field-sizing-fixed resize-y"
                 />
               </Field>
             )}
@@ -113,38 +130,48 @@ export function Inspector({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <NumberField selKey={selected.selector} id="insp-fs" label="Font size" value={px(s.fontSize)} onChange={(n) => onChange({ styles: { fontSize: `${n}px` } })} />
+              <NumberField
+                selKey={selected.selector}
+                id="insp-fs"
+                label="Font size"
+                value={px(s.fontSize)}
+                onChange={(n) => onChange({ styles: { fontSize: `${n}px` } })}
+              />
               <Field label="Weight" htmlFor="insp-fw">
-                <select
-                  id="insp-fw"
+                <Select
                   value={WEIGHTS.includes(s.fontWeight) ? s.fontWeight : "400"}
-                  onChange={(e) => onChange({ styles: { fontWeight: e.target.value } })}
-                  className="min-h-9 w-full rounded-full border border-stone-300 bg-white px-2 text-sm"
+                  onValueChange={(v) => onChange({ styles: { fontWeight: v } })}
                 >
-                  {WEIGHTS.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="insp-fw" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WEIGHTS.map((w) => (
+                      <SelectItem key={w} value={w}>
+                        {w}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
 
-            <Field label="Align" htmlFor="insp-align">
-              <div id="insp-align" role="group" aria-label="Text align" className="flex gap-1">
-                {["left", "center", "right"].map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    aria-pressed={s.textAlign === a || (a === "left" && s.textAlign === "start")}
-                    onClick={() => onChange({ styles: { textAlign: a } })}
-                    className="min-h-8 flex-1 rounded-full border border-stone-200 text-xs capitalize aria-pressed:bg-stone-900 aria-pressed:text-white"
-                  >
-                    {a}
-                  </button>
+            <div>
+              <Label className="mb-1.5">Align</Label>
+              <ToggleGroup
+                type="single"
+                aria-label="Text align"
+                value={align ?? ""}
+                onValueChange={(v) => v && onChange({ styles: { textAlign: v } })}
+                className="w-full"
+              >
+                {ALIGNS.map(({ value, icon: Icon }) => (
+                  <ToggleGroupItem key={value} value={value} aria-label={`Align ${value}`} title={`Align ${value}`} className="flex-1">
+                    <Icon />
+                  </ToggleGroupItem>
                 ))}
-              </div>
-            </Field>
+              </ToggleGroup>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <NumberField
@@ -191,33 +218,21 @@ export function Inspector({
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => onChange({ styles: { display: hidden ? "" : "none" } })}
-              className="min-h-9 w-full rounded-full border border-stone-200 text-sm font-medium hover:bg-stone-50"
-            >
+            <Button className="w-full" aria-pressed={hidden} onClick={() => onChange({ styles: { display: hidden ? "" : "none" } })}>
+              {hidden ? <Eye /> : <EyeOff />}
               {hidden ? "Show element" : "Hide element"}
-            </button>
+            </Button>
           </>
         )}
       </div>
-      <div className="space-y-2 border-t border-stone-100 p-3">
-        <button
-          type="button"
-          disabled={!editCount || saving}
-          onClick={onSave}
-          className="min-h-10 w-full rounded-full btn-glow text-sm font-semibold disabled:opacity-50"
-        >
-          {saving ? "Saving…" : editCount ? `${saveLabel} (${editCount} change${editCount === 1 ? "" : "s"})` : "No changes yet"}
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={onDiscard}
-          className="min-h-9 w-full rounded-full text-sm text-stone-600 hover:bg-stone-50"
-        >
+      <div className="space-y-1.5 border-t border-stone-100 p-3">
+        <Button variant="default" className="w-full" disabled={!editCount} loading={saving} onClick={onSave}>
+          <Save />
+          {editCount ? `${saveLabel} (${editCount} change${editCount === 1 ? "" : "s"})` : "No changes yet"}
+        </Button>
+        <Button variant="ghost" className="w-full" disabled={saving} onClick={onDiscard}>
           {editCount ? "Discard changes" : "Done"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -226,9 +241,9 @@ export function Inspector({
 function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="mb-1 block text-xs font-semibold text-stone-600">
+      <Label htmlFor={htmlFor} className="mb-1.5">
         {label}
-      </label>
+      </Label>
       {children}
     </div>
   );
@@ -249,8 +264,8 @@ function NumberField({
 }) {
   return (
     <Field label={label} htmlFor={id}>
-      <div className="flex items-center rounded-2xl border border-stone-300 pr-2">
-        <input
+      <div className="relative">
+        <Input
           id={id}
           key={`${id}-${selKey}`}
           type="number"
@@ -261,9 +276,9 @@ function NumberField({
             const n = Number(e.target.value);
             if (Number.isFinite(n) && n >= 0) onChange(n);
           }}
-          className="min-h-9 w-full min-w-0 rounded-full px-2 text-sm outline-none"
+          className="pr-8 tabular-nums"
         />
-        <span className="text-xs text-stone-500">px</span>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">px</span>
       </div>
     </Field>
   );
@@ -273,15 +288,15 @@ function ColorField({ id, label, value, onChange }: { id: string; label: string;
   const hex = toHex(value);
   return (
     <Field label={label} htmlFor={id}>
-      <div className="flex items-center gap-2 rounded-2xl border border-stone-300 p-1">
+      <div className="flex h-9 items-center gap-2 rounded-full border border-input bg-card pl-1 pr-3 shadow-xs focus-within:border-ring focus-within:ring-4 focus-within:ring-raspberry-100">
         <input
           id={id}
           type="color"
           value={hex ?? "#ffffff"}
           onChange={(e) => onChange(e.target.value)}
-          className="h-7 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0"
+          className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-stone-200 [&::-webkit-color-swatch-wrapper]:p-0.5"
         />
-        <span className="truncate text-xs text-stone-600">{hex ?? "none"}</span>
+        <span className="truncate font-mono text-[11px] text-stone-600">{hex ?? "none"}</span>
       </div>
     </Field>
   );

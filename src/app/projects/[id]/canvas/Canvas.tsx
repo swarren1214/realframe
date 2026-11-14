@@ -1,7 +1,12 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo } from "@/components/Logo";
+import Link from "next/link";
+import { ArrowLeft, LayoutTemplate, Maximize, Monitor, Plus, PencilRuler, Smartphone, Tablet, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Mark } from "@/components/Logo";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
@@ -20,9 +25,9 @@ export type Frame = {
 };
 
 const DEVICES = [
-  { label: "Desktop", width: 1280, height: 800 },
-  { label: "Tablet", width: 820, height: 1180 },
-  { label: "Phone", width: 390, height: 844 },
+  { label: "Desktop", width: 1280, height: 800, icon: Monitor },
+  { label: "Tablet", width: 820, height: 1180, icon: Tablet },
+  { label: "Phone", width: 390, height: 844, icon: Smartphone },
 ] as const;
 
 const GAP = 120;
@@ -212,74 +217,100 @@ export function Canvas({
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-3 rounded-[2rem] px-4 py-2">
-        <Logo href="/projects" />
-        <span className="text-stone-300" aria-hidden="true">
-          /
-        </span>
-        <a href={`/projects/${project.id}`} className="font-semibold text-stone-900 no-underline hover:underline">
-          {project.name}
-        </a>
-        <span className="rounded-full bg-glow-soft px-2.5 py-1 text-xs font-semibold text-raspberry-800">
-          Canvas{latest ? ` · v${latest.number}` : ""}
-        </span>
+      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
+        <Link href="/projects" aria-label="All prototypes" className="rounded-full p-1 hover:bg-foreground/5">
+          <Mark size={26} />
+        </Link>
+        <Button asChild variant="ghost" size="sm" className="text-sm font-semibold text-foreground">
+          <Link href={`/projects/${project.id}`}>
+            <ArrowLeft />
+            {project.name}
+          </Link>
+        </Button>
+        <Badge variant="default">Canvas{latest ? ` · v${latest.number}` : ""}</Badge>
         <div className="flex-1" />
-        <div role="group" aria-label="Add frame" className="flex gap-1">
-          {DEVICES.map((d) => (
-            <button
+        <div role="group" aria-label="Add frame" className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5">
+          {DEVICES.map(({ icon: Icon, ...d }) => (
+            <Button
               key={d.label}
-              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 hover:bg-card"
               disabled={!latest}
+              title={`Add a ${d.label.toLowerCase()} frame`}
               onClick={() => addFrames([d], activeFrame?.route ?? "")}
-              className="min-h-9 rounded-full border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50 disabled:opacity-50"
             >
-              + {d.label}
-            </button>
+              <Plus className="size-3" />
+              <Icon />
+              <span className="hidden xl:inline">{d.label}</span>
+            </Button>
           ))}
         </div>
-        <div role="group" aria-label="Zoom" className="flex items-center gap-1 rounded-2xl bg-stone-100 p-0.5">
-          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.25)} className="h-8 w-8 rounded-full text-lg hover:bg-white">
-            −
-          </button>
-          <span className="w-12 text-center text-xs tabular-nums text-stone-700">{Math.round(view.z * 100)}%</span>
-          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(1.25)} className="h-8 w-8 rounded-full text-lg hover:bg-white">
-            +
-          </button>
-          <button type="button" onClick={() => fit()} className="h-8 rounded-xl px-2 text-xs font-medium hover:bg-white">
-            Fit
-          </button>
+        <div role="group" aria-label="Zoom" className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 hover:bg-card"
+            aria-label="Zoom out"
+            title="Zoom out"
+            onClick={() => zoomAt(1 / 1.25)}
+          >
+            <ZoomOut />
+          </Button>
+          <span className="w-10 text-center text-xs tabular-nums text-stone-700">{Math.round(view.z * 100)}%</span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 hover:bg-card"
+            aria-label="Zoom in"
+            title="Zoom in"
+            onClick={() => zoomAt(1.25)}
+          >
+            <ZoomIn />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 hover:bg-card"
+            aria-label="Fit to screen"
+            title="Fit to screen"
+            onClick={() => fit()}
+          >
+            <Maximize />
+          </Button>
         </div>
-        <button
-          type="button"
+        <Button
+          variant={editing ? "secondary" : "default"}
           disabled={!activeFrame || !latest}
           aria-pressed={editing}
+          title={activeFrame ? undefined : "Select a frame first"}
           onClick={() => {
             if (editing) {
               editor.reset();
               setEditing(false);
             } else setEditing(true);
           }}
-          title={activeFrame ? undefined : "Select a frame first"}
-          className={`min-h-9 rounded-full px-3 text-sm font-semibold disabled:opacity-50 ${
-            editing ? "bg-stone-900 text-white" : "btn-glow"
-          }`}
         >
+          {editing ? <X /> : <PencilRuler />}
           {editing ? "Exit editing" : "Edit visually"}
-        </button>
+        </Button>
       </header>
       {error && (
-        <p role="alert" className="border-b border-red-100 bg-red-50 px-5 py-2 text-sm text-red-800">
-          {error}{" "}
-          <button type="button" onClick={() => setError("")} className="underline">
-            Dismiss
-          </button>
+        <p
+          role="alert"
+          className="mx-3 mt-2 flex items-center gap-2 rounded-full border border-red-100 bg-red-50 py-1 pl-4 pr-1 text-xs text-red-800"
+        >
+          <span className="flex-1">{error}</span>
+          <Button variant="destructive" size="icon-sm" aria-label="Dismiss" title="Dismiss" onClick={() => setError("")}>
+            <X />
+          </Button>
         </p>
       )}
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div
           ref={board}
-          className={`relative min-w-0 flex-1 overflow-hidden rounded-[2rem] border border-white/80 bg-white/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
           style={{
             backgroundImage: "radial-gradient(circle, rgba(190,24,93,.22) 1.2px, transparent 1.2px)",
             backgroundSize: `${24 * view.z}px ${24 * view.z}px`,
@@ -299,16 +330,18 @@ export function Canvas({
             <EmptyState text="Build v1 in the studio first, then lay its screens out here." href={`/projects/${project.id}`} />
           ) : frames.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
-                <p className="font-semibold">Start your canvas</p>
-                <p className="mt-1 text-sm text-stone-600">Add v{latest.number} at desktop, tablet and phone sizes to compare them side by side.</p>
-                <button
-                  type="button"
-                  onClick={() => addFrames(DEVICES)}
-                  className="mt-4 min-h-10 rounded-full btn-glow px-4 text-sm font-semibold"
-                >
+              <div className="flex max-w-xs flex-col items-center gap-2 rounded-3xl bg-card p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+                <span aria-hidden="true" className="grid size-11 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                  <LayoutTemplate className="size-5" />
+                </span>
+                <p className="text-sm font-semibold">Start your canvas</p>
+                <p className="text-[13px] text-stone-600">
+                  Add v{latest.number} at desktop, tablet and phone sizes to compare them side by side.
+                </p>
+                <Button variant="default" className="mt-2" onClick={() => addFrames(DEVICES)}>
+                  <Plus />
                   Add desktop, tablet and phone
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}
@@ -322,12 +355,7 @@ export function Canvas({
                 const isActive = f.id === active;
                 const isEditing = isActive && editing && editor.editableHtml;
                 return (
-                  <section
-                    key={f.id}
-                    aria-label={f.label}
-                    className="absolute"
-                    style={{ left: f.x, top: f.y, width: f.width }}
-                  >
+                  <section key={f.id} aria-label={f.label} className="absolute" style={{ left: f.x, top: f.y, width: f.width }}>
                     <div
                       className="flex cursor-move select-none items-center gap-2 px-1"
                       style={{ height: HEADER, fontSize: Math.max(13, 13 / view.z) }}
@@ -361,7 +389,7 @@ export function Canvas({
                           onDoubleClick={() => setRenaming(f.id)}
                           onClick={() => setActive(f.id)}
                           title="Double-click to rename"
-                          className={`truncate font-medium ${isActive ? "text-ember-800" : "text-stone-700"}`}
+                          className={cn("truncate font-medium", isActive ? "text-raspberry-800" : "text-stone-700")}
                         >
                           {f.label}
                         </button>
@@ -375,9 +403,9 @@ export function Canvas({
                         type="button"
                         onClick={() => removeFrame(f.id)}
                         aria-label={`Remove ${f.label}`}
-                        className="shrink-0 rounded-lg px-1 text-stone-500 hover:bg-white hover:text-red-700"
+                        className="grid shrink-0 place-items-center rounded-full p-1 text-stone-500 transition-colors hover:bg-white hover:text-red-700"
                       >
-                        ✕
+                        <X style={{ width: "1em", height: "1em" }} aria-hidden="true" />
                       </button>
                     </div>
                     <div
@@ -437,14 +465,14 @@ export function Canvas({
           </div>
 
           {latest && frames.length > 0 && (
-            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/90 px-2 py-1 text-xs text-stone-600 shadow-sm">
+            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm">
               Drag the background to pan · ⌘/Ctrl + scroll to zoom · click a frame to use it · navigate inside a frame to set its screen
             </p>
           )}
         </div>
 
         {editing && (
-          <aside aria-label="Visual editor" className="glass rounded-[2rem] flex w-[320px] shrink-0 flex-col overflow-hidden">
+          <aside aria-label="Visual editor" className="glass flex w-[320px] rounded-[1.75rem] shrink-0 flex-col overflow-hidden">
             <Inspector
               selected={editor.selected}
               editCount={editor.edits.length}
@@ -467,11 +495,14 @@ export function Canvas({
 function EmptyState({ text, href }: { text: string; href: string }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center">
-      <div className="max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
-        <p className="text-sm text-stone-600">{text}</p>
-        <a href={href} className="mt-3 inline-block text-sm font-semibold">
-          Open the studio
-        </a>
+      <div className="flex max-w-xs flex-col items-center gap-3 rounded-3xl bg-card p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+        <p className="text-[13px] text-stone-600">{text}</p>
+        <Button asChild>
+          <Link href={href}>
+            <ArrowLeft />
+            Open the studio
+          </Link>
+        </Button>
       </div>
     </div>
   );

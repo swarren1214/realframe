@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +20,9 @@ async function saveProfile(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  const name = String(formData.get("display_name") ?? "").trim().slice(0, 60);
+  const name = String(formData.get("display_name") ?? "")
+    .trim()
+    .slice(0, 60);
   const next = safeNext(String(formData.get("next") ?? ""));
   if (!name) redirect(`/welcome?next=${encodeURIComponent(next)}&error=name`);
   const { error } = await supabase
@@ -26,11 +33,7 @@ async function saveProfile(formData: FormData) {
   redirect(next);
 }
 
-export default async function WelcomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ next?: string; edit?: string; error?: string }>;
-}) {
+export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ next?: string; edit?: string; error?: string }> }) {
   const { next, edit, error } = await searchParams;
   const supabase = await createClient();
   const {
@@ -45,21 +48,22 @@ export default async function WelcomePage({
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
       <Logo />
-      <form action={saveProfile} className="w-full max-w-md space-y-4 rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+      <form
+        action={saveProfile}
+        className="w-full max-w-sm space-y-4 rounded-[1.75rem] border border-stone-200/80 bg-white p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
+      >
         <div>
-          <h1 className="font-display text-2xl font-bold">{editing ? "Your account" : "Welcome to Realframe"}</h1>
-          <p className="mt-1 text-sm text-stone-600">
-            {editing
-              ? `Signed in as ${user.email}.`
-              : "One quick thing: what should reviewers see next to your comments?"}
+          <h1 className="font-display text-xl font-bold tracking-tight">{editing ? "Your account" : "Welcome to Realframe"}</h1>
+          <p className="mt-1 text-[13px] text-stone-600">
+            {editing ? `Signed in as ${user.email}.` : "What should reviewers see next to your comments?"}
           </p>
         </div>
         <input type="hidden" name="next" value={safeNext(next)} />
         <div>
-          <label htmlFor="display_name" className="mb-1.5 block text-sm font-semibold">
+          <Label htmlFor="display_name" className="mb-1.5">
             Your name
-          </label>
-          <input
+          </Label>
+          <Input
             id="display_name"
             name="display_name"
             required
@@ -68,31 +72,35 @@ export default async function WelcomePage({
             autoFocus
             defaultValue={profile?.display_name ?? ""}
             placeholder="Alex Rivera"
-            className="min-h-12 w-full rounded-full border border-stone-300 px-3.5 text-[15px] outline-none focus:border-raspberry-600"
+            className="h-10"
           />
           {error && (
-            <p role="alert" className="mt-2 text-sm text-red-700">
+            <p role="alert" className="mt-2 text-xs text-red-700">
               {error === "name" ? "Enter a name to continue." : "Couldn't save that. Try again."}
             </p>
           )}
         </div>
         {q && (
-          <p className="rounded-2xl bg-stone-50 p-3 text-xs text-stone-600">
+          <p className="rounded-2xl bg-stone-50 px-3.5 py-3 text-xs text-stone-600">
             {q.plan === "pro"
-              ? "You're on Pro: build as much as you need, with $10 of AI usage included each month."
+              ? "You're on Pro: no monthly build cap, with $10 of AI usage included each month."
               : `The free plan includes ${q.build_limit} builds a month. You have ${q.remaining} left.`}{" "}
             <a href="/billing" className="font-semibold">
               Plan &amp; billing
             </a>
           </p>
         )}
-        <button className="min-h-12 w-full rounded-full btn-glow text-[15px] font-semibold">
+        <Button variant="default" size="lg" type="submit" className="w-full">
           {editing ? "Save" : "Continue"}
-        </button>
+          {editing ? <Check /> : <ArrowRight />}
+        </Button>
         {editing && (
-          <a href="/projects" className="block text-center text-sm text-stone-600">
-            Back to prototypes
-          </a>
+          <Button asChild variant="ghost" className="w-full">
+            <Link href="/projects">
+              <ArrowLeft />
+              Back to prototypes
+            </Link>
+          </Button>
         )}
       </form>
     </main>

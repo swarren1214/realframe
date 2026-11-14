@@ -1,6 +1,10 @@
 "use client";
 import { useState } from "react";
+import { ArrowRight, MailCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function LoginForm({ next = "/projects", heading = "Sign in or create an account" }: { next?: string; heading?: string }) {
   const [email, setEmail] = useState("");
@@ -26,19 +30,25 @@ export function LoginForm({ next = "/projects", heading = "Sign in or create an 
   }
 
   return (
-    <div className="w-full max-w-md rounded-[2rem] border border-stone-200 bg-white p-7 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
-      <h1 className="font-display text-2xl font-bold">{heading}</h1>
+    <div className="w-full max-w-sm rounded-[1.75rem] border border-stone-200/80 bg-white p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+      <h1 className="font-display text-xl font-bold tracking-tight">{heading}</h1>
       {state === "sent" ? (
-        <div role="status" className="mt-5 rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
-          <p className="font-semibold">Check your inbox</p>
-          <p className="mt-1">We sent a link to {email}. Open it on this device to finish signing in. It expires in an hour.</p>
+        <div role="status" className="mt-4 flex gap-3 rounded-2xl bg-emerald-50 p-4 text-[13px] text-emerald-900">
+          <MailCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-semibold">Check your inbox</p>
+            <p className="mt-0.5">We sent a link to {email}. It expires in an hour.</p>
+            <Button variant="link" size="sm" className="mt-2 text-emerald-900" onClick={() => setState("idle")}>
+              Use a different email
+            </Button>
+          </div>
         </div>
       ) : (
-        <form onSubmit={submit} className="mt-5 flex flex-col gap-3">
-          <label htmlFor="email" className="text-sm font-semibold">
+        <form onSubmit={submit} className="mt-4">
+          <Label htmlFor="email" className="mb-1.5">
             Email
-          </label>
-          <input
+          </Label>
+          <Input
             id="email"
             type="email"
             required
@@ -46,20 +56,15 @@ export function LoginForm({ next = "/projects", heading = "Sign in or create an 
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@company.com"
-            className="min-h-12 rounded-full border border-stone-300 bg-stone-50 px-5 text-[15px] outline-none focus:border-raspberry-600"
+            className="h-10"
           />
-          <button
-            type="submit"
-            disabled={state === "sending"}
-            className="min-h-12 rounded-full btn-glow text-[15px] font-semibold disabled:opacity-60"
-          >
-            {state === "sending" ? "Sending…" : "Continue with email"}
-          </button>
-          <p className="text-xs text-stone-500">
-            New to Realframe? We&apos;ll create your account and email you a link. No password needed.
-          </p>
+          <Button variant="default" size="lg" type="submit" loading={state === "sending"} className="mt-3 w-full">
+            {state === "sending" ? "Sending link" : "Continue with email"}
+            <ArrowRight />
+          </Button>
+          <p className="mt-3 text-xs text-stone-500">New here? We&apos;ll create your account. No password needed.</p>
           {state === "error" && (
-            <p role="alert" className="text-sm text-red-700">
+            <p role="alert" className="mt-2 text-xs text-red-700">
               {error}
             </p>
           )}
