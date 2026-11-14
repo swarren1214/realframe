@@ -174,6 +174,12 @@ const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
 
 type Tab = "chat" | "versions" | "share" | "comments";
+
+type PlanProgress = {
+  title: string;
+  status: "pending" | "running" | "done" | "failed";
+  summary?: string;
+};
 /** What a successful action says: a message, or a message with Undo or another action. */
 type Done =
   | string
@@ -291,6 +297,11 @@ export function Studio(props: {
   );
   const [savingEdit, setSavingEdit] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Planned builds: the steps of the build in progress, shown as a live checklist.
+  const [plan, setPlan] = useState<PlanProgress[] | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const stopRequested = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -432,40 +443,112 @@ export function Studio(props: {
     setBusy(true);
     setElapsed(0);
     setError("");
+    setPlan(null);
+    setStopping(false);
+    stopRequested.current = false;
     const startedAt = Date.now();
+    const many = variantCount > 1;
     try {
-      const many = variantCount > 1;
-      const res = await fetch(
-        `/api/projects/${project.id}/${many ? "variants" : "generate"}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            prompt: text,
-            baseVersionId: selected?.id ?? null,
-            count: variantCount,
-          }),
-        },
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.error || `Request failed (${res.status})`);
-      setPrompt("");
-      if (!many) setSelectedId(data.versionId);
-      router.refresh();
+      if (many) await runVariants(text);
+      else await runPlanned(text);
       // Only worth a toast if they looked away while it built.
       if (document.hidden || Date.now() - startedAt > 20_000)
         notify.success(
-          many
-            ? `${variantCount} variants ready to compare`
-            : "New version ready",
+          many ? `${variantCount} variants ready to compare` : "New version ready",
         );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       router.refresh();
     } finally {
       setBusy(false);
+      setPlanning(false);
+      setStopping(false);
+      setPlan(null);
     }
+  }
+
+  async function runVariants(text: string) {
+    const res = await fetch(`/api/projects/${project.id}/variants`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: text,
+        baseVersionId: selected?.id ?? null,
+        count: variantCount,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    setPrompt("");
+    router.refresh();
+  }
+
+  /**
+   * Plan, then build step by step: the server breaks the request into ordered steps and
+   * each one is built on top of the last, one request per step.
+   */
+  async function runPlanned(text: string) {
+    setPlanning(true);
+    const res = await fetch(`/api/projects/${project.id}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: text, baseVersionId: selected?.id ?? null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setPlanning(false);
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    setPrompt("");
+    router.refresh(); // shows the prompt in the chat
+    const runId = data.runId as string;
+    const steps: PlanProgress[] = (data.steps as { title: string }[]).map(
+      (s) => ({ title: s.title, status: "pending" }),
+    );
+    const mark = (i: number, patch: Partial<PlanProgress>) => {
+      steps[i] = { ...steps[i], ...patch };
+      setPlan([...steps]);
+    };
+    setPlan([...steps]);
+
+    for (let i = 0; i < steps.length; i++) {
+      if (stopRequested.current) {
+        const stop = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
+          method: "DELETE",
+        });
+        const out = await stop.json().catch(() => ({}));
+        if (out.versionId) setSelectedId(out.versionId);
+        router.refresh();
+        return;
+      }
+      mark(i, { status: "running" });
+      const step = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ index: i }),
+      });
+      const out = await step.json().catch(() => ({}));
+      if (!step.ok) {
+        mark(i, { status: "failed" });
+        // Earlier steps are saved as a version even when a later one fails.
+        if (out.versionId) setSelectedId(out.versionId);
+        router.refresh();
+        throw new Error(
+          out.partial
+            ? `Step ${i + 1} failed, so the first ${i} step${i === 1 ? " was" : "s were"} saved as v${out.number}. ${out.error ?? ""}`.trim()
+            : out.error || `Request failed (${step.status})`,
+        );
+      }
+      mark(i, { status: "done", summary: out.summary });
+      if (out.done) {
+        setSelectedId(out.versionId);
+        router.refresh();
+        return;
+      }
+    }
+  }
+
+  function requestStop() {
+    stopRequested.current = true;
+    setStopping(true);
   }
 
   // Fix from feedback: one build from the selected open comment threads.
@@ -987,7 +1070,7 @@ export function Studio(props: {
                       key={m.id}
                       className="space-y-2 text-[13px] leading-relaxed text-stone-800"
                     >
-                      <p>{m.content}</p>
+                      <p className="whitespace-pre-line">{m.content}</p>
                       {v && (
                         <Button size="sm" onClick={() => setSelectedId(v.id)}>
                           <History />v{v.number}
@@ -997,16 +1080,26 @@ export function Studio(props: {
                     </div>
                   );
                 })}
-                {busy && (
+                {busy && plan && plan.length > 1 && (
+                  <PlanChecklist
+                    steps={plan}
+                    elapsed={elapsed}
+                    stopping={stopping}
+                    onStop={requestStop}
+                  />
+                )}
+                {busy && !(plan && plan.length > 1) && (
                   <div
                     role="status"
                     className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
                   >
                     <Spinner className="mt-0.5 shrink-0" />
                     <span>
-                      {variantCount > 1
-                        ? `Building ${variantCount} variants`
-                        : `Building ${selected ? `on v${selected.number}` : "v1"}`}
+                      {planning
+                        ? "Planning the build"
+                        : variantCount > 1
+                          ? `Building ${variantCount} variants`
+                          : `Building ${selected ? `on v${selected.number}` : "v1"}`}
                       … {elapsed}s
                       <span className="block text-xs text-raspberry-800/70">
                         Larger prototypes can take a minute or two.
@@ -2099,5 +2192,68 @@ function VersionItem({
         </div>
       )}
     </motion.li>
+  );
+}
+
+/** Live checklist for a planned build: each step's state, with a way to stop between steps. */
+function PlanChecklist({
+  steps,
+  elapsed,
+  stopping,
+  onStop,
+}: {
+  steps: PlanProgress[];
+  elapsed: number;
+  stopping: boolean;
+  onStop: () => void;
+}) {
+  const done = steps.filter((s) => s.status === "done").length;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="space-y-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">
+          Step {Math.min(done + 1, steps.length)} of {steps.length} · {elapsed}s
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onStop}
+          disabled={stopping}
+          className="h-7 px-2 text-xs"
+        >
+          {stopping ? "Stopping after this step…" : "Stop"}
+        </Button>
+      </div>
+      <ol className="space-y-1.5">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+              {s.status === "done" ? (
+                <Check className="size-4 text-raspberry-700" aria-hidden="true" />
+              ) : s.status === "running" ? (
+                <Spinner className="size-3.5" />
+              ) : s.status === "failed" ? (
+                <X className="size-4 text-red-700" aria-hidden="true" />
+              ) : (
+                <span className="size-2 rounded-full border border-raspberry-800/40" aria-hidden="true" />
+              )}
+            </span>
+            <span className={cn("leading-snug", s.status === "pending" && "text-raspberry-800/60")}>
+              {s.title}
+              {s.summary && (
+                <span className="block text-xs text-raspberry-800/70">{s.summary}</span>
+              )}
+              <span className="sr-only">
+                {s.status === "done" ? " (done)" : s.status === "running" ? " (in progress)" : s.status === "failed" ? " (failed)" : ""}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

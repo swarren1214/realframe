@@ -44,7 +44,13 @@ export function limitResponse(message: string | undefined) {
 export async function finishBuild(
   claimId: string,
   outcome:
-    | { ok: true; input: number | null; output: number | null }
+    | {
+        ok: true;
+        input: number | null;
+        output: number | null;
+        /** Pre-computed cost, for runs that mixed models (e.g. planner + builder). */
+        cost?: number;
+      }
     | {
         ok: false;
         error?: string;
@@ -58,7 +64,9 @@ export async function finishBuild(
       p_status: outcome.ok ? "succeeded" : "failed",
       p_input_tokens: outcome.input ?? null,
       p_output_tokens: outcome.output ?? null,
-      p_cost_micros: outcome.ok ? costMicros(outcome.input, outcome.output) : 0,
+      p_cost_micros: outcome.ok
+        ? (outcome.cost ?? costMicros(outcome.input, outcome.output))
+        : 0,
     });
     if (error) console.error("finish_generation", error.message);
     if (!outcome.ok) {
