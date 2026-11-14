@@ -3,6 +3,7 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { FlashToast } from "@/components/FlashToast";
+import { MotionProvider } from "@/components/motion";
 
 export const metadata: Metadata = {
   title: "Realframe",
@@ -29,11 +30,13 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen font-sans antialiased">
-        <TooltipProvider>
-          {children}
-          <Toaster />
-          <FlashToast />
-        </TooltipProvider>
+        <MotionProvider>
+          <TooltipProvider>
+            {children}
+            <Toaster />
+            <FlashToast />
+          </TooltipProvider>
+        </MotionProvider>
       </body>
     </html>
   );

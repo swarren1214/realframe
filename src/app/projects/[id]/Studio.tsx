@@ -63,6 +63,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
+import { AnimatePresence, listItem, motion } from "@/components/motion";
 import { copyWithToast, notify } from "@/lib/toast";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { ImportDialog } from "@/components/ImportDialog";
@@ -1003,28 +1004,30 @@ export function Studio(props: {
                     </div>
                   ) : (
                     <ul className="space-y-1">
-                      {versions.map((v) => (
-                        <VersionItem
-                          key={v.id}
-                          version={v}
-                          selected={v.id === selected?.id}
-                          live={
-                            v.id === project.live_version_id &&
-                            project.published
-                          }
-                          canRestore={v.id !== versions[0]?.id}
-                          restoring={isBusy(`restore-${v.id}`)}
-                          disabled={pending}
-                          onSelect={() => setSelectedId(v.id)}
-                          onRestore={() =>
-                            run(
-                              () => restoreVersion(project.id, v.id),
-                              `restore-${v.id}`,
-                              `Restored v${v.number} as a new version`,
-                            )
-                          }
-                        />
-                      ))}
+                      <AnimatePresence initial={false}>
+                        {versions.map((v) => (
+                          <VersionItem
+                            key={v.id}
+                            version={v}
+                            selected={v.id === selected?.id}
+                            live={
+                              v.id === project.live_version_id &&
+                              project.published
+                            }
+                            canRestore={v.id !== versions[0]?.id}
+                            restoring={isBusy(`restore-${v.id}`)}
+                            disabled={pending}
+                            onSelect={() => setSelectedId(v.id)}
+                            onRestore={() =>
+                              run(
+                                () => restoreVersion(project.id, v.id),
+                                `restore-${v.id}`,
+                                `Restored v${v.number} as a new version`,
+                              )
+                            }
+                          />
+                        ))}
+                      </AnimatePresence>
                     </ul>
                   )}
                 </section>
@@ -1058,71 +1061,80 @@ export function Studio(props: {
                     </p>
                   </div>
                 )}
-                {threads
-                  .slice()
-                  .reverse()
-                  .map((t, i) => {
-                    const v = versions.find((x) => x.id === t.version_id);
-                    return (
-                      <article
-                        key={t.id}
-                        className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
-                      >
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <span
-                            className={cn(
-                              "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                              t.status === "open" ? "btn-glow" : "bg-stone-400",
-                            )}
-                          >
-                            {threads.length - i}
-                          </span>
-                          {v && <Badge>v{v.number}</Badge>}
-                          <span className="text-stone-500">
-                            {t.status === "resolved" ? "Resolved" : "Open"}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="ml-auto h-7"
-                            onClick={async () => {
-                              await supabase
-                                .from("comment_threads")
-                                .update({
-                                  status:
-                                    t.status === "open" ? "resolved" : "open",
-                                  resolved_at:
-                                    t.status === "open"
-                                      ? new Date().toISOString()
-                                      : null,
-                                })
-                                .eq("id", t.id);
-                              router.refresh();
-                            }}
-                          >
-                            {t.status === "open" ? <CircleCheck /> : <Undo2 />}
-                            {t.status === "open" ? "Resolve" : "Reopen"}
-                          </Button>
-                        </div>
-                        {t.comments
-                          .slice()
-                          .sort((a, b) =>
-                            a.created_at.localeCompare(b.created_at),
-                          )
-                          .map((c) => (
-                            <p
-                              key={c.id}
-                              className="text-[13px] leading-relaxed"
+                <AnimatePresence initial={false}>
+                  {threads
+                    .slice()
+                    .reverse()
+                    .map((t, i) => {
+                      const v = versions.find((x) => x.id === t.version_id);
+                      return (
+                        <motion.article
+                          key={t.id}
+                          {...listItem}
+                          className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
+                        >
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span
+                              className={cn(
+                                "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                                t.status === "open"
+                                  ? "btn-glow"
+                                  : "bg-stone-400",
+                              )}
                             >
-                              <strong className="font-semibold">
-                                {authorLabel(c)}
-                              </strong>{" "}
-                              {c.body}
-                            </p>
-                          ))}
-                      </article>
-                    );
-                  })}
+                              {threads.length - i}
+                            </span>
+                            {v && <Badge>v{v.number}</Badge>}
+                            <span className="text-stone-500">
+                              {t.status === "resolved" ? "Resolved" : "Open"}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="ml-auto h-7"
+                              onClick={async () => {
+                                await supabase
+                                  .from("comment_threads")
+                                  .update({
+                                    status:
+                                      t.status === "open" ? "resolved" : "open",
+                                    resolved_at:
+                                      t.status === "open"
+                                        ? new Date().toISOString()
+                                        : null,
+                                  })
+                                  .eq("id", t.id);
+                                router.refresh();
+                              }}
+                            >
+                              {t.status === "open" ? (
+                                <CircleCheck />
+                              ) : (
+                                <Undo2 />
+                              )}
+                              {t.status === "open" ? "Resolve" : "Reopen"}
+                            </Button>
+                          </div>
+                          {t.comments
+                            .slice()
+                            .sort((a, b) =>
+                              a.created_at.localeCompare(b.created_at),
+                            )
+                            .map((c) => (
+                              <p
+                                key={c.id}
+                                className="text-[13px] leading-relaxed"
+                              >
+                                <strong className="font-semibold">
+                                  {authorLabel(c)}
+                                </strong>{" "}
+                                {c.body}
+                              </p>
+                            ))}
+                        </motion.article>
+                      );
+                    })}
+                </AnimatePresence>
                 {project.published && (
                   <Button asChild variant="ghost" size="sm" className="m-1">
                     <a href={reviewUrl} target="_blank" rel="noreferrer">
@@ -1654,7 +1666,8 @@ function VersionItem({
     </span>
   );
   return (
-    <li
+    <motion.li
+      {...listItem}
       className={cn(
         "rounded-2xl transition-colors duration-[var(--duration-fast)]",
         selected
@@ -1724,6 +1737,6 @@ function VersionItem({
           </Button>
         </div>
       )}
-    </li>
+    </motion.li>
   );
 }

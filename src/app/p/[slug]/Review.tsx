@@ -2,7 +2,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CircleCheck, Expand, LogIn, MessageSquare, MessageSquarePlus, PencilRuler, Send, Undo2, X } from "lucide-react";
+import {
+  CircleCheck,
+  Expand,
+  LogIn,
+  MessageSquare,
+  MessageSquarePlus,
+  PencilRuler,
+  Send,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Mark } from "@/components/Logo";
 import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,12 +22,30 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { PRESENT_FRAME_CLASS, PresentControls, enterFullscreen } from "@/components/PresentMode";
+import { AnimatePresence, listItem, motion } from "@/components/motion";
+import {
+  PRESENT_FRAME_CLASS,
+  PresentControls,
+  enterFullscreen,
+} from "@/components/PresentMode";
 import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
-import { authorLabel, canComment, type Project, type Role, type Thread } from "@/lib/types";
+import {
+  authorLabel,
+  canComment,
+  type Project,
+  type Role,
+  type Thread,
+} from "@/lib/types";
 
-type Version = { id: string; number: number; html: string; src?: string | null; summary: string | null; created_at: string };
+type Version = {
+  id: string;
+  number: number;
+  html: string;
+  src?: string | null;
+  summary: string | null;
+  created_at: string;
+};
 
 export function Review({
   project,
@@ -45,7 +73,8 @@ export function Review({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const isGuest = role === "guest";
-  const commenter = canComment(role) || (isGuest && project.guest_comments !== false);
+  const commenter =
+    canComment(role) || (isGuest && project.guest_comments !== false);
   const [commentMode, setCommentMode] = useState(false);
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [draftText, setDraftText] = useState("");
@@ -56,11 +85,27 @@ export function Review({
   const [error, setError] = useState("");
   const [presenting, setPresenting] = useState(present);
 
-  const ordered = useMemo(() => threads.map((t, i) => ({ ...t, n: i + 1 })), [threads]);
+  const ordered = useMemo(
+    () => threads.map((t, i) => ({ ...t, n: i + 1 })),
+    [threads],
+  );
   const pins: Pin[] = ordered
-    .filter((t) => t.version_id === version.id && (filter === "all" || t.status === filter))
-    .map((t) => ({ id: t.id, n: t.n, x: t.x, y: t.y, status: t.status, selected: t.id === selected }));
-  const visible = ordered.filter((t) => filter === "all" || t.status === filter).reverse();
+    .filter(
+      (t) =>
+        t.version_id === version.id &&
+        (filter === "all" || t.status === filter),
+    )
+    .map((t) => ({
+      id: t.id,
+      n: t.n,
+      x: t.x,
+      y: t.y,
+      status: t.status,
+      selected: t.id === selected,
+    }));
+  const visible = ordered
+    .filter((t) => filter === "all" || t.status === filter)
+    .reverse();
   const openCount = threads.filter((t) => t.status === "open").length;
 
   useEffect(() => {
@@ -77,21 +122,44 @@ export function Review({
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-    return res.ok ? { data, error: null } : { data: null, error: { message: data.error || "Couldn't post that." } };
+    return res.ok
+      ? { data, error: null }
+      : { data: null, error: { message: data.error || "Couldn't post that." } };
   }
 
   useEffect(() => {
     if (role === "public" || isGuest) return;
     const channel = supabase
       .channel(`review-${project.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "comments", filter: `project_id=eq.${project.id}` }, () =>
-        router.refresh(),
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "comments",
+          filter: `project_id=eq.${project.id}`,
+        },
+        () => router.refresh(),
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "comment_threads", filter: `project_id=eq.${project.id}` }, () =>
-        router.refresh(),
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "comment_threads",
+          filter: `project_id=eq.${project.id}`,
+        },
+        () => router.refresh(),
       )
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "projects", filter: `id=eq.${project.id}` }, () =>
-        router.refresh(),
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "projects",
+          filter: `id=eq.${project.id}`,
+        },
+        () => router.refresh(),
       )
       .subscribe();
     return () => {
@@ -105,7 +173,12 @@ export function Review({
     setBusy(true);
     setError("");
     const { data, error } = isGuest
-      ? await guestPost({ versionId: version.id, x: draft.x, y: draft.y, body: draftText.trim() }).then((r) => ({
+      ? await guestPost({
+          versionId: version.id,
+          x: draft.x,
+          y: draft.y,
+          body: draftText.trim(),
+        }).then((r) => ({
           data: r.data?.threadId as string | undefined,
           error: r.error,
         }))
@@ -159,7 +232,10 @@ export function Review({
     setError("");
     const { error } = await supabase
       .from("comment_threads")
-      .update({ status: t.status === "open" ? "resolved" : "open", resolved_at: t.status === "open" ? new Date().toISOString() : null })
+      .update({
+        status: t.status === "open" ? "resolved" : "open",
+        resolved_at: t.status === "open" ? new Date().toISOString() : null,
+      })
       .eq("id", t.id);
     if (error) setError(error.message);
     router.refresh();
@@ -168,10 +244,16 @@ export function Review({
   return (
     <div className="flex h-screen flex-col">
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
-        <Link href={userEmail ? "/projects" : "/"} aria-label="Realframe" className="rounded-full p-1 hover:bg-foreground/5">
+        <Link
+          href={userEmail ? "/projects" : "/"}
+          aria-label="Realframe"
+          className="rounded-full p-1 hover:bg-foreground/5"
+        >
           <Mark size={26} />
         </Link>
-        <h1 className="min-w-0 truncate text-sm font-semibold">{project.name}</h1>
+        <h1 className="min-w-0 truncate text-sm font-semibold">
+          {project.name}
+        </h1>
         {project.live_version_id === version.id ? (
           <Badge variant="success">
             <BadgeDot />v{version.number} · Live
@@ -215,7 +297,9 @@ export function Review({
           </Button>
         )}
         {isGuest ? (
-          <span className="px-2 text-xs text-muted-foreground">Viewing as {guestName}</span>
+          <span className="px-2 text-xs text-muted-foreground">
+            Viewing as {guestName}
+          </span>
         ) : userEmail ? (
           accountMenu
         ) : (
@@ -242,7 +326,12 @@ export function Review({
             <PresentControls
               onExit={() => {
                 setPresenting(false);
-                if (present) window.history.replaceState(null, "", window.location.pathname);
+                if (present)
+                  window.history.replaceState(
+                    null,
+                    "",
+                    window.location.pathname,
+                  );
               }}
             />
           )}
@@ -272,7 +361,10 @@ export function Review({
               onSubmit={submitThread}
               className="absolute bottom-8 left-1/2 w-[min(420px,90%)] -translate-x-1/2 space-y-2.5 rounded-3xl border border-border bg-card p-3.5 shadow-[0_30px_70px_-30px_rgba(28,25,23,.45)]"
             >
-              <Label htmlFor="newc" className="text-[13px] font-semibold text-foreground">
+              <Label
+                htmlFor="newc"
+                className="text-[13px] font-semibold text-foreground"
+              >
                 New comment on v{version.number}
               </Label>
               <Textarea
@@ -283,7 +375,8 @@ export function Review({
                 value={draftText}
                 onChange={(e) => setDraftText(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitThread(e);
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                    submitThread(e);
                 }}
                 placeholder="What should change here?"
                 className="field-sizing-fixed resize-none"
@@ -293,7 +386,12 @@ export function Review({
                 <Button variant="ghost" onClick={() => setDraft(null)}>
                   Cancel
                 </Button>
-                <Button type="submit" variant="default" loading={busy} disabled={!draftText.trim()}>
+                <Button
+                  type="submit"
+                  variant="default"
+                  loading={busy}
+                  disabled={!draftText.trim()}
+                >
                   <Send />
                   Post
                 </Button>
@@ -303,11 +401,19 @@ export function Review({
         </main>
 
         {role !== "public" && (
-          <aside aria-label="Comments" className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem]">
+          <aside
+            aria-label="Comments"
+            className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem]"
+          >
             <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-2.5">
-              <MessageSquare className="size-4 text-muted-foreground" aria-hidden="true" />
+              <MessageSquare
+                className="size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <h2 className="text-[13px] font-semibold">Comments</h2>
-              <span className="text-xs text-muted-foreground">{openCount} open</span>
+              <span className="text-xs text-muted-foreground">
+                {openCount} open
+              </span>
               <ToggleGroup
                 type="single"
                 aria-label="Filter comments"
@@ -321,101 +427,128 @@ export function Review({
               </ToggleGroup>
             </div>
             {error && (
-              <p role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800">
+              <p
+                role="alert"
+                className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800"
+              >
                 {error}
               </p>
             )}
             <div className="flex-1 space-y-1 overflow-y-auto p-2">
               {visible.length === 0 && (
                 <div className="flex flex-col items-center gap-2 p-6 text-center text-[13px] text-muted-foreground">
-                  <MessageSquare className="size-5 text-stone-400" aria-hidden="true" />
-                  {commenter ? "No comments here yet. Click “Add comment”, then click anywhere on the prototype." : "No comments yet."}
+                  <MessageSquare
+                    className="size-5 text-stone-400"
+                    aria-hidden="true"
+                  />
+                  {commenter
+                    ? "No comments here yet. Click “Add comment”, then click anywhere on the prototype."
+                    : "No comments yet."}
                 </div>
               )}
-              {visible.map((t) => (
-                <article
-                  key={t.id}
-                  onClick={() => setSelected(t.id)}
-                  className={cn(
-                    "cursor-default space-y-2 rounded-2xl p-3 transition-colors",
-                    t.id === selected ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]" : "hover:bg-foreground/[.03]",
-                  )}
-                >
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span
-                      className={cn(
-                        "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                        t.status === "open" ? "btn-glow" : "bg-stone-400",
-                      )}
-                    >
-                      {t.n}
-                    </span>
-                    <Badge>v{versionNumbers[t.version_id] ?? "?"}</Badge>
-                    {t.version_id !== version.id && <span className="text-muted-foreground">earlier version</span>}
-                    {commenter && !isGuest && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="ml-auto h-7"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleResolved(t);
-                        }}
-                      >
-                        {t.status === "open" ? <CircleCheck /> : <Undo2 />}
-                        {t.status === "open" ? "Resolve" : "Reopen"}
-                      </Button>
+              <AnimatePresence initial={false}>
+                {visible.map((t) => (
+                  <motion.article
+                    key={t.id}
+                    {...listItem}
+                    onClick={() => setSelected(t.id)}
+                    className={cn(
+                      "cursor-default space-y-2 rounded-2xl p-3 transition-colors",
+                      t.id === selected
+                        ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
+                        : "hover:bg-foreground/[.03]",
                     )}
-                  </div>
-                  {t.comments
-                    .slice()
-                    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-                    .map((c) => (
-                      <div key={c.id} className="text-[13px] leading-relaxed">
-                        <span className="font-semibold">{authorLabel(c)}</span>{" "}
-                        <span suppressHydrationWarning className="text-[11px] text-muted-foreground">
-                          {new Date(c.created_at).toLocaleString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                        <p className="whitespace-pre-wrap">{c.body}</p>
-                      </div>
-                    ))}
-                  {commenter && (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        reply(t.id);
-                      }}
-                      className="flex gap-1.5"
-                    >
-                      <label htmlFor={`r-${t.id}`} className="sr-only">
-                        Reply
-                      </label>
-                      <Input
-                        id={`r-${t.id}`}
-                        value={replies[t.id] ?? ""}
-                        onChange={(e) => setReplies((r) => ({ ...r, [t.id]: e.target.value }))}
-                        placeholder="Reply…"
-                        className="h-8 text-xs"
-                      />
-                      <Button
-                        type="submit"
-                        variant="secondary"
-                        size="icon-sm"
-                        aria-label="Send reply"
-                        title="Send reply"
-                        disabled={busy || !(replies[t.id] ?? "").trim()}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span
+                        className={cn(
+                          "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                          t.status === "open" ? "btn-glow" : "bg-stone-400",
+                        )}
                       >
-                        <Send />
-                      </Button>
-                    </form>
-                  )}
-                </article>
-              ))}
+                        {t.n}
+                      </span>
+                      <Badge>v{versionNumbers[t.version_id] ?? "?"}</Badge>
+                      {t.version_id !== version.id && (
+                        <span className="text-muted-foreground">
+                          earlier version
+                        </span>
+                      )}
+                      {commenter && !isGuest && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto h-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleResolved(t);
+                          }}
+                        >
+                          {t.status === "open" ? <CircleCheck /> : <Undo2 />}
+                          {t.status === "open" ? "Resolve" : "Reopen"}
+                        </Button>
+                      )}
+                    </div>
+                    {t.comments
+                      .slice()
+                      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                      .map((c) => (
+                        <div key={c.id} className="text-[13px] leading-relaxed">
+                          <span className="font-semibold">
+                            {authorLabel(c)}
+                          </span>{" "}
+                          <span
+                            suppressHydrationWarning
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            {new Date(c.created_at).toLocaleString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          <p className="whitespace-pre-wrap">{c.body}</p>
+                        </div>
+                      ))}
+                    {commenter && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          reply(t.id);
+                        }}
+                        className="flex gap-1.5"
+                      >
+                        <label htmlFor={`r-${t.id}`} className="sr-only">
+                          Reply
+                        </label>
+                        <Input
+                          id={`r-${t.id}`}
+                          value={replies[t.id] ?? ""}
+                          onChange={(e) =>
+                            setReplies((r) => ({
+                              ...r,
+                              [t.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Reply…"
+                          className="h-8 text-xs"
+                        />
+                        <Button
+                          type="submit"
+                          variant="secondary"
+                          size="icon-sm"
+                          aria-label="Send reply"
+                          title="Send reply"
+                          disabled={busy || !(replies[t.id] ?? "").trim()}
+                        >
+                          <Send />
+                        </Button>
+                      </form>
+                    )}
+                  </motion.article>
+                ))}
+              </AnimatePresence>
             </div>
             {!commenter && (
               <p className="border-t border-stone-100 p-3 text-xs text-muted-foreground">

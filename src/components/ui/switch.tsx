@@ -14,7 +14,10 @@ function Switch({
   loading = false,
   disabled,
   ...props
-}: React.ComponentProps<typeof SwitchPrimitive.Root> & { size?: "sm" | "default"; loading?: boolean }) {
+}: React.ComponentProps<typeof SwitchPrimitive.Root> & {
+  size?: "sm" | "default";
+  loading?: boolean;
+}) {
   return (
     <SwitchPrimitive.Root
       data-slot="switch"
@@ -45,7 +48,12 @@ function Switch({
           "group-active/switch:group-data-[size=default]/switch:w-6 group-active/switch:group-data-[size=default]/switch:data-[state=checked]:translate-x-3",
         )}
       >
-        {loading && <LoaderCircle className="size-3 animate-spin text-raspberry-600" aria-hidden="true" />}
+        {loading && (
+          <LoaderCircle
+            className="size-3 animate-spin text-raspberry-600"
+            aria-hidden="true"
+          />
+        )}
       </SwitchPrimitive.Thumb>
     </SwitchPrimitive.Root>
   );

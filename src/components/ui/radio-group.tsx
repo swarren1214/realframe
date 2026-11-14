@@ -3,12 +3,25 @@ import * as React from "react";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
 import { cn } from "@/lib/utils";
 
-function RadioGroup({ className, ...props }: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
-  return <RadioGroupPrimitive.Root data-slot="radio-group" className={cn("grid gap-1.5", className)} {...props} />;
+function RadioGroup({
+  className,
+  ...props
+}: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
+  return (
+    <RadioGroupPrimitive.Root
+      data-slot="radio-group"
+      className={cn("grid gap-1.5", className)}
+      {...props}
+    />
+  );
 }
 
 /** A radio rendered as a selectable card. Put the card's content in children. */
-function RadioGroupCard({ className, children, ...props }: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
+function RadioGroupCard({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
   return (
     <RadioGroupPrimitive.Item
       data-slot="radio-group-card"

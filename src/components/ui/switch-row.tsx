@@ -34,10 +34,22 @@ function SwitchRow({
       )}
     >
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] leading-snug text-foreground">{label}</span>
-        {description && <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{description}</span>}
+        <span className="block text-[13px] leading-snug text-foreground">
+          {label}
+        </span>
+        {description && (
+          <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+            {description}
+          </span>
+        )}
       </span>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} loading={loading} />
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+        loading={loading}
+      />
     </label>
   );
 }

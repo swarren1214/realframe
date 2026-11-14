@@ -18,7 +18,8 @@ const buttonVariants = cva(
           "border border-border bg-card text-stone-800 shadow-xs hover:border-stone-300 hover:bg-stone-50 " +
           "aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-white",
         secondary: "bg-foreground text-white hover:bg-stone-800",
-        ghost: "text-stone-600 hover:bg-foreground/5 hover:text-foreground aria-pressed:bg-foreground/8 aria-pressed:text-foreground",
+        ghost:
+          "text-stone-600 hover:bg-foreground/5 hover:text-foreground aria-pressed:bg-foreground/8 aria-pressed:text-foreground",
         soft: "bg-glow-soft text-accent-foreground shadow-[inset_0_0_0_1px_var(--color-raspberry-200)] hover:brightness-[.98]",
         destructive: "text-destructive hover:bg-red-50",
         link: "h-auto! px-0! text-primary underline-offset-4 hover:underline",
@@ -43,10 +44,24 @@ type ButtonProps = React.ComponentProps<"button"> &
     loading?: boolean;
   };
 
-function Button({ className, variant, size, asChild = false, loading = false, disabled, type, children, ...props }: ButtonProps) {
+function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  loading = false,
+  disabled,
+  type,
+  children,
+  ...props
+}: ButtonProps) {
   if (asChild) {
     return (
-      <Slot.Root data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props}>
+      <Slot.Root
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      >
         {children}
       </Slot.Root>
     );
@@ -55,7 +70,9 @@ function Button({ className, variant, size, asChild = false, loading = false, di
   let content = children;
   if (loading) {
     const parts = React.Children.toArray(children);
-    const iconIndex = parts.findIndex((c) => React.isValidElement(c) && typeof c.type !== "string");
+    const iconIndex = parts.findIndex(
+      (c) => React.isValidElement(c) && typeof c.type !== "string",
+    );
     if (iconIndex >= 0) parts[iconIndex] = <Spinner key="spinner" />;
     else parts.unshift(<Spinner key="spinner" />);
     content = parts;

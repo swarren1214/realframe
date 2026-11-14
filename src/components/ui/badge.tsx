@@ -8,7 +8,8 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-glow-soft text-accent-foreground shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]",
+        default:
+          "bg-glow-soft text-accent-foreground shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]",
         secondary: "bg-secondary text-stone-700",
         outline: "border border-border text-stone-700",
         success: "bg-emerald-50 text-emerald-800",
@@ -25,14 +26,23 @@ function Badge({
   variant,
   asChild = false,
   ...props
-}: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
   const Comp = asChild ? Slot.Root : "span";
-  return <Comp data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />;
+  return (
+    <Comp
+      data-slot="badge"
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
+  );
 }
 
 /** Small status dot for use inside a Badge. */
 function BadgeDot() {
-  return <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />;
+  return (
+    <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+  );
 }
 
 export { Badge, BadgeDot, badgeVariants };
