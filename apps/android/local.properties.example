@@ -1,0 +1,4 @@
+# Copy to local.properties (git-ignored). Android Studio also writes sdk.dir here.
+rf.supabaseKey=<Supabase publishable key>
+# Point at your local Next.js server from the emulator:
+# rf.apiBaseUrl=http://10.0.2.2:3000/api/v1

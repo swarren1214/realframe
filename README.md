@@ -112,3 +112,15 @@ ANTHROPIC_API_KEY=sk-ant-... ./scripts/deploy.sh
 ```
 
 The script links the folder to a `realframe` project in the `stephen-warren-s-projects` Vercel team, sets the four environment variables (the Anthropic key as sensitive), and runs a production deploy. After the first deploy, add the production URL to Supabase's Auth URL configuration (see above).
+
+## Native apps (iOS + Android)
+
+The apps live in `apps/ios` (SwiftUI, iOS 26+) and `apps/android` (Kotlin + Jetpack Compose). Both sign in with Supabase Auth (email + 6-digit code) and call the versioned API.
+
+- **API:** `src/app/api/v1/*`, served at `https://api.realframe.app/v1/...` (`src/proxy.ts` rewrites it) and at `/api/v1` on the main host. Requests carry `Authorization: Bearer <Supabase access token>`; cookies are never read. Spec: `docs/api/openapi.yaml`.
+- **Shared logic:** project operations (publish, access, invites, rename) live in `src/lib/services/projects.ts` and are used by both the server actions and `/v1`.
+- **Builds from the apps run in the background** (`after()`): `POST /v1/projects/:id/builds` returns a build id at once, and the app polls `GET /v1/builds/:id`.
+- **Prototypes in the apps:** `GET /v1/versions/:id/document` returns the HTML with the pin agent plus a native bridge. The apps load it with no base URL, so prototype code runs in an opaque origin.
+- **Setup:** apply `supabase/migrations/0010_native_apps.sql`, add `api.realframe.app` to the Vercel project's domains, and re-upload `supabase/templates/*.html` (they now include `{{ .Token }}` for the app's code sign-in).
+
+See `apps/ios/README.md` and `apps/android/README.md` to run each app.

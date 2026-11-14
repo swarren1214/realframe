@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: Realframe API
+  version: "1"
+  description: |
+    The API the Realframe iOS and Android apps use. Served at https://api.realframe.app/v1
+    (and at /api/v1 on the main app). Every request needs `Authorization: Bearer <Supabase
+    access token>`; cookies are ignored. Access follows the same rules as the web app
+    (RLS + project_role). Errors are `{ "error": "<readable message>", "code": "<code>" }`.
+servers:
+  - url: https://api.realframe.app/v1
+  - url: http://localhost:3000/api/v1
+security:
+  - bearer: []
+paths:
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in user, plan and build allowance
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } }
+  /projects:
+    get:
+      operationId: listProjects
+      summary: Projects the caller owns or was invited to
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { projects: { type: array, items: { $ref: "#/components/schemas/ProjectSummary" } } }
+    post:
+      operationId: createProject
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } }
+      responses:
+        "201": { description: Created }
+  /projects/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      operationId: getProject
+      summary: Project, versions (no HTML) and prompt history
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/ProjectDetail" } } }
+    patch:
+      operationId: renameProject
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }
+      responses: { "200": { description: OK } }
+    delete:
+      operationId: deleteProject
+      responses: { "204": { description: Deleted } }
+  /projects/{id}/builds:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      operationId: startBuild
+      summary: Prompt a new version. Runs in the background; poll /builds/{buildId}.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties: { prompt: { type: string, maxLength: 4000 }, baseVersionId: { type: [string, "null"] } }
+      responses:
+        "202":
+          description: Started
+          content: { application/json: { schema: { type: object, properties: { buildId: { type: string }, status: { type: string } } } } }
+        "402": { description: "Free builds used up (code: free_limit)" }
+        "429": { description: "Daily safety limit reached (code: daily_limit)" }
+  /builds/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      operationId: getBuild
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Build" } } }
+  /projects/{id}/threads:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      operationId: listThreads
+      parameters: [{ name: versionId, in: query, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { threads: { type: array, items: { $ref: "#/components/schemas/Thread" } } } }
+    post:
+      operationId: createThread
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId, x, y, body]
+              properties:
+                versionId: { type: string }
+                x: { type: number, minimum: 0, maximum: 1, description: Fraction of the page's full width }
+                y: { type: number, minimum: 0, maximum: 1, description: Fraction of the page's full height }
+                body: { type: string }
+      responses: { "201": { description: Created } }
+  /threads/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    patch:
+      operationId: setThreadStatus
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { status: { enum: [open, resolved] } } } } }
+      responses: { "200": { description: OK } }
+  /threads/{id}/comments:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      operationId: replyToThread
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string } } } } }
+      responses: { "201": { description: Created } }
+  /projects/{id}/publish:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      operationId: publishVersion
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [versionId], properties: { versionId: { type: string } } } } }
+      responses: { "200": { description: OK } }
+    delete:
+      operationId: unpublish
+      responses: { "200": { description: OK } }
+  /projects/{id}/access:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    put:
+      operationId: setAccessMode
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { mode: { enum: [invite, password, public] } } } } }
+      responses: { "200": { description: OK } }
+  /projects/{id}/members:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      operationId: listMembers
+      responses: { "200": { description: OK } }
+    post:
+      operationId: inviteMember
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string }, role: { enum: [viewer, commenter, editor] } } }
+      responses: { "201": { description: Invited } }
+    delete:
+      operationId: removeMember
+      parameters: [{ name: email, in: query, required: true, schema: { type: string } }]
+      responses: { "204": { description: Removed } }
+  /versions/{id}/document:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      operationId: getVersionDocument
+      summary: Version HTML with the pin agent and native bridge injected. Load with no base URL.
+      responses:
+        "200": { description: HTML, content: { text/html: {} } }
+        "422": { description: "Imported (bundle) apps aren't supported in the apps yet" }
+  /devices:
+    post:
+      operationId: registerDevice
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties: { token: { type: string }, platform: { enum: [ios, android] }, appVersion: { type: string } }
+      responses: { "200": { description: OK } }
+    delete:
+      operationId: unregisterDevice
+      parameters: [{ name: token, in: query, required: true, schema: { type: string } }]
+      responses: { "204": { description: Removed } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: Supabase JWT }
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    Me:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        quota:
+          type: [object, "null"]
+          properties:
+            plan: { type: string }
+            build_limit: { type: integer }
+            used: { type: integer }
+            remaining: { type: integer }
+            usage_micros: { type: integer }
+            included_micros: { type: integer }
+    ProjectSummary:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        role: { enum: [owner, editor, commenter, viewer] }
+        accessMode: { enum: [invite, password, public] }
+        published: { type: boolean }
+        liveVersion: { type: [integer, "null"] }
+        latestVersion: { type: [integer, "null"] }
+        openThreads: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    ProjectDetail:
+      type: object
+      properties:
+        role: { type: string }
+        project: { type: object }
+        versions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              number: { type: integer }
+              summary: { type: [string, "null"] }
+              prompt: { type: [string, "null"] }
+              source: { type: string }
+              kind: { enum: [html, bundle] }
+              created_at: { type: string }
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              role: { enum: [user, assistant] }
+              content: { type: string }
+              version_id: { type: [string, "null"] }
+              created_at: { type: string }
+    Build:
+      type: object
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        status: { enum: [started, succeeded, failed] }
+        error: { type: [string, "null"] }
+        version:
+          type: [object, "null"]
+          properties: { id: { type: string }, number: { type: integer }, summary: { type: [string, "null"] } }
+    Thread:
+      type: object
+      properties:
+        id: { type: string }
+        version_id: { type: string }
+        x: { type: number }
+        y: { type: number }
+        status: { enum: [open, resolved] }
+        created_at: { type: string }
+        comments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              author_email: { type: string }
+              author_name: { type: [string, "null"] }
+              body: { type: string }
+              created_at: { type: string }

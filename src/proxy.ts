@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { APP_HOST, cookieDomain, isContentHost, subdomainSlug } from "@/lib/hosts";
+import { APP_HOST, cookieDomain, isApiHost, isContentHost, subdomainSlug } from "@/lib/hosts";
 
 // 1. Prototype subdomains: <slug>.realframe.app serves that prototype's review page.
 // 2. Refreshes the Supabase session cookie on every request (shared across subdomains).
+// 4. api.realframe.app: /v1/* is served by /api/v1/*. Bearer tokens only, so no session refresh.
 const STATIC_FILE = /\.(?:svg|png|jpg|jpeg|gif|webp|ico)$/i;
 
 export async function proxy(request: NextRequest) {
@@ -16,6 +17,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
   if (STATIC_FILE.test(request.nextUrl.pathname)) return NextResponse.next();
+
+  if (isApiHost(host)) {
+    const path = request.nextUrl.pathname;
+    if (path === "/v1" || path.startsWith("/v1/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/api${path}`;
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+  // The v1 API never uses cookies, on any host.
+  if (request.nextUrl.pathname.startsWith("/api/v1/")) return NextResponse.next();
 
   const slug = subdomainSlug(host);
   const path = request.nextUrl.pathname;

@@ -1,0 +1,10 @@
+// Build settings read into Info.plist. "/$()/" keeps "//" from starting a comment.
+RF_SUPABASE_URL = https:/$()/sezaqrjqeyrxoeanqbdt.supabase.co
+RF_API_BASE_URL = https:/$()/api.realframe.app/v1
+RF_REVIEW_DOMAIN = realframe.app
+
+// Put RF_SUPABASE_PUBLISHABLE_KEY (Supabase → Project Settings → API keys → publishable)
+// in Config.local.xcconfig, which is git-ignored. Override the API for local work there too, e.g.
+// RF_API_BASE_URL = http:/$()/localhost:3000/api/v1
+RF_SUPABASE_PUBLISHABLE_KEY =
+#include? "Config.local.xcconfig"

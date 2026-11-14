@@ -1,0 +1,42 @@
+# Generate the Xcode project with XcodeGen:  brew install xcodegen && xcodegen
+name: Realframe
+options:
+  bundleIdPrefix: app.realframe
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Config.xcconfig
+  Release: Config/Config.xcconfig
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.20.0
+targets:
+  Realframe:
+    type: application
+    platform: iOS
+    sources: [Realframe]
+    dependencies:
+      - package: Supabase
+        product: Supabase
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.realframe.ios
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_CFBundleDisplayName: Realframe
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Realframe/Resources/Info.plist
+      properties:
+        RFSupabaseURL: $(RF_SUPABASE_URL)
+        RFSupabaseKey: $(RF_SUPABASE_PUBLISHABLE_KEY)
+        RFAPIBaseURL: $(RF_API_BASE_URL)
+        RFReviewDomain: $(RF_REVIEW_DOMAIN)
+        UILaunchScreen: {}

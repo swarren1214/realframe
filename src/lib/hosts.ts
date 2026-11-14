@@ -1,6 +1,8 @@
 // Host helpers for prototype subdomains: <slug>.realframe.app.
 export const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "realframe.app";
 export const APP_HOST = `www.${ROOT_DOMAIN}`;
+/** Native apps call the versioned API here (api.realframe.app/v1/...). */
+export const API_HOST = `api.${ROOT_DOMAIN}`;
 
 const RESERVED = new Set([
   "www",
@@ -63,4 +65,9 @@ export function contentLabel(host: string | null | undefined) {
 
 export function isContentHost(host: string | null | undefined) {
   return contentLabel(host) !== null;
+}
+
+/** True for api.<root>: the native apps' API host. Bearer tokens only, no cookies. */
+export function isApiHost(host: string | null | undefined) {
+  return (host ?? "").toLowerCase().split(":")[0] === API_HOST;
 }
