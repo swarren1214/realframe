@@ -179,7 +179,8 @@ export async function runBuild(buildId: string) {
     }
     await admin.from("builds").update({ sandbox_id: sandbox.name }).eq("id", buildId);
 
-    const home = (await (await sandbox.runCommand("pwd")).stdout()).trim();
+    // The repository (or the uploaded files) live in the sandbox's working directory.
+    const home = (sandbox.cwd || "/vercel/sandbox").replace(/\/+$/, "");
     if (uploadFiles.length) {
       for (let k = 0; k < uploadFiles.length; k += 100) {
         await sandbox.writeFiles(uploadFiles.slice(k, k + 100).map((f) => ({ path: `${home}/${f.path}`, content: f.content })));
