@@ -147,6 +147,30 @@ body {
   to { background-position: -50% 0; }
 }
 
+/*
+ * Full-screen present mode keeps the prototype's own frame (so it doesn't reload) and pins it
+ * over the page. Anything above it with a transform, filter, backdrop blur or z-index traps a
+ * fixed element inside its own box and stacking order, so the studio would show around the
+ * prototype. While presenting, those ancestors drop them.
+ */
+:where(*):has(.rf-present-frame) {
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  perspective: none !important;
+  contain: none !important;
+  will-change: auto !important;
+  animation: none !important;
+  isolation: auto !important;
+  z-index: auto !important;
+  opacity: 1 !important;
+}
+html:has(.rf-present-frame) {
+  overflow: hidden;
+  background: #000;
+}
+
 /* Reduce motion: slides and scales become plain fades, loops stop. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

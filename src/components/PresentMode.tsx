@@ -3,14 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import { Maximize, Minimize2, Share, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type FsDoc = Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => Promise<void> };
+type FsDoc = Document & {
+  webkitFullscreenElement?: Element;
+  webkitExitFullscreen?: () => Promise<void>;
+};
 type FsEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
 
 /** True when the browser can put the page into real full screen (desktop, Android, iPad). iPhone can't. */
 export function canFullscreen() {
   if (typeof document === "undefined") return false;
   const el = document.documentElement as FsEl;
-  return Boolean(document.fullscreenEnabled && (el.requestFullscreen || el.webkitRequestFullscreen));
+  return Boolean(
+    document.fullscreenEnabled &&
+    (el.requestFullscreen || el.webkitRequestFullscreen),
+  );
 }
 
 function isFullscreen() {
@@ -31,7 +37,10 @@ function isStandalone() {
 export function enterFullscreen() {
   if (!canFullscreen() || isFullscreen()) return;
   const el = document.documentElement as FsEl;
-  (el.requestFullscreen?.({ navigationUI: "hide" }) ?? el.webkitRequestFullscreen?.())?.catch(() => {});
+  (
+    el.requestFullscreen?.({ navigationUI: "hide" }) ??
+    el.webkitRequestFullscreen?.()
+  )?.catch(() => {});
 }
 
 function exitFullscreen() {
@@ -43,7 +52,7 @@ function exitFullscreen() {
 /** Classes that turn a prototype's existing frame wrapper into the full-screen view, so the
  * prototype isn't reloaded and keeps its state. */
 export const PRESENT_FRAME_CLASS =
-  "!fixed !inset-0 z-50 !m-0 !max-w-none !rounded-none !border-0 bg-black !shadow-none " +
+  "rf-present-frame !fixed !inset-0 z-[2147483000] !m-0 !max-w-none !rounded-none !border-0 bg-black !shadow-none " +
   "pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]";
 
 /**
@@ -73,7 +82,8 @@ export function PresentControls({ onExit }: { onExit: () => void }) {
       wasFull = isFullscreen();
       if (wasFull) setHint("none");
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !isFullscreen() && exitRef.current();
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && !isFullscreen() && exitRef.current();
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
     window.addEventListener("keydown", onKey);
@@ -99,7 +109,7 @@ export function PresentControls({ onExit }: { onExit: () => void }) {
 
   return (
     <>
-      <div className="fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
+      <div className="fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-[2147483001] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
         {!full && canFullscreen() && (
           <Button
             variant="secondary"
@@ -127,19 +137,26 @@ export function PresentControls({ onExit }: { onExit: () => void }) {
       {hint !== "none" && (
         <div
           role="status"
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[60] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-xs text-white shadow-lg backdrop-blur"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[2147483001] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-xs text-white shadow-lg backdrop-blur"
         >
           {hint === "tap" ? (
             <>
               <span>Hide the browser bars too</span>
-              <Button variant="default" size="sm" className="h-7" onClick={enterFullscreen}>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-7"
+                onClick={enterFullscreen}
+              >
                 <Maximize />
                 Full screen
               </Button>
             </>
           ) : (
             <span className="flex items-center gap-1.5 py-1 pr-2">
-              For true full screen, tap <Share className="size-3.5" aria-label="Share" /> then “Add to Home Screen”.
+              For true full screen, tap{" "}
+              <Share className="size-3.5" aria-label="Share" /> then “Add to
+              Home Screen”.
             </span>
           )}
           <Button
