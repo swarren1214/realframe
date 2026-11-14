@@ -10,11 +10,16 @@ export class UserError extends Error {}
 
 export type MemberRole = "viewer" | "commenter" | "editor";
 
-export async function createProject(supabase: SupabaseClient, ownerId: string, rawName: string) {
+export async function createProject(
+  supabase: SupabaseClient,
+  ownerId: string,
+  rawName: string,
+  teamId: string | null,
+) {
   const name = rawName.trim().slice(0, 80) || "Untitled prototype";
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, slug: makeSlug(name), owner_id: ownerId })
+    .insert({ name, slug: makeSlug(name), owner_id: ownerId, team_id: teamId })
     .select("id, name, slug")
     .single();
   if (error) throw new UserError(error.message);

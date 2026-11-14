@@ -6,6 +6,22 @@ import { cn } from "@/lib/utils";
 
 const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;
+
+function SelectLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      data-slot="select-label"
+      className={cn(
+        "px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-[.08em] text-stone-500",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 const SelectValue = SelectPrimitive.Value;
 
 function SelectTrigger({
@@ -24,6 +40,8 @@ function SelectTrigger({
         "flex w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-full border border-input bg-card pl-3 pr-2.5 text-[13px] shadow-xs outline-none transition-[border-color,box-shadow]",
         "hover:border-stone-300 focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-raspberry-100 disabled:cursor-not-allowed disabled:opacity-50",
         "data-[placeholder]:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 data-[size=sm]:text-xs [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        // The chosen value can carry an icon or color dots: keep them on one line with the label.
+        "[&>span]:flex [&>span]:min-w-0 [&>span]:items-center [&>span]:gap-2 [&>span]:truncate [&>span_svg:not([class*=size-])]:size-4",
         className,
       )}
       {...props}
@@ -97,6 +115,7 @@ export {
   Select,
   SelectContent,
   SelectGroup,
+  SelectLabel,
   SelectItem,
   SelectTrigger,
   SelectValue,

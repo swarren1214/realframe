@@ -1,5 +1,6 @@
 import { json, readJson, route } from "@/lib/api/v1";
 import { createProject } from "@/lib/services/projects";
+import { loadTeams } from "@/lib/teams";
 
 type Row = {
   id: string;
@@ -15,21 +16,24 @@ type Row = {
 
 // GET /v1/projects → every project the caller owns or was invited to, newest first.
 export const GET = route(async (_request, { supabase, user }) => {
-  const [{ data: rows, error }, { data: memberships }] = await Promise.all([
-    supabase
-      .from("projects")
-      .select("id, owner_id, name, slug, access_mode, published, live_version_id, updated_at, comment_threads(status)")
-      .order("updated_at", { ascending: false }),
-    supabase.from("project_members").select("project_id, role").eq("user_id", user.id),
-  ]);
+  const { data: rows, error } = await supabase
+    .from("projects")
+    .select("id, owner_id, name, slug, access_mode, published, live_version_id, updated_at, comment_threads(status)")
+    .order("updated_at", { ascending: false });
   if (error) throw new Error(error.message);
   const projects = (rows ?? []) as Row[];
+  // Owner is known from the row; anything else (invited, or through a team) comes from project_role().
+  const others = await Promise.all(
+    projects
+      .filter((p) => p.owner_id !== user.id)
+      .map(async (p) => [p.id, (await supabase.rpc("project_role", { p: p.id })).data as string | null] as const),
+  );
+  const roles = new Map(others);
   const ids = projects.map((p) => p.id);
   const { data: versions } = ids.length
     ? await supabase.from("versions").select("id, project_id, number").in("project_id", ids).order("number", { ascending: false })
     : { data: [] as { id: string; project_id: string; number: number }[] };
 
-  const roles = new Map((memberships ?? []).map((m) => [m.project_id as string, m.role as string]));
   const latest = new Map<string, number>();
   const numbers = new Map<string, number>();
   for (const v of versions ?? []) {
@@ -53,9 +57,12 @@ export const GET = route(async (_request, { supabase, user }) => {
   });
 });
 
-// POST /v1/projects { name } → a new, empty prototype owned by the caller.
+// POST /v1/projects { name, teamId? } → a new, empty prototype owned by the caller,
+// in the given team if they belong to it, else their personal team.
 export const POST = route(async (request, { supabase, user }) => {
-  const body = await readJson<{ name: string }>(request);
-  const project = await createProject(supabase, user.id, String(body.name ?? ""));
+  const body = await readJson<{ name: string; teamId: string }>(request);
+  const { teams, current } = await loadTeams(supabase, user.id);
+  const team = teams.find((t) => t.id === body.teamId) ?? current;
+  const project = await createProject(supabase, user.id, String(body.name ?? ""), team?.id ?? null);
   return json({ project }, 201);
 });

@@ -36,7 +36,7 @@ export function ProjectsSkeleton() {
           {Array.from({ length: 6 }, (_, i) => (
             <li
               key={i}
-              className="rounded-3xl border border-stone-200/80 bg-white p-4"
+              className="rounded-3xl border border-stone-200/80 bg-card p-4"
             >
               <Skeleton className="mb-3 h-20 rounded-2xl" />
               <Skeleton className="h-4 w-2/3" />
@@ -96,7 +96,7 @@ export function WorkspaceSkeleton({
             ))}
           </div>
         )}
-        <div className="min-w-0 flex-1 rounded-3xl border border-stone-200/70 bg-white/70" />
+        <div className="min-w-0 flex-1 rounded-3xl border border-stone-200/70 bg-card/70" />
         {panels !== "none" && (
           <div className="glass hidden w-[320px] shrink-0 flex-col gap-3 rounded-3xl p-4 xl:flex xl:w-[360px]">
             <Skeleton className="h-9 rounded-full" />

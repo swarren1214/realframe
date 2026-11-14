@@ -1,4 +1,5 @@
-export type Role = "owner" | "editor" | "commenter" | "viewer" | "public" | "guest";
+export type Role =
+  "owner" | "editor" | "commenter" | "viewer" | "public" | "guest";
 export type AccessMode = "invite" | "public" | "password";
 
 export type Project = {
@@ -11,6 +12,9 @@ export type Project = {
   live_version_id: string | null;
   has_password?: boolean;
   guest_comments?: boolean;
+  devices?: unknown;
+  team_id?: string | null;
+  design_system_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -26,6 +30,7 @@ export type VersionMeta = {
   commit_sha?: string | null;
   commit_author?: string | null;
   created_at: string;
+  design_system_id?: string | null;
 };
 
 export type Message = {
@@ -72,7 +77,10 @@ export function canComment(role: Role | null) {
   return role === "owner" || role === "editor" || role === "commenter";
 }
 
-export function authorLabel(c: { author_name: string | null; author_email: string }) {
+export function authorLabel(c: {
+  author_name: string | null;
+  author_email: string;
+}) {
   return c.author_name?.trim() || c.author_email.split("@")[0];
 }
 

@@ -232,7 +232,7 @@ export function GitHubImport({
     return (
       <div className="space-y-3">
         <div className="flex flex-col items-center gap-2.5 rounded-2xl bg-stone-50 p-6 text-center">
-          <span className="grid size-11 place-items-center rounded-2xl bg-foreground text-white">
+          <span className="grid size-11 place-items-center rounded-2xl bg-foreground text-background">
             <GitHubMark className="size-5" />
           </span>
           <p className="text-[13px] font-semibold">Connect GitHub</p>

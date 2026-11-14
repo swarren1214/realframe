@@ -121,6 +121,6 @@ The apps live in `apps/ios` (SwiftUI, iOS 26+) and `apps/android` (Kotlin + Jetp
 - **Shared logic:** project operations (publish, access, invites, rename) live in `src/lib/services/projects.ts` and are used by both the server actions and `/v1`.
 - **Builds from the apps run in the background** (`after()`): `POST /v1/projects/:id/builds` returns a build id at once, and the app polls `GET /v1/builds/:id`.
 - **Prototypes in the apps:** `GET /v1/versions/:id/document` returns the HTML with the pin agent plus a native bridge. The apps load it with no base URL, so prototype code runs in an opaque origin.
-- **Setup:** apply `supabase/migrations/0010_native_apps.sql`, add `api.realframe.app` to the Vercel project's domains, and re-upload `supabase/templates/*.html` (they now include `{{ .Token }}` for the app's code sign-in).
+- **Setup:** apply `supabase/migrations/0016_native_apps.sql`, add `api.realframe.app` to the Vercel project's domains, and re-upload `supabase/templates/*.html` (they now include `{{ .Token }}` for the app's code sign-in).
 
 See `apps/ios/README.md` and `apps/android/README.md` to run each app.

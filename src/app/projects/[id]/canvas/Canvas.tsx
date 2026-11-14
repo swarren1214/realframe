@@ -2,7 +2,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, LayoutTemplate, Maximize, Monitor, Plus, PencilRuler, Smartphone, Tablet, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ArrowLeft,
+  LayoutTemplate,
+  Maximize,
+  Monitor,
+  Plus,
+  PencilRuler,
+  Smartphone,
+  Tablet,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { Mark } from "@/components/Logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +53,14 @@ const MAX_ZOOM = 2;
 type Drag =
   | { kind: "pan"; sx: number; sy: number; ox: number; oy: number }
   | { kind: "move"; id: string; sx: number; sy: number; ox: number; oy: number }
-  | { kind: "resize"; id: string; sx: number; sy: number; ow: number; oh: number };
+  | {
+      kind: "resize";
+      id: string;
+      sx: number;
+      sy: number;
+      ow: number;
+      oh: number;
+    };
 
 export function Canvas({
   project,
@@ -52,7 +71,12 @@ export function Canvas({
   accountMenu?: React.ReactNode;
   project: Project;
   frames: Frame[];
-  latest: { id: string; number: number; html: string; src?: string | null } | null;
+  latest: {
+    id: string;
+    number: number;
+    html: string;
+    src?: string | null;
+  } | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -77,9 +101,18 @@ export function Canvas({
   useEffect(() => {
     const channel = supabase
       .channel(`canvas-${project.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "canvas_frames", filter: `project_id=eq.${project.id}` }, () => {
-        if (!dragRef.current) router.refresh();
-      })
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "canvas_frames",
+          filter: `project_id=eq.${project.id}`,
+        },
+        () => {
+          if (!dragRef.current) router.refresh();
+        },
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -106,8 +139,21 @@ export function Canvas({
       const maxX = Math.max(...list.map((f) => f.x + f.width));
       const maxY = Math.max(...list.map((f) => f.y + f.height + HEADER));
       const r = el.getBoundingClientRect();
-      const z = Math.max(MIN_ZOOM, Math.min(1, Math.min((r.width - 120) / (maxX - minX), (r.height - 120) / (maxY - minY))));
-      setView({ z, x: (r.width - (maxX - minX) * z) / 2 - minX * z, y: (r.height - (maxY - minY) * z) / 2 - minY * z });
+      const z = Math.max(
+        MIN_ZOOM,
+        Math.min(
+          1,
+          Math.min(
+            (r.width - 120) / (maxX - minX),
+            (r.height - 120) / (maxY - minY),
+          ),
+        ),
+      );
+      setView({
+        z,
+        x: (r.width - (maxX - minX) * z) / 2 - minX * z,
+        y: (r.height - (maxY - minY) * z) / 2 - minY * z,
+      });
     },
     [frames],
   );
@@ -124,7 +170,11 @@ export function Canvas({
     const py = cy ?? (r ? r.height / 2 : 0);
     setView((v) => {
       const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.z * factor));
-      return { z, x: px - ((px - v.x) * z) / v.z, y: py - ((py - v.y) * z) / v.z };
+      return {
+        z,
+        x: px - ((px - v.x) * z) / v.z,
+        y: py - ((py - v.y) * z) / v.z,
+      };
     });
   }
 
@@ -134,7 +184,12 @@ export function Canvas({
     function onWheel(e: WheelEvent) {
       e.preventDefault();
       const r = el!.getBoundingClientRect();
-      if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+      if (e.ctrlKey || e.metaKey)
+        zoomAt(
+          Math.exp(-e.deltaY * 0.01),
+          e.clientX - r.left,
+          e.clientY - r.top,
+        );
       else setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -144,16 +199,33 @@ export function Canvas({
   function onPointerMove(e: React.PointerEvent) {
     const d = drag;
     if (!d) return;
-    if (d.kind === "pan") setView((v) => ({ ...v, x: d.ox + e.clientX - d.sx, y: d.oy + e.clientY - d.sy }));
+    if (d.kind === "pan")
+      setView((v) => ({
+        ...v,
+        x: d.ox + e.clientX - d.sx,
+        y: d.oy + e.clientY - d.sy,
+      }));
     if (d.kind === "move") {
       const x = d.ox + (e.clientX - d.sx) / view.z;
       const y = d.oy + (e.clientY - d.sy) / view.z;
-      setFrames((fs) => fs.map((f) => (f.id === d.id ? { ...f, x: Math.round(x), y: Math.round(y) } : f)));
+      setFrames((fs) =>
+        fs.map((f) =>
+          f.id === d.id ? { ...f, x: Math.round(x), y: Math.round(y) } : f,
+        ),
+      );
     }
     if (d.kind === "resize") {
-      const width = Math.max(240, Math.min(3840, Math.round(d.ow + (e.clientX - d.sx) / view.z)));
-      const height = Math.max(240, Math.min(4000, Math.round(d.oh + (e.clientY - d.sy) / view.z)));
-      setFrames((fs) => fs.map((f) => (f.id === d.id ? { ...f, width, height } : f)));
+      const width = Math.max(
+        240,
+        Math.min(3840, Math.round(d.ow + (e.clientX - d.sx) / view.z)),
+      );
+      const height = Math.max(
+        240,
+        Math.min(4000, Math.round(d.oh + (e.clientY - d.sy) / view.z)),
+      );
+      setFrames((fs) =>
+        fs.map((f) => (f.id === d.id ? { ...f, width, height } : f)),
+      );
     }
   }
 
@@ -164,16 +236,24 @@ export function Canvas({
     const f = frames.find((x) => x.id === d.id);
     if (!f) return;
     if (d.kind === "move") persist(f.id, { x: f.x, y: f.y });
-    if (d.kind === "resize") persist(f.id, { width: f.width, height: f.height });
+    if (d.kind === "resize")
+      persist(f.id, { width: f.width, height: f.height });
   }
 
-  async function addFrames(devices: readonly { label: string; width: number; height: number }[], route = "") {
-    const right = frames.length ? Math.max(...frames.map((f) => f.x + f.width)) + GAP : 0;
+  async function addFrames(
+    devices: readonly { label: string; width: number; height: number }[],
+    route = "",
+  ) {
+    const right = frames.length
+      ? Math.max(...frames.map((f) => f.x + f.width)) + GAP
+      : 0;
     let x = right;
     const rows = devices.map((d) => {
       const row = {
         project_id: project.id,
-        label: route ? `${d.label} · ${route.replace(/^#\/?/, "") || "home"}` : d.label,
+        label: route
+          ? `${d.label} · ${route.replace(/^#\/?/, "") || "home"}`
+          : d.label,
         route,
         width: d.width,
         height: d.height,
@@ -183,7 +263,10 @@ export function Canvas({
       x += d.width + GAP;
       return row;
     });
-    const { data, error } = await supabase.from("canvas_frames").insert(rows).select("id, label, route, width, height, x, y, version_id");
+    const { data, error } = await supabase
+      .from("canvas_frames")
+      .insert(rows)
+      .select("id, label, route, width, height, x, y, version_id");
     if (error) return setError(error.message);
     const next = [...frames, ...((data ?? []) as Frame[])];
     setFrames(next);
@@ -196,7 +279,10 @@ export function Canvas({
       setActive(null);
       setEditing(false);
     }
-    const { error } = await supabase.from("canvas_frames").delete().eq("id", id);
+    const { error } = await supabase
+      .from("canvas_frames")
+      .delete()
+      .eq("id", id);
     if (error) setError(error.message);
   }
 
@@ -223,18 +309,33 @@ export function Canvas({
   return (
     <div className="flex h-screen flex-col">
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
-        <Link href="/projects" aria-label="All prototypes" className="rounded-full p-1 hover:bg-foreground/5">
+        <Link
+          href="/projects"
+          aria-label="All prototypes"
+          className="rounded-full p-1 hover:bg-foreground/5"
+        >
           <Mark size={26} />
         </Link>
-        <Button asChild variant="ghost" size="sm" className="text-sm font-semibold text-foreground">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-sm font-semibold text-foreground"
+        >
           <Link href={`/projects/${project.id}`}>
             <ArrowLeft />
             {project.name}
           </Link>
         </Button>
-        <Badge variant="default">Canvas{latest ? ` · v${latest.number}` : ""}</Badge>
+        <Badge variant="default">
+          Canvas{latest ? ` · v${latest.number}` : ""}
+        </Badge>
         <div className="flex-1" />
-        <div role="group" aria-label="Add frame" className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5">
+        <div
+          role="group"
+          aria-label="Add frame"
+          className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5"
+        >
           {DEVICES.map(({ icon: Icon, ...d }) => (
             <Button
               key={d.label}
@@ -251,7 +352,11 @@ export function Canvas({
             </Button>
           ))}
         </div>
-        <div role="group" aria-label="Zoom" className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5">
+        <div
+          role="group"
+          aria-label="Zoom"
+          className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5"
+        >
           <Button
             variant="ghost"
             size="icon-sm"
@@ -262,7 +367,9 @@ export function Canvas({
           >
             <ZoomOut />
           </Button>
-          <span className="w-10 text-center text-xs tabular-nums text-stone-700">{Math.round(view.z * 100)}%</span>
+          <span className="w-10 text-center text-xs tabular-nums text-stone-700">
+            {Math.round(view.z * 100)}%
+          </span>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -307,7 +414,13 @@ export function Canvas({
           className="mx-3 mt-2 flex items-center gap-2 rounded-full border border-red-100 bg-red-50 py-1 pl-4 pr-1 text-xs text-red-800"
         >
           <span className="flex-1">{error}</span>
-          <Button variant="destructive" size="icon-sm" aria-label="Dismiss" title="Dismiss" onClick={() => setError("")}>
+          <Button
+            variant="destructive"
+            size="icon-sm"
+            aria-label="Dismiss"
+            title="Dismiss"
+            onClick={() => setError("")}
+          >
             <X />
           </Button>
         </p>
@@ -316,16 +429,23 @@ export function Canvas({
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div
           ref={board}
-          className={`relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
           style={{
-            backgroundImage: "radial-gradient(circle, rgba(190,24,93,.22) 1.2px, transparent 1.2px)",
+            backgroundImage:
+              "radial-gradient(circle, rgba(190,24,93,.22) 1.2px, transparent 1.2px)",
             backgroundSize: `${24 * view.z}px ${24 * view.z}px`,
             backgroundPosition: `${view.x}px ${view.y}px`,
           }}
           onPointerDown={(e) => {
             if (e.target !== e.currentTarget) return;
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-            setDrag({ kind: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y });
+            setDrag({
+              kind: "pan",
+              sx: e.clientX,
+              sy: e.clientY,
+              ox: view.x,
+              oy: view.y,
+            });
             if (!editing) setActive(null);
           }}
           onPointerMove={onPointerMove}
@@ -333,18 +453,29 @@ export function Canvas({
           onPointerCancel={onPointerUp}
         >
           {!latest ? (
-            <EmptyState text="Build v1 in the studio first, then lay its screens out here." href={`/projects/${project.id}`} />
+            <EmptyState
+              text="Build v1 in the studio first, then lay its screens out here."
+              href={`/projects/${project.id}`}
+            />
           ) : frames.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex max-w-xs flex-col items-center gap-2 rounded-3xl bg-card p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
-                <span aria-hidden="true" className="grid size-11 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                <span
+                  aria-hidden="true"
+                  className="grid size-11 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
+                >
                   <LayoutTemplate className="size-5" />
                 </span>
                 <p className="text-sm font-semibold">Start your canvas</p>
                 <p className="text-[13px] text-stone-600">
-                  Add v{latest.number} at desktop, tablet and phone sizes to compare them side by side.
+                  Add v{latest.number} at desktop, tablet and phone sizes to
+                  compare them side by side.
                 </p>
-                <Button variant="default" className="mt-2" onClick={() => addFrames(DEVICES)}>
+                <Button
+                  variant="default"
+                  className="mt-2"
+                  onClick={() => addFrames(DEVICES)}
+                >
                   <Plus />
                   Add desktop, tablet and phone
                 </Button>
@@ -354,22 +485,42 @@ export function Canvas({
 
           <div
             className="absolute left-0 top-0 origin-top-left"
-            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}
+            style={{
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`,
+            }}
           >
             {latest &&
               frames.map((f) => {
                 const isActive = f.id === active;
                 const isEditing = isActive && editing && editor.editableHtml;
                 return (
-                  <section key={f.id} aria-label={f.label} className="absolute" style={{ left: f.x, top: f.y, width: f.width }}>
+                  <section
+                    key={f.id}
+                    aria-label={f.label}
+                    className="absolute"
+                    style={{ left: f.x, top: f.y, width: f.width }}
+                  >
                     <div
                       className="flex cursor-move select-none items-center gap-2 px-1"
-                      style={{ height: HEADER, fontSize: Math.max(13, 13 / view.z) }}
+                      style={{
+                        height: HEADER,
+                        fontSize: Math.max(13, 13 / view.z),
+                      }}
                       onPointerDown={(e) => {
-                        if ((e.target as HTMLElement).closest("button,input")) return;
-                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                        if ((e.target as HTMLElement).closest("button,input"))
+                          return;
+                        (e.currentTarget as HTMLElement).setPointerCapture(
+                          e.pointerId,
+                        );
                         setActive(f.id);
-                        setDrag({ kind: "move", id: f.id, sx: e.clientX, sy: e.clientY, ox: f.x, oy: f.y });
+                        setDrag({
+                          kind: "move",
+                          id: f.id,
+                          sx: e.clientX,
+                          sy: e.clientY,
+                          ox: f.x,
+                          oy: f.y,
+                        });
                       }}
                       onPointerMove={onPointerMove}
                       onPointerUp={onPointerUp}
@@ -383,11 +534,18 @@ export function Canvas({
                           onBlur={(e) => {
                             const label = e.target.value.trim() || f.label;
                             setRenaming(null);
-                            setFrames((fs) => fs.map((x) => (x.id === f.id ? { ...x, label } : x)));
+                            setFrames((fs) =>
+                              fs.map((x) =>
+                                x.id === f.id ? { ...x, label } : x,
+                              ),
+                            );
                             persist(f.id, { label });
                           }}
-                          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-1 outline-none focus:border-raspberry-600"
+                          onKeyDown={(e) =>
+                            e.key === "Enter" &&
+                            (e.target as HTMLInputElement).blur()
+                          }
+                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-card px-1 outline-none focus:border-raspberry-600"
                         />
                       ) : (
                         <button
@@ -395,7 +553,10 @@ export function Canvas({
                           onDoubleClick={() => setRenaming(f.id)}
                           onClick={() => setActive(f.id)}
                           title="Double-click to rename"
-                          className={cn("truncate font-medium", isActive ? "text-raspberry-800" : "text-stone-700")}
+                          className={cn(
+                            "truncate font-medium",
+                            isActive ? "text-raspberry-800" : "text-stone-700",
+                          )}
                         >
                           {f.label}
                         </button>
@@ -409,14 +570,19 @@ export function Canvas({
                         type="button"
                         onClick={() => removeFrame(f.id)}
                         aria-label={`Remove ${f.label}`}
-                        className="grid shrink-0 place-items-center rounded-full p-1 text-stone-500 transition-colors hover:bg-white hover:text-red-700"
+                        className="grid shrink-0 place-items-center rounded-full p-1 text-stone-500 transition-colors hover:bg-card hover:text-red-700"
                       >
-                        <X style={{ width: "1em", height: "1em" }} aria-hidden="true" />
+                        <X
+                          style={{ width: "1em", height: "1em" }}
+                          aria-hidden="true"
+                        />
                       </button>
                     </div>
                     <div
-                      className={`relative overflow-hidden rounded-3xl bg-white shadow-[0_18px_36px_-22px_rgba(124,58,237,.45)] ${
-                        isActive ? "ring-4 ring-raspberry-600" : "ring-1 ring-stone-300"
+                      className={`relative overflow-hidden rounded-3xl bg-card shadow-[0_18px_36px_-22px_rgba(124,58,237,.45)] ${
+                        isActive
+                          ? "ring-4 ring-raspberry-600"
+                          : "ring-1 ring-stone-300"
                       }`}
                       style={{ height: f.height }}
                     >
@@ -437,7 +603,11 @@ export function Canvas({
                           route={f.route}
                           onRouteChange={(hash) => {
                             if (hash === f.route) return;
-                            setFrames((fs) => fs.map((x) => (x.id === f.id ? { ...x, route: hash } : x)));
+                            setFrames((fs) =>
+                              fs.map((x) =>
+                                x.id === f.id ? { ...x, route: hash } : x,
+                              ),
+                            );
                             persist(f.id, { route: hash.slice(0, 200) });
                           }}
                         />
@@ -455,13 +625,24 @@ export function Canvas({
                     <div
                       role="presentation"
                       title="Drag to resize"
-                      className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white btn-glow"
-                      style={{ transform: `scale(${Math.max(1, 1 / view.z / 2)})` }}
+                      className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-card btn-glow"
+                      style={{
+                        transform: `scale(${Math.max(1, 1 / view.z / 2)})`,
+                      }}
                       onPointerDown={(e) => {
                         e.stopPropagation();
-                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                        (e.currentTarget as HTMLElement).setPointerCapture(
+                          e.pointerId,
+                        );
                         setActive(f.id);
-                        setDrag({ kind: "resize", id: f.id, sx: e.clientX, sy: e.clientY, ow: f.width, oh: f.height });
+                        setDrag({
+                          kind: "resize",
+                          id: f.id,
+                          sx: e.clientX,
+                          sy: e.clientY,
+                          ow: f.width,
+                          oh: f.height,
+                        });
                       }}
                       onPointerMove={onPointerMove}
                       onPointerUp={onPointerUp}
@@ -472,14 +653,18 @@ export function Canvas({
           </div>
 
           {latest && frames.length > 0 && (
-            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm">
-              Drag the background to pan · ⌘/Ctrl + scroll to zoom · click a frame to use it · navigate inside a frame to set its screen
+            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-card/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm">
+              Drag the background to pan · ⌘/Ctrl + scroll to zoom · click a
+              frame to use it · navigate inside a frame to set its screen
             </p>
           )}
         </div>
 
         {editing && (
-          <aside aria-label="Visual editor" className="glass flex w-[320px] rounded-[1.75rem] shrink-0 flex-col overflow-hidden">
+          <aside
+            aria-label="Visual editor"
+            className="glass flex w-[320px] rounded-[1.75rem] shrink-0 flex-col overflow-hidden"
+          >
             <Inspector
               selected={editor.selected}
               editCount={editor.edits.length}

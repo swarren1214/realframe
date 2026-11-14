@@ -154,7 +154,7 @@ function Chip({
     <span
       title={title}
       className={cn(
-        "inline-flex h-6 max-w-full items-center gap-1 rounded-full bg-white px-2 text-[11px] text-stone-700 shadow-[inset_0_0_0_1px_var(--color-border)] [&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-stone-400",
+        "inline-flex h-6 max-w-full items-center gap-1 rounded-full bg-card px-2 text-[11px] text-stone-700 shadow-[inset_0_0_0_1px_var(--color-border)] [&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-stone-400",
         mono && "font-mono",
       )}
     >
@@ -584,7 +584,7 @@ export function BuildLog({
   return (
     <section
       aria-label="Build log"
-      className="flex h-64 shrink-0 flex-col overflow-hidden rounded-[1.4rem] bg-stone-900 text-stone-200"
+      className="rf-light-palette flex h-64 shrink-0 flex-col overflow-hidden rounded-[1.4rem] bg-stone-900 text-stone-200"
     >
       <div className="flex items-center gap-2 border-b border-stone-800 px-3.5 py-2 text-xs">
         {build && active(build) ? (

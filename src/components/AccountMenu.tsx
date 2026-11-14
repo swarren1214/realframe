@@ -14,7 +14,11 @@ export async function AccountMenu({ compact = false }: { compact?: boolean }) {
   if (!user) return null;
 
   const [{ data: profile }, { data: quotaRows }] = await Promise.all([
-    supabase.from("profiles").select("display_name, plan").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("display_name, plan, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle(),
     supabase.rpc("generation_quota"),
   ]);
   const q = (quotaRows as Quota[] | null)?.[0];
@@ -23,6 +27,7 @@ export async function AccountMenu({ compact = false }: { compact?: boolean }) {
     <AccountMenuClient
       compact={compact}
       name={profile?.display_name ?? null}
+      avatarUrl={profile?.avatar_url ?? null}
       email={user.email ?? ""}
       plan={profile?.plan === "pro" ? "pro" : "free"}
       usage={

@@ -231,14 +231,14 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
           )}
         />
         {state === "loading" && (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-white">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-card">
             <Spinner className="size-5 text-stone-400 [animation-delay:200ms]" />
           </div>
         )}
         {state === "failed" && (
           <div
             role="alert"
-            className="absolute inset-0 grid place-items-center bg-white p-6 text-center"
+            className="absolute inset-0 grid place-items-center bg-card p-6 text-center"
           >
             <div className="flex max-w-xs flex-col items-center gap-2">
               <span className="grid size-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">

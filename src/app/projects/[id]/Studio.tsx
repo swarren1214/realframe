@@ -17,6 +17,7 @@ import {
   History,
   KeyRound,
   LayoutGrid,
+  Layers,
   MessageSquare,
   Monitor,
   PencilRuler,
@@ -30,6 +31,7 @@ import {
   Undo2,
   UserPlus,
   Users,
+  UserRoundCheck,
   X,
 } from "lucide-react";
 import { Mark } from "@/components/Logo";
@@ -118,11 +120,32 @@ import {
   restoreVersion as raw_restoreVersion,
   setAccessMode as raw_setAccessMode,
   setGuestComments as raw_setGuestComments,
+  updateDeviceSettings as raw_updateDeviceSettings,
   setProjectPassword as raw_setProjectPassword,
   updateSlug as raw_updateSlug,
   unpublish as raw_unpublish,
 } from "../actions";
 import { unwrapped } from "@/lib/safe-action";
+import { readSettings } from "@/lib/devices";
+import {
+  DevicePicker,
+  DeviceStage,
+  RotateButton,
+  useDeviceView,
+} from "@/components/devices/DeviceView";
+import { DeviceSettingsDialog } from "@/components/devices/DeviceSettingsDialog";
+import { MoveToTeamDialog } from "@/components/teams/MoveToTeamDialog";
+import {
+  TransferDialog,
+  type Teammate,
+} from "@/components/teams/TransferDialog";
+import {
+  Dots,
+  type DsOption,
+} from "@/components/design-systems/DesignSystemSelect";
+import { setProjectDesignSystem as raw_setProjectDesignSystem } from "@/app/design-systems/actions";
+import type { Device } from "@/lib/devices";
+import type { Team } from "@/lib/team-shared";
 
 const contentUrl = unwrapped(raw_contentUrl);
 const deleteProject = unwrapped(raw_deleteProject);
@@ -136,6 +159,8 @@ const renameProject = unwrapped(raw_renameProject);
 const restoreVersion = unwrapped(raw_restoreVersion);
 const setAccessMode = unwrapped(raw_setAccessMode);
 const setGuestComments = unwrapped(raw_setGuestComments);
+const updateDeviceSettings = unwrapped(raw_updateDeviceSettings);
+const setProjectDesignSystem = unwrapped(raw_setProjectDesignSystem);
 const setProjectPassword = unwrapped(raw_setProjectPassword);
 const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
@@ -154,12 +179,6 @@ type Run = (
   key?: string,
   done?: Done,
 ) => void;
-const DEVICES = [
-  { id: "desktop", label: "Desktop", width: "100%", icon: Monitor },
-  { id: "tablet", label: "Tablet", width: "820px", icon: Tablet },
-  { id: "phone", label: "Phone", width: "390px", icon: Smartphone },
-] as const;
-type DeviceId = (typeof DEVICES)[number]["id"];
 
 const STARTERS = [
   "A dispatch board for field techs: one column per tech, an unassigned queue, drag jobs between columns, and flag jobs at risk of missing their SLA.",
@@ -179,11 +198,24 @@ export function Studio(props: {
   initialVersionId: string | null;
   /** Content-domain URL when the latest version is an imported app. */
   initialSrc?: string | null;
-  quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
+  quota: {
+    plan: "free" | "pro" | "team";
+    limit: number;
+    remaining: number;
+  } | null;
   variants: Variant[];
   /** The GitHub repository this prototype builds from, and its recent builds. */
   source?: Source | null;
   builds?: Build[];
+  /** The team's own device templates. */
+  teamDevices?: Device[];
+  /** Teams the owner can move this prototype into. */
+  teams?: Team[];
+  /** People on the prototype's team, for transferring ownership. */
+  teammates?: Teammate[];
+  /** The team's design systems, for the composer's picker and version badges. */
+  designSystems?: DsOption[];
+  allDesignSystemNames?: Record<string, string>;
   /** The profile menu, rendered on the server and passed through. */
   accountMenu?: React.ReactNode;
 }) {
@@ -213,7 +245,22 @@ export function Studio(props: {
       ? { [props.initialVersionId]: props.initialSrc }
       : {},
   );
-  const [device, setDevice] = useState<DeviceId>("desktop");
+  const [deviceSettings, setDeviceSettings] = useState(() =>
+    readSettings(project.devices),
+  );
+  const teamDevices = useMemo(
+    () => props.teamDevices ?? [],
+    [props.teamDevices],
+  );
+  const view = useDeviceView(project.id, deviceSettings, teamDevices);
+  const [moving, setMoving] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const dsNames = props.allDesignSystemNames ?? {};
+  const [dsId, setDsId] = useState<string | null>(
+    project.design_system_id ?? null,
+  );
+  const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("versions");
   const [prompt, setPrompt] = useState("");
@@ -426,7 +473,6 @@ export function Studio(props: {
   const reviewUrl = host
     ? reviewUrlFor(project.slug, host)
     : `/p/${project.slug}`;
-  const width = DEVICES.find((d) => d.id === device)!.width;
   const isLive =
     project.published && selected && project.live_version_id === selected.id;
 
@@ -476,24 +522,27 @@ export function Studio(props: {
           <Badge>Not published</Badge>
         )}
         <div className="flex-1" />
-        <ToggleGroup
-          type="single"
-          aria-label="Preview size"
-          value={device}
-          onValueChange={(v) => v && setDevice(v as DeviceId)}
-        >
-          {DEVICES.map(({ id, label, icon: Icon }) => (
-            <ToggleGroupItem
-              key={id}
-              value={id}
-              aria-label={label}
-              title={label}
-            >
-              <Icon />
-              <span className="hidden xl:inline">{label}</span>
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <DevicePicker
+          view={view}
+          measure={measure}
+          onOpenSettings={
+            isOwner ? () => setDeviceSettingsOpen(true) : undefined
+          }
+        />
+        <RotateButton view={view} />
+        {isOwner && (
+          <DeviceSettingsDialog
+            open={deviceSettingsOpen}
+            onOpenChange={setDeviceSettingsOpen}
+            settings={deviceSettings}
+            extra={teamDevices}
+            onSave={async (next) => {
+              const saved = await updateDeviceSettings(project.id, next);
+              setDeviceSettings(saved);
+              notify.success("Device settings saved");
+            }}
+          />
+        )}
         <Button asChild variant="ghost">
           <Link href={`/projects/${project.id}/canvas`}>
             <LayoutGrid />
@@ -554,6 +603,18 @@ export function Studio(props: {
                 <Copy />
                 Copy review link
               </DropdownMenuItem>
+              {(props.teams?.length ?? 0) > 1 && (
+                <DropdownMenuItem onSelect={() => setMoving(true)}>
+                  <Users />
+                  Move to team…
+                </DropdownMenuItem>
+              )}
+              {props.teammates && (
+                <DropdownMenuItem onSelect={() => setTransferring(true)}>
+                  <UserRoundCheck />
+                  Transfer ownership…
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
@@ -567,6 +628,25 @@ export function Studio(props: {
         )}
         {props.accountMenu}
       </header>
+      {props.teammates && (
+        <TransferDialog
+          open={transferring}
+          onOpenChange={setTransferring}
+          projectId={project.id}
+          projectName={project.name}
+          ownerId={project.owner_id}
+          teammates={props.teammates}
+        />
+      )}
+      {props.teams && (
+        <MoveToTeamDialog
+          open={moving}
+          onOpenChange={setMoving}
+          projectId={project.id}
+          currentTeamId={project.team_id ?? null}
+          teams={props.teams}
+        />
+      )}
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -603,6 +683,11 @@ export function Studio(props: {
                 {quota.remaining}/{quota.limit} free builds left
               </span>
             )}
+            {quota?.plan === "team" && (
+              <span className="ml-auto rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-medium text-raspberry-800">
+                Team Pro
+              </span>
+            )}
           </div>
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             {messages.length === 0 && !busy && (
@@ -615,7 +700,7 @@ export function Studio(props: {
                     key={s}
                     type="button"
                     onClick={() => setPrompt(s)}
-                    className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-white p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
+                    className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
                   >
                     <Sparkles
                       className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
@@ -685,7 +770,7 @@ export function Studio(props: {
                 ? `Describe a change to v${selected?.number ?? ""}`
                 : "Describe your prototype"}
             </label>
-            <div className="rounded-3xl border border-stone-200 bg-white p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+            <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
               <textarea
                 id="prompt"
                 rows={3}
@@ -702,6 +787,54 @@ export function Studio(props: {
                 className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
               />
               <div className="flex items-center gap-1.5">
+                {(props.designSystems?.length ?? 0) > 0 && (
+                  <Select
+                    value={dsId ?? "none"}
+                    disabled={busy}
+                    onValueChange={async (v) => {
+                      const next = v === "none" ? null : v;
+                      const prev = dsId;
+                      setDsId(next);
+                      try {
+                        await setProjectDesignSystem(project.id, next);
+                        notify.info(
+                          next
+                            ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
+                            : "Next build uses no design system",
+                          "Earlier versions keep their look.",
+                        );
+                      } catch (e) {
+                        setDsId(prev);
+                        notify.error(
+                          e instanceof Error
+                            ? e.message
+                            : "Couldn't change it.",
+                        );
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Design system"
+                      title="The design system builds follow"
+                      className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {props.designSystems!.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          <Dots colors={d.colors} />
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="none">
+                        <Sparkles className="size-4 text-stone-500" />
+                        No design system
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <Select
                   value={String(variantCount)}
                   onValueChange={(v) => setVariantCount(Number(v) as 1 | 2 | 3)}
@@ -767,12 +900,14 @@ export function Studio(props: {
                 </form>
               </div>
             )}
-            {outOfQuota && quota?.plan === "pro" && !error && (
-              <p className="mt-2 text-xs text-stone-600">
-                You&apos;ve hit the daily safety limit of {quota.limit} builds.
-                It frees up on a rolling 24-hour basis.
-              </p>
-            )}
+            {outOfQuota &&
+              (quota?.plan === "pro" || quota?.plan === "team") &&
+              !error && (
+                <p className="mt-2 text-xs text-stone-600">
+                  You&apos;ve hit the daily safety limit of {quota.limit}{" "}
+                  builds. It frees up on a rolling 24-hour basis.
+                </p>
+              )}
             {error && (
               <p role="alert" className="mt-2 text-xs text-red-700">
                 {error}
@@ -801,7 +936,7 @@ export function Studio(props: {
             }
           />
         ) : (
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4">
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
             <div className="mb-3 flex items-center gap-2">
               {selected && (
                 <Badge>
@@ -815,6 +950,11 @@ export function Studio(props: {
                   ? "Click an element to edit it. Links and buttons are paused while editing."
                   : selected?.summary}
               </span>
+              {hasPreview && view.scale !== "dynamic" && (
+                <span className="hidden text-xs tabular-nums text-stone-500 md:inline">
+                  {view.scale === "fit" ? `Fit · ${measure.percent}%` : "100%"}
+                </span>
+              )}
               {hasPreview && !editMode && (
                 <Button
                   size="sm"
@@ -845,31 +985,40 @@ export function Studio(props: {
             )}
             <div
               className={cn(
-                "mx-auto min-h-0 w-full flex-1 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300",
+                "flex min-h-0 w-full flex-1 flex-col",
+                !hasPreview &&
+                  "overflow-hidden rounded-3xl border border-stone-200 bg-card",
                 presenting && hasPreview && PRESENT_FRAME_CLASS,
               )}
-              style={{ maxWidth: presenting && hasPreview ? undefined : width }}
             >
-              {src ? (
-                <PrototypeFrame
-                  src={src}
-                  title={`${project.name} v${selected?.number}`}
-                />
-              ) : html ? (
-                editMode && editor.editableHtml ? (
-                  <PrototypeFrame
-                    ref={editor.frame}
-                    html={editor.editableHtml}
-                    title={`${project.name} v${selected?.number} (editing)`}
-                    editMode
-                    onSelectElement={editor.setSelected}
-                  />
-                ) : (
-                  <PrototypeFrame
-                    html={html}
-                    title={`${project.name} v${selected?.number}`}
-                  />
-                )
+              {hasPreview ? (
+                <DeviceStage
+                  view={view}
+                  presenting={presenting}
+                  onMeasure={setMeasure}
+                >
+                  {src ? (
+                    <PrototypeFrame
+                      src={src}
+                      title={`${project.name} v${selected?.number}`}
+                    />
+                  ) : html ? (
+                    editMode && editor.editableHtml ? (
+                      <PrototypeFrame
+                        ref={editor.frame}
+                        html={editor.editableHtml}
+                        title={`${project.name} v${selected?.number} (editing)`}
+                        editMode
+                        onSelectElement={editor.setSelected}
+                      />
+                    ) : (
+                      <PrototypeFrame
+                        html={html}
+                        title={`${project.name} v${selected?.number}`}
+                      />
+                    )
+                  ) : null}
+                </DeviceStage>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-[13px] text-stone-500">
                   {selected ? (
@@ -1009,6 +1158,11 @@ export function Studio(props: {
                           <VersionItem
                             key={v.id}
                             version={v}
+                            designSystem={
+                              v.design_system_id
+                                ? dsNames[v.design_system_id]
+                                : undefined
+                            }
                             selected={v.id === selected?.id}
                             live={
                               v.id === project.live_version_id &&
@@ -1295,7 +1449,7 @@ function SharePanel({
           <label htmlFor="slug" className="sr-only">
             Subdomain
           </label>
-          <div className="flex min-w-0 flex-1 items-center rounded-full border border-stone-200 bg-white pr-3 focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+          <div className="flex min-w-0 flex-1 items-center rounded-full border border-stone-200 bg-card pr-3 focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
             <input
               id="slug"
               value={address}
@@ -1555,7 +1709,7 @@ function VariantCompare({
 }) {
   const anyBusy = busyKey !== null;
   return (
-    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4">
+    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -1588,7 +1742,7 @@ function VariantCompare({
           <section
             key={v.id}
             aria-label={`Variant ${v.position}`}
-            className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
+            className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-card shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
           >
             <div className="flex items-start gap-3 border-b border-stone-100 p-3">
               <div className="min-w-0 flex-1">
@@ -1648,7 +1802,10 @@ function VersionItem({
   disabled,
   onSelect,
   onRestore,
+  designSystem,
 }: {
+  /** The design system this version was built with, if any. */
+  designSystem?: string;
   version: VersionMeta;
   selected: boolean;
   live: boolean;
@@ -1691,6 +1848,15 @@ function VersionItem({
           )}
           {v.source !== "ai" && (
             <Badge>{SOURCE_LABEL[v.source] ?? v.source}</Badge>
+          )}
+          {designSystem && (
+            <Badge
+              className="max-w-28 bg-blue-50 text-blue-800"
+              title={`Built with ${designSystem}`}
+            >
+              <Layers />
+              <span className="truncate">{designSystem}</span>
+            </Badge>
           )}
           <span
             suppressHydrationWarning

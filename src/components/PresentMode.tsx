@@ -109,7 +109,7 @@ export function PresentControls({ onExit }: { onExit: () => void }) {
 
   return (
     <>
-      <div className="fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-[2147483001] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
+      <div className="rf-light-palette fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-[2147483001] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
         {!full && canFullscreen() && (
           <Button
             variant="secondary"
@@ -137,7 +137,7 @@ export function PresentControls({ onExit }: { onExit: () => void }) {
       {hint !== "none" && (
         <div
           role="status"
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[2147483001] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-xs text-white shadow-lg backdrop-blur"
+          className="rf-light-palette fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[2147483001] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-xs text-white shadow-lg backdrop-blur"
         >
           {hint === "tap" ? (
             <>

@@ -19,10 +19,10 @@ create index device_tokens_user_idx on public.device_tokens (user_id);
 alter table public.device_tokens enable row level security;
 
 create policy "device_tokens: read own" on public.device_tokens
-  for select using (user_id = auth.uid());
+  for select using (user_id = (select auth.uid()));
 create policy "device_tokens: add own" on public.device_tokens
-  for insert with check (user_id = auth.uid());
+  for insert with check (user_id = (select auth.uid()));
 create policy "device_tokens: update own" on public.device_tokens
-  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+  for update using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 create policy "device_tokens: delete own" on public.device_tokens
-  for delete using (user_id = auth.uid());
+  for delete using (user_id = (select auth.uid()));

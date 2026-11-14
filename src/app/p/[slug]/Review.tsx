@@ -37,6 +37,13 @@ import {
   type Role,
   type Thread,
 } from "@/lib/types";
+import { readSettings, type Device } from "@/lib/devices";
+import {
+  DevicePicker,
+  DeviceStage,
+  RotateButton,
+  useDeviceView,
+} from "@/components/devices/DeviceView";
 
 type Version = {
   id: string;
@@ -57,7 +64,10 @@ export function Review({
   guestName,
   present = false,
   accountMenu,
+  teamDevices: teamDevicesProp,
 }: {
+  /** The prototype's team's own device templates. */
+  teamDevices?: Device[];
   project: Project;
   role: Role;
   userEmail: string | null;
@@ -84,6 +94,17 @@ export function Review({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [presenting, setPresenting] = useState(present);
+  const deviceSettings = useMemo(
+    () => readSettings(project.devices),
+    [project.devices],
+  );
+  const teamDevices = useMemo(() => teamDevicesProp ?? [], [teamDevicesProp]);
+  const view = useDeviceView(
+    `review:${project.id}`,
+    deviceSettings,
+    teamDevices,
+  );
+  const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
 
   const ordered = useMemo(
     () => threads.map((t, i) => ({ ...t, n: i + 1 })),
@@ -262,6 +283,8 @@ export function Review({
           <Badge>v{version.number} · Draft</Badge>
         )}
         <div className="flex-1" />
+        {view.list.length > 1 && <DevicePicker view={view} measure={measure} />}
+        <RotateButton view={view} />
         <Button
           variant="ghost"
           title="Show the prototype full screen"
@@ -314,7 +337,7 @@ export function Review({
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <main
-          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4"
+          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setCommentMode(false);
@@ -339,22 +362,28 @@ export function Review({
             role={presenting ? "dialog" : undefined}
             aria-label={presenting ? `${project.name}, full screen` : undefined}
             className={cn(
-              "h-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]",
+              "flex h-full flex-col",
               presenting && PRESENT_FRAME_CLASS,
             )}
           >
-            <PrototypeFrame
-              html={version.html}
-              src={version.src}
-              title={`${project.name} v${version.number}`}
-              commentMode={commentMode}
-              pins={pins}
-              onPick={(x, y) => {
-                setDraft({ x, y });
-                setCommentMode(false);
-              }}
-              onSelectPin={(id) => setSelected(id)}
-            />
+            <DeviceStage
+              view={view}
+              presenting={presenting}
+              onMeasure={setMeasure}
+            >
+              <PrototypeFrame
+                html={version.html}
+                src={version.src}
+                title={`${project.name} v${version.number}`}
+                commentMode={commentMode}
+                pins={pins}
+                onPick={(x, y) => {
+                  setDraft({ x, y });
+                  setCommentMode(false);
+                }}
+                onSelectPin={(id) => setSelected(id)}
+              />
+            </DeviceStage>
           </div>
           {draft && (
             <form
