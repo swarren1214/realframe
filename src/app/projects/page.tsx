@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eyebrow } from "@/components/Eyebrow";
 import { createProject } from "./actions";
-import { loadTeams } from "@/lib/teams";
+import { loadTeams, teamLabel } from "@/lib/teams";
+import { DesignSystemSelect } from "@/components/design-systems/DesignSystemSelect";
+import { swatches, type Tokens } from "@/lib/design-systems/types";
 import { BuiltForSelect } from "@/components/devices/BuiltForSelect";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,21 @@ export default async function ProjectsPage() {
       .order("updated_at", { ascending: false }),
     loadTeams(supabase, user.id),
   ]);
+
+  const { data: systems } = current
+    ? await supabase
+        .from("design_systems")
+        .select("id, name, tokens, is_default")
+        .eq("team_id", current.id)
+        .not("synced_at", "is", null)
+        .order("created_at")
+    : { data: [] };
+  const dsOptions = (systems ?? []).map((d) => ({
+    id: d.id as string,
+    name: d.name as string,
+    colors: swatches(d.tokens as Tokens, 3),
+    isDefault: Boolean(d.is_default),
+  }));
 
   // The current team's prototypes; others' prototypes you were invited to individually.
   const myTeams = new Set(teams.map((t) => t.id));
@@ -75,6 +92,12 @@ export default async function ProjectsPage() {
             className="h-10 min-w-0 flex-1 border-transparent bg-transparent hover:border-transparent focus:ring-0"
           />
           <BuiltForSelect />
+          {current && (
+            <DesignSystemSelect
+              options={dsOptions}
+              teamName={teamLabel(current)}
+            />
+          )}
           <Button variant="default" size="lg" type="submit">
             <Plus />
             New prototype

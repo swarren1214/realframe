@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { generatePrototype } from "@/lib/ai";
 import {
   IMPORTED_APP_MESSAGE,
@@ -40,7 +41,7 @@ export async function POST(
     return NextResponse.json({ error: read.error }, { status: 400 });
   const { prompt } = read;
 
-  const { current, history, context } = await loadBuildContext(
+  const { current, history, context, designSystemId } = await loadBuildContext(
     supabase,
     id,
     body.baseVersionId,
@@ -55,14 +56,12 @@ export async function POST(
   );
   if (claimError || !claimId) return limitResponse(claimError?.message);
 
-  await supabase
-    .from("messages")
-    .insert({
-      project_id: id,
-      role: "user",
-      content: prompt,
-      created_by: user.id,
-    });
+  await supabase.from("messages").insert({
+    project_id: id,
+    role: "user",
+    content: prompt,
+    created_by: user.id,
+  });
 
   try {
     const result = await generatePrototype({
@@ -81,6 +80,12 @@ export async function POST(
     if (error || !version)
       throw new Error(error?.message ?? "Could not save the version.");
     const v = version as { id: string; number: number };
+    if (designSystemId) {
+      await createAdminClient()
+        .from("versions")
+        .update({ design_system_id: designSystemId })
+        .eq("id", v.id);
+    }
     await finishBuild(claimId as string, {
       ok: true,
       input: result.usage.input,
@@ -101,14 +106,12 @@ export async function POST(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed.";
     await finishBuild(claimId as string, { ok: false });
-    await supabase
-      .from("messages")
-      .insert({
-        project_id: id,
-        role: "assistant",
-        content: `That didn't work: ${message}`,
-        created_by: user.id,
-      });
+    await supabase.from("messages").insert({
+      project_id: id,
+      role: "assistant",
+      content: `That didn't work: ${message}`,
+      created_by: user.id,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

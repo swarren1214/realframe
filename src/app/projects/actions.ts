@@ -36,13 +36,28 @@ export async function createProject(formData: FormData) {
     String(formData.get("name") ?? "")
       .trim()
       .slice(0, 80) || "Untitled prototype";
+  const teamId = (await loadTeams(supabase, user.id)).current?.id ?? null;
+  // A design system from the form, if it's a ready one on this team.
+  const wanted = String(formData.get("design_system") ?? "");
+  let designSystemId: string | null = null;
+  if (teamId && wanted && wanted !== "none") {
+    const { data: ds } = await supabase
+      .from("design_systems")
+      .select("id")
+      .eq("id", wanted)
+      .eq("team_id", teamId)
+      .not("synced_at", "is", null)
+      .maybeSingle();
+    designSystemId = ds?.id ?? null;
+  }
   const { data, error } = await supabase
     .from("projects")
     .insert({
       name,
       slug: makeSlug(name),
       owner_id: user.id,
-      team_id: (await loadTeams(supabase, user.id)).current?.id ?? null,
+      team_id: teamId,
+      design_system_id: designSystemId,
       devices: builtFor(String(formData.get("built_for") ?? "")),
     })
     .select("id")

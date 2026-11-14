@@ -1,4 +1,10 @@
 import { deviceBrief, readSettings } from "@/lib/devices";
+import { designSystemBrief } from "@/lib/design-systems/brief";
+import {
+  DS_COLUMNS,
+  type DesignSystem,
+  type Rule,
+} from "@/lib/design-systems/types";
 import "server-only";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -77,13 +83,41 @@ export async function loadBuildContext(
         .limit(8),
       supabase
         .from("projects")
-        .select("devices")
+        .select("devices, design_system_id")
         .eq("id", projectId)
         .maybeSingle(),
     ]);
+  let dsBrief = "";
+  let designSystemId: string | null = null;
+  if (project?.design_system_id) {
+    const [{ data: ds }, { data: rules }] = await Promise.all([
+      supabase
+        .from("design_systems")
+        .select(DS_COLUMNS)
+        .eq("id", project.design_system_id)
+        .not("synced_at", "is", null)
+        .maybeSingle(),
+      supabase
+        .from("design_system_rules")
+        .select("*")
+        .eq("design_system_id", project.design_system_id)
+        .eq("status", "active")
+        .order("created_at"),
+    ]);
+    if (ds) {
+      dsBrief = designSystemBrief(
+        ds as unknown as DesignSystem,
+        (rules ?? []) as Rule[],
+      );
+      designSystemId = (ds as unknown as DesignSystem).id;
+    }
+  }
   return {
-    /** Extra direction for the model: the screens this prototype is built for. */
-    context: deviceBrief(readSettings(project?.devices)),
+    /** Extra direction for the model: target screens and the team's design system. */
+    context: [deviceBrief(readSettings(project?.devices)), dsBrief]
+      .filter(Boolean)
+      .join("\n\n"),
+    designSystemId,
     current:
       (baseRows?.[0] as
         { id: string; html: string; kind: "html" | "bundle" } | undefined) ??

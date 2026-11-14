@@ -83,14 +83,12 @@ export async function POST(
     );
   }
 
-  await supabase
-    .from("messages")
-    .insert({
-      project_id: id,
-      role: "user",
-      content: `${prompt}\n\n(${claims.length} variants)`,
-      created_by: user.id,
-    });
+  await supabase.from("messages").insert({
+    project_id: id,
+    role: "user",
+    content: `${prompt}\n\n(${claims.length} variants)`,
+    created_by: user.id,
+  });
 
   const groupId = crypto.randomUUID();
   const results = await Promise.allSettled(
@@ -136,14 +134,12 @@ export async function POST(
       reason?.reason instanceof Error
         ? reason.reason.message
         : "Generation failed.";
-    await supabase
-      .from("messages")
-      .insert({
-        project_id: id,
-        role: "assistant",
-        content: `That didn't work: ${message}`,
-        created_by: user.id,
-      });
+    await supabase.from("messages").insert({
+      project_id: id,
+      role: "assistant",
+      content: `That didn't work: ${message}`,
+      created_by: user.id,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 

@@ -11,6 +11,7 @@ import type {
 } from "@/lib/types";
 import { Studio } from "./Studio";
 import { loadTeamDevices, loadTeams } from "@/lib/teams";
+import { swatches, type Tokens } from "@/lib/design-systems/types";
 import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
 import { BUILD_COLUMNS, type Build, type Source } from "@/lib/builds/types";
@@ -103,10 +104,36 @@ export default async function StudioPage({
       .order("queued_at", { ascending: false })
       .limit(8),
   ]);
-  const [teamDevices, { teams }] = await Promise.all([
+  const [teamDevices, { teams }, { data: systems }] = await Promise.all([
     loadTeamDevices(supabase, project.team_id),
     loadTeams(supabase, user.id),
+    project.team_id
+      ? supabase
+          .from("design_systems")
+          .select("id, name, tokens, is_default, synced_at")
+          .eq("team_id", project.team_id)
+          .order("created_at")
+      : Promise.resolve({
+          data: [] as {
+            id: string;
+            name: string;
+            tokens: Tokens;
+            is_default: boolean;
+            synced_at: string | null;
+          }[],
+        }),
   ]);
+  const allDesignSystemNames = Object.fromEntries(
+    (systems ?? []).map((d) => [d.id, d.name]),
+  );
+  const designSystems = (systems ?? [])
+    .filter((d) => d.synced_at)
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      colors: swatches(d.tokens as Tokens, 3),
+      isDefault: d.is_default,
+    }));
 
   // Only the most recent group of unkept variants is shown for comparison.
   const pendingRows = (pending.data ?? []) as Variant[];
@@ -146,6 +173,8 @@ export default async function StudioPage({
       source={(source.data as Source | null) ?? null}
       builds={(builds.data ?? []) as Build[]}
       teamDevices={teamDevices}
+      designSystems={designSystems}
+      allDesignSystemNames={allDesignSystemNames}
       teams={role === "owner" ? teams : undefined}
     />
   );

@@ -17,6 +17,7 @@ import {
   History,
   KeyRound,
   LayoutGrid,
+  Layers,
   MessageSquare,
   Monitor,
   PencilRuler,
@@ -133,6 +134,11 @@ import {
 } from "@/components/devices/DeviceView";
 import { DeviceSettingsDialog } from "@/components/devices/DeviceSettingsDialog";
 import { MoveToTeamDialog } from "@/components/teams/MoveToTeamDialog";
+import {
+  Dots,
+  type DsOption,
+} from "@/components/design-systems/DesignSystemSelect";
+import { setProjectDesignSystem as raw_setProjectDesignSystem } from "@/app/design-systems/actions";
 import type { Device } from "@/lib/devices";
 import type { Team } from "@/lib/team-shared";
 
@@ -149,6 +155,7 @@ const restoreVersion = unwrapped(raw_restoreVersion);
 const setAccessMode = unwrapped(raw_setAccessMode);
 const setGuestComments = unwrapped(raw_setGuestComments);
 const updateDeviceSettings = unwrapped(raw_updateDeviceSettings);
+const setProjectDesignSystem = unwrapped(raw_setProjectDesignSystem);
 const setProjectPassword = unwrapped(raw_setProjectPassword);
 const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
@@ -195,6 +202,9 @@ export function Studio(props: {
   teamDevices?: Device[];
   /** Teams the owner can move this prototype into. */
   teams?: Team[];
+  /** The team's design systems, for the composer's picker and version badges. */
+  designSystems?: DsOption[];
+  allDesignSystemNames?: Record<string, string>;
   /** The profile menu, rendered on the server and passed through. */
   accountMenu?: React.ReactNode;
 }) {
@@ -233,6 +243,10 @@ export function Studio(props: {
   );
   const view = useDeviceView(project.id, deviceSettings, teamDevices);
   const [moving, setMoving] = useState(false);
+  const dsNames = props.allDesignSystemNames ?? {};
+  const [dsId, setDsId] = useState<string | null>(
+    project.design_system_id ?? null,
+  );
   const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -740,6 +754,54 @@ export function Studio(props: {
                 className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
               />
               <div className="flex items-center gap-1.5">
+                {(props.designSystems?.length ?? 0) > 0 && (
+                  <Select
+                    value={dsId ?? "none"}
+                    disabled={busy}
+                    onValueChange={async (v) => {
+                      const next = v === "none" ? null : v;
+                      const prev = dsId;
+                      setDsId(next);
+                      try {
+                        await setProjectDesignSystem(project.id, next);
+                        notify.info(
+                          next
+                            ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
+                            : "Next build uses no design system",
+                          "Earlier versions keep their look.",
+                        );
+                      } catch (e) {
+                        setDsId(prev);
+                        notify.error(
+                          e instanceof Error
+                            ? e.message
+                            : "Couldn't change it.",
+                        );
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Design system"
+                      title="The design system builds follow"
+                      className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {props.designSystems!.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          <Dots colors={d.colors} />
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="none">
+                        <Sparkles className="size-4 text-stone-500" />
+                        No design system
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <Select
                   value={String(variantCount)}
                   onValueChange={(v) => setVariantCount(Number(v) as 1 | 2 | 3)}
@@ -1061,6 +1123,11 @@ export function Studio(props: {
                           <VersionItem
                             key={v.id}
                             version={v}
+                            designSystem={
+                              v.design_system_id
+                                ? dsNames[v.design_system_id]
+                                : undefined
+                            }
                             selected={v.id === selected?.id}
                             live={
                               v.id === project.live_version_id &&
@@ -1700,7 +1767,10 @@ function VersionItem({
   disabled,
   onSelect,
   onRestore,
+  designSystem,
 }: {
+  /** The design system this version was built with, if any. */
+  designSystem?: string;
   version: VersionMeta;
   selected: boolean;
   live: boolean;
@@ -1743,6 +1813,15 @@ function VersionItem({
           )}
           {v.source !== "ai" && (
             <Badge>{SOURCE_LABEL[v.source] ?? v.source}</Badge>
+          )}
+          {designSystem && (
+            <Badge
+              className="max-w-28 bg-blue-50 text-blue-800"
+              title={`Built with ${designSystem}`}
+            >
+              <Layers />
+              <span className="truncate">{designSystem}</span>
+            </Badge>
           )}
           <span
             suppressHydrationWarning

@@ -132,6 +132,7 @@ body {
   --animate-collapsible-down: collapsible-down var(--duration-base) var(--ease-out);
   --animate-collapsible-up: collapsible-up var(--duration-fast) var(--ease-in-out);
   --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+  --animate-progress-slide: progress-slide 1.4s var(--ease-in-out) infinite;
 }
 
 @keyframes collapsible-down {
@@ -141,6 +142,10 @@ body {
 @keyframes collapsible-up {
   from { height: var(--radix-collapsible-content-height); opacity: 1; }
   to { height: 0; opacity: 0; }
+}
+@keyframes progress-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
 }
 @keyframes shimmer {
   from { background-position: 150% 0; }
