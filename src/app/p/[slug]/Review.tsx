@@ -37,7 +37,7 @@ import {
   type Role,
   type Thread,
 } from "@/lib/types";
-import { readSettings } from "@/lib/devices";
+import { readSettings, type Device } from "@/lib/devices";
 import {
   DevicePicker,
   DeviceStage,
@@ -64,7 +64,10 @@ export function Review({
   guestName,
   present = false,
   accountMenu,
+  teamDevices: teamDevicesProp,
 }: {
+  /** The prototype's team's own device templates. */
+  teamDevices?: Device[];
   project: Project;
   role: Role;
   userEmail: string | null;
@@ -95,7 +98,12 @@ export function Review({
     () => readSettings(project.devices),
     [project.devices],
   );
-  const view = useDeviceView(`review:${project.id}`, deviceSettings);
+  const teamDevices = useMemo(() => teamDevicesProp ?? [], [teamDevicesProp]);
+  const view = useDeviceView(
+    `review:${project.id}`,
+    deviceSettings,
+    teamDevices,
+  );
   const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
 
   const ordered = useMemo(

@@ -12,6 +12,7 @@ export type Project = {
   has_password?: boolean;
   guest_comments?: boolean;
   devices?: unknown;
+  team_id?: string | null;
   created_at: string;
   updated_at: string;
 };

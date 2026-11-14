@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eyebrow } from "@/components/Eyebrow";
 import { createProject } from "./actions";
+import { loadTeams } from "@/lib/teams";
 import { BuiltForSelect } from "@/components/devices/BuiltForSelect";
 
 export const dynamic = "force-dynamic";
@@ -25,13 +26,20 @@ export default async function ProjectsPage() {
     .maybeSingle();
   if (profile && !profile.onboarded_at) redirect("/welcome");
 
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, slug, owner_id, published, updated_at")
-    .order("updated_at", { ascending: false });
+  const [{ data: projects }, { teams, current }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, slug, owner_id, team_id, published, updated_at")
+      .order("updated_at", { ascending: false }),
+    loadTeams(supabase, user.id),
+  ]);
 
-  const mine = (projects ?? []).filter((p) => p.owner_id === user.id);
-  const shared = (projects ?? []).filter((p) => p.owner_id !== user.id);
+  // The current team's prototypes; others' prototypes you were invited to individually.
+  const myTeams = new Set(teams.map((t) => t.id));
+  const inTeam = (projects ?? []).filter((p) => p.team_id === current?.id);
+  const shared = (projects ?? []).filter(
+    (p) => !p.team_id || !myTeams.has(p.team_id),
+  );
 
   return (
     <div className="min-h-screen px-4 pb-16">
@@ -39,7 +47,7 @@ export default async function ProjectsPage() {
       <main className="mx-auto max-w-5xl px-2 pt-10">
         <div className="flex items-center gap-3">
           <h1 className="font-display text-2xl font-bold tracking-tight">
-            Your prototypes
+            {current && !current.personal ? current.name : "Your prototypes"}
           </h1>
           <div className="flex-1" />
           <ImportDialog
@@ -74,9 +82,15 @@ export default async function ProjectsPage() {
         </form>
 
         <ProjectList
-          title="Created by you"
-          items={mine}
-          empty="No prototypes yet. Name one above to start."
+          title={
+            current && !current.personal ? "Team prototypes" : "Created by you"
+          }
+          items={inTeam}
+          empty={
+            current && !current.personal
+              ? "No team prototypes yet. Name one above to start one everyone on the team can open."
+              : "No prototypes yet. Name one above to start."
+          }
         />
         {shared.length > 0 && (
           <ProjectList title="Shared with you" items={shared} shared />

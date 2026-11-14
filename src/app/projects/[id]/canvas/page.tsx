@@ -12,7 +12,11 @@ import { contentUrlFor } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
 
-export default async function CanvasPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CanvasPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const supabase = await createClient();
   const {
@@ -20,12 +24,20 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
   } = await supabase.auth.getUser();
   if (!user) redirect(`/?next=/projects/${id}/canvas`);
 
-  const { data: project } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
   if (!project) notFound();
   const { data: role } = await supabase.rpc("project_role", { p: id });
   if (role !== "owner" && role !== "editor") redirect(`/p/${project.slug}`);
 
-  const { data: profile } = await supabase.from("profiles").select("plan").eq("id", user.id).single();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .single();
   if (profile?.plan !== "pro") {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
@@ -41,10 +53,13 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
             <Sparkles />
             Pro feature
           </Badge>
-          <h1 className="mt-2 font-display text-xl font-bold tracking-tight">Lay out every screen on a canvas</h1>
+          <h1 className="mt-2 font-display text-xl font-bold tracking-tight">
+            Lay out every screen on a canvas
+          </h1>
           <p className="mt-1.5 text-[13px] text-stone-600">
-            See your prototype&apos;s screens side by side at desktop, tablet and phone sizes. Every frame is live, and you can edit any of
-            them visually.
+            See your prototype&apos;s screens side by side at desktop, tablet
+            and phone sizes. Every frame is live, and you can edit any of them
+            visually.
           </p>
           <form action="/api/billing/checkout" method="post" className="mt-5">
             <Button variant="default" size="lg" type="submit">
@@ -64,8 +79,17 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
   }
 
   const [{ data: frames }, { data: latest }] = await Promise.all([
-    supabase.from("canvas_frames").select("id, label, route, width, height, x, y, version_id").eq("project_id", id).order("created_at"),
-    supabase.from("versions").select("id, number, html, kind").eq("project_id", id).order("number", { ascending: false }).limit(1),
+    supabase
+      .from("canvas_frames")
+      .select("id, label, route, width, height, x, y, version_id")
+      .eq("project_id", id)
+      .order("created_at"),
+    supabase
+      .from("versions")
+      .select("id, number, html, kind")
+      .eq("project_id", id)
+      .order("number", { ascending: false })
+      .limit(1),
   ]);
 
   return (
@@ -77,7 +101,10 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
         latest?.[0]
           ? {
               ...(latest[0] as { id: string; number: number; html: string }),
-              src: latest[0].kind === "bundle" ? contentUrlFor(latest[0].id) : null,
+              src:
+                latest[0].kind === "bundle"
+                  ? contentUrlFor(latest[0].id)
+                  : null,
             }
           : null
       }

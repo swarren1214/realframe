@@ -132,6 +132,9 @@ import {
   useDeviceView,
 } from "@/components/devices/DeviceView";
 import { DeviceSettingsDialog } from "@/components/devices/DeviceSettingsDialog";
+import { MoveToTeamDialog } from "@/components/teams/MoveToTeamDialog";
+import type { Device } from "@/lib/devices";
+import type { Team } from "@/lib/team-shared";
 
 const contentUrl = unwrapped(raw_contentUrl);
 const deleteProject = unwrapped(raw_deleteProject);
@@ -188,6 +191,10 @@ export function Studio(props: {
   /** The GitHub repository this prototype builds from, and its recent builds. */
   source?: Source | null;
   builds?: Build[];
+  /** The team's own device templates. */
+  teamDevices?: Device[];
+  /** Teams the owner can move this prototype into. */
+  teams?: Team[];
   /** The profile menu, rendered on the server and passed through. */
   accountMenu?: React.ReactNode;
 }) {
@@ -220,7 +227,12 @@ export function Studio(props: {
   const [deviceSettings, setDeviceSettings] = useState(() =>
     readSettings(project.devices),
   );
-  const view = useDeviceView(project.id, deviceSettings);
+  const teamDevices = useMemo(
+    () => props.teamDevices ?? [],
+    [props.teamDevices],
+  );
+  const view = useDeviceView(project.id, deviceSettings, teamDevices);
+  const [moving, setMoving] = useState(false);
   const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -497,6 +509,7 @@ export function Studio(props: {
             open={deviceSettingsOpen}
             onOpenChange={setDeviceSettingsOpen}
             settings={deviceSettings}
+            extra={teamDevices}
             onSave={async (next) => {
               const saved = await updateDeviceSettings(project.id, next);
               setDeviceSettings(saved);
@@ -564,6 +577,12 @@ export function Studio(props: {
                 <Copy />
                 Copy review link
               </DropdownMenuItem>
+              {(props.teams?.length ?? 0) > 1 && (
+                <DropdownMenuItem onSelect={() => setMoving(true)}>
+                  <Users />
+                  Move to team…
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
@@ -577,6 +596,15 @@ export function Studio(props: {
         )}
         {props.accountMenu}
       </header>
+      {props.teams && (
+        <MoveToTeamDialog
+          open={moving}
+          onOpenChange={setMoving}
+          projectId={project.id}
+          currentTeamId={project.team_id ?? null}
+          teams={props.teams}
+        />
+      )}
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>

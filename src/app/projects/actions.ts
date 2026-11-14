@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { makeSlug } from "@/lib/slug";
 import { isReservedSlug } from "@/lib/hosts";
 import { readSettings, type DeviceSettings } from "@/lib/devices";
+import { loadTeams } from "@/lib/teams";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -41,6 +42,7 @@ export async function createProject(formData: FormData) {
       name,
       slug: makeSlug(name),
       owner_id: user.id,
+      team_id: (await loadTeams(supabase, user.id)).current?.id ?? null,
       devices: builtFor(String(formData.get("built_for") ?? "")),
     })
     .select("id")
