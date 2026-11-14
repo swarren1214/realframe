@@ -110,7 +110,14 @@ body {
   backdrop-filter: blur(16px);
 }
 
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid #be185d;
-  outline-offset: 2px;
+/* Keyboard focus ring for links and buttons that don't draw their own. Text fields are left out:
+   browsers treat every click into a field as focus-visible, and fields show their own soft ring. */
+@layer base {
+  :where(a, button, [tabindex]:not(input, textarea, select)):focus-visible {
+    outline: 2px solid #be185d;
+    outline-offset: 2px;
+  }
+  :where(input, textarea, select):focus-visible {
+    outline: none;
+  }
 }

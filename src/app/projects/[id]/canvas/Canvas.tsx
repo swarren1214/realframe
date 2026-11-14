@@ -387,7 +387,7 @@ export function Canvas({
                             persist(f.id, { label });
                           }}
                           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-1"
+                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-1 outline-none focus:border-raspberry-600"
                         />
                       ) : (
                         <button
