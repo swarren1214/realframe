@@ -11,7 +11,10 @@ import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import type { Project } from "@/lib/types";
-import { saveVisualEdit } from "../../actions";
+import { saveVisualEdit as raw_saveVisualEdit } from "../../actions";
+import { unwrapped } from "@/lib/safe-action";
+
+const saveVisualEdit = unwrapped(raw_saveVisualEdit);
 
 export type Frame = {
   id: string;

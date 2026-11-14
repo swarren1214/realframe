@@ -10,7 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner";
 import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
-import { connectRepo, githubBranches, githubDetect, githubRepos, githubStatus, type GitHubStatus } from "@/app/projects/github-actions";
+import {
+  connectRepo as raw_connectRepo,
+  githubBranches as raw_githubBranches,
+  githubDetect as raw_githubDetect,
+  githubRepos as raw_githubRepos,
+  githubStatus as raw_githubStatus,
+  type GitHubStatus,
+} from "@/app/projects/github-actions";
+import { unwrapped } from "@/lib/safe-action";
+
+const connectRepo = unwrapped(raw_connectRepo);
+const githubBranches = unwrapped(raw_githubBranches);
+const githubDetect = unwrapped(raw_githubDetect);
+const githubRepos = unwrapped(raw_githubRepos);
+const githubStatus = unwrapped(raw_githubStatus);
 
 type Repo = Awaited<ReturnType<typeof githubRepos>>[number];
 type Detected = Awaited<ReturnType<typeof githubDetect>>;

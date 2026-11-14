@@ -14,8 +14,14 @@ import { SourceZip, mimeFor, readBundle } from "@/lib/bundle";
 import { SINGLE_FILE_TYPES } from "@/lib/import";
 import { cn } from "@/lib/utils";
 import { GitHubImport } from "@/components/GitHubImport";
-import { finishBundle, importFile, prepareBundle } from "@/app/projects/actions";
-import { buildUploadedSource } from "@/app/projects/github-actions";
+import { finishBundle as raw_finishBundle, importFile as raw_importFile, prepareBundle as raw_prepareBundle } from "@/app/projects/actions";
+import { buildUploadedSource as raw_buildUploadedSource } from "@/app/projects/github-actions";
+import { unwrapped } from "@/lib/safe-action";
+
+const finishBundle = unwrapped(raw_finishBundle);
+const importFile = unwrapped(raw_importFile);
+const prepareBundle = unwrapped(raw_prepareBundle);
+const buildUploadedSource = unwrapped(raw_buildUploadedSource);
 
 const ACCEPT = [...SINGLE_FILE_TYPES, ".zip"].join(",");
 

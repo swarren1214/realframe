@@ -19,9 +19,20 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { buildNow, cancelBuild, disconnectRepo, updateSource } from "@/app/projects/github-actions";
+import {
+  buildNow as raw_buildNow,
+  cancelBuild as raw_cancelBuild,
+  disconnectRepo as raw_disconnectRepo,
+  updateSource as raw_updateSource,
+} from "@/app/projects/github-actions";
 
 import { BUILD_COLUMNS, type Build, type Source } from "@/lib/builds/types";
+import { unwrapped } from "@/lib/safe-action";
+
+const buildNow = unwrapped(raw_buildNow);
+const cancelBuild = unwrapped(raw_cancelBuild);
+const disconnectRepo = unwrapped(raw_disconnectRepo);
+const updateSource = unwrapped(raw_updateSource);
 export type { Build, Source };
 
 const active = (b: Build) => b.status === "queued" || b.status === "building";

@@ -1,4 +1,5 @@
 "use server";
+import { action } from "@/lib/safe-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -29,7 +30,7 @@ export async function createProject(formData: FormData) {
   redirect(`/projects/${data.id}`);
 }
 
-export async function publishVersion(projectId: string, versionId: string) {
+export const publishVersion = action(async (projectId: string, versionId: string) => {
   const { supabase } = await requireUser();
   const { error } = await supabase
     .from("projects")
@@ -37,16 +38,16 @@ export async function publishVersion(projectId: string, versionId: string) {
     .eq("id", projectId);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function unpublish(projectId: string) {
+export const unpublish = action(async (projectId: string) => {
   const { supabase } = await requireUser();
   const { error } = await supabase.from("projects").update({ published: false }).eq("id", projectId);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function setAccessMode(projectId: string, mode: "invite" | "public" | "password") {
+export const setAccessMode = action(async (projectId: string, mode: "invite" | "public" | "password") => {
   const { supabase } = await requireUser();
   if (mode === "password") {
     const { data } = await supabase.from("projects").select("has_password").eq("id", projectId).single();
@@ -55,18 +56,18 @@ export async function setAccessMode(projectId: string, mode: "invite" | "public"
   const { error } = await supabase.from("projects").update({ access_mode: mode }).eq("id", projectId);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function renameProject(projectId: string, name: string) {
+export const renameProject = action(async (projectId: string, name: string) => {
   const { supabase } = await requireUser();
   const clean = name.trim().slice(0, 80);
   if (!clean) return;
   const { error } = await supabase.from("projects").update({ name: clean }).eq("id", projectId);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function inviteMember(projectId: string, email: string, role: "viewer" | "commenter" | "editor") {
+export const inviteMember = action(async (projectId: string, email: string, role: "viewer" | "commenter" | "editor") => {
   const { supabase, user } = await requireUser();
   const clean = email.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) throw new Error("Enter a valid email address.");
@@ -75,16 +76,16 @@ export async function inviteMember(projectId: string, email: string, role: "view
     .upsert({ project_id: projectId, email: clean, role, invited_by: user.id }, { onConflict: "project_id,email" });
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function removeMember(projectId: string, email: string) {
+export const removeMember = action(async (projectId: string, email: string) => {
   const { supabase } = await requireUser();
   const { error } = await supabase.from("project_members").delete().eq("project_id", projectId).eq("email", email);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function restoreVersion(projectId: string, versionId: string) {
+export const restoreVersion = action(async (projectId: string, versionId: string) => {
   const { supabase } = await requireUser();
   const { data: v, error } = await supabase
     .from("versions")
@@ -115,16 +116,16 @@ export async function restoreVersion(projectId: string, versionId: string) {
   });
   if (e2) throw new Error(e2.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function deleteProject(projectId: string) {
+export const deleteProject = action(async (projectId: string) => {
   const { supabase } = await requireUser();
   const { error } = await supabase.from("projects").delete().eq("id", projectId);
   if (error) throw new Error(error.message);
   redirect("/projects");
-}
+});
 
-export async function keepVariant(projectId: string, variantId: string) {
+export const keepVariant = action(async (projectId: string, variantId: string) => {
   const { supabase } = await requireUser();
   const { data: variant, error } = await supabase
     .from("variants")
@@ -147,9 +148,9 @@ export async function keepVariant(projectId: string, variantId: string) {
   await supabase.from("variants").delete().eq("group_id", variant.group_id).is("kept_version_id", null);
   revalidatePath(`/projects/${projectId}`);
   return { versionId: v.id, number: v.number };
-}
+});
 
-export async function discardVariants(projectId: string, groupId: string) {
+export const discardVariants = action(async (projectId: string, groupId: string) => {
   const { supabase } = await requireUser();
   const { error } = await supabase
     .from("variants")
@@ -159,9 +160,9 @@ export async function discardVariants(projectId: string, groupId: string) {
     .is("kept_version_id", null);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function saveVisualEdit(projectId: string, html: string, summary: string) {
+export const saveVisualEdit = action(async (projectId: string, html: string, summary: string) => {
   const { supabase } = await requireUser();
   if (!/<html[\s>]/i.test(html) || html.length > 2_000_000) throw new Error("That document doesn't look right.");
   const { data: version, error } = await supabase.rpc("create_version", {
@@ -175,21 +176,21 @@ export async function saveVisualEdit(projectId: string, html: string, summary: s
   revalidatePath(`/projects/${projectId}`);
   const v = version as { id: string; number: number };
   return { versionId: v.id, number: v.number };
-}
+});
 
-export async function setProjectPassword(projectId: string, password: string) {
+export const setProjectPassword = action(async (projectId: string, password: string) => {
   const { supabase } = await requireUser();
   const { error } = await supabase.rpc("set_project_password", { p_project: projectId, p_password: password });
   if (error) throw new Error(error.message.includes("6 to 200") ? "Use at least 6 characters." : error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function setGuestComments(projectId: string, on: boolean) {
+export const setGuestComments = action(async (projectId: string, on: boolean) => {
   const { supabase } = await requireUser();
   const { error } = await supabase.from("projects").update({ guest_comments: on }).eq("id", projectId);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
 const RESERVED_SLUGS = new Set([
   "www",
@@ -213,7 +214,7 @@ const RESERVED_SLUGS = new Set([
   "realframe",
 ]);
 
-export async function updateSlug(projectId: string, raw: string) {
+export const updateSlug = action(async (projectId: string, raw: string) => {
   const { supabase } = await requireUser();
   const slug = raw
     .toLowerCase()
@@ -227,7 +228,7 @@ export async function updateSlug(projectId: string, raw: string) {
   if (error) throw new Error(error.code === "23505" ? "That address is taken. Try another." : error.message);
   revalidatePath(`/projects/${projectId}`);
   return slug;
-}
+});
 
 // ---- Imports -------------------------------------------------------------------
 
@@ -249,7 +250,7 @@ async function projectForImport(projectId: string | null, name: string) {
 }
 
 /** Import one HTML or React file, as a new prototype (projectId null) or a new version. */
-export async function importFile(projectId: string | null, name: string, filename: string, code: string) {
+export const importFile = action(async (projectId: string | null, name: string, filename: string, code: string) => {
   const { importSingleFile } = await import("@/lib/import");
   const result = importSingleFile(filename, code); // throws a readable message for bad input
   const target = await projectForImport(projectId, name);
@@ -263,16 +264,16 @@ export async function importFile(projectId: string | null, name: string, filenam
   if (error || !version) throw new Error(error?.message ?? "Couldn't save the import.");
   revalidatePath(`/projects/${target.projectId}`);
   return { projectId: target.projectId, versionId: (version as { id: string }).id, warnings: result.warnings };
-}
+});
 
 /** Step 1 of a zip import: the project to upload into and a fresh folder id for the files. */
-export async function prepareBundle(projectId: string | null, name: string) {
+export const prepareBundle = action(async (projectId: string | null, name: string) => {
   const target = await projectForImport(projectId, name);
   return { projectId: target.projectId, bundleId: crypto.randomUUID() };
-}
+});
 
 /** Step 3 of a zip import, after the browser uploaded the files: make it a version. */
-export async function finishBundle(projectId: string, bundleId: string, files: number, bytes: number, label: string) {
+export const finishBundle = action(async (projectId: string, bundleId: string, files: number, bytes: number, label: string) => {
   const { supabase } = await requireUser();
   if (!/^[0-9a-f-]{36}$/.test(bundleId)) throw new Error("Bad upload.");
   const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -289,13 +290,13 @@ export async function finishBundle(projectId: string, bundleId: string, files: n
   if (error || !version) throw new Error(error?.message ?? "Couldn't save the import.");
   revalidatePath(`/projects/${projectId}`);
   return { versionId: (version as { id: string }).id };
-}
+});
 
 /** The content-domain URL of an imported app version the caller can see. */
-export async function contentUrl(versionId: string) {
+export const contentUrl = action(async (versionId: string) => {
   const { supabase } = await requireUser();
   const { data } = await supabase.from("versions").select("kind").eq("id", versionId).maybeSingle();
   if (!data || data.kind !== "bundle") throw new Error("Not an imported app.");
   const { contentUrlFor } = await import("@/lib/content");
   return contentUrlFor(versionId);
-}
+});

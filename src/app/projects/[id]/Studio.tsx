@@ -64,22 +64,39 @@ import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
 import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type Variant, type VersionMeta } from "@/lib/types";
 import {
-  contentUrl,
-  deleteProject,
-  discardVariants,
-  inviteMember,
-  keepVariant,
-  saveVisualEdit,
-  publishVersion,
-  removeMember,
-  renameProject,
-  restoreVersion,
-  setAccessMode,
-  setGuestComments,
-  setProjectPassword,
-  updateSlug,
-  unpublish,
+  contentUrl as raw_contentUrl,
+  deleteProject as raw_deleteProject,
+  discardVariants as raw_discardVariants,
+  inviteMember as raw_inviteMember,
+  keepVariant as raw_keepVariant,
+  saveVisualEdit as raw_saveVisualEdit,
+  publishVersion as raw_publishVersion,
+  removeMember as raw_removeMember,
+  renameProject as raw_renameProject,
+  restoreVersion as raw_restoreVersion,
+  setAccessMode as raw_setAccessMode,
+  setGuestComments as raw_setGuestComments,
+  setProjectPassword as raw_setProjectPassword,
+  updateSlug as raw_updateSlug,
+  unpublish as raw_unpublish,
 } from "../actions";
+import { unwrapped } from "@/lib/safe-action";
+
+const contentUrl = unwrapped(raw_contentUrl);
+const deleteProject = unwrapped(raw_deleteProject);
+const discardVariants = unwrapped(raw_discardVariants);
+const inviteMember = unwrapped(raw_inviteMember);
+const keepVariant = unwrapped(raw_keepVariant);
+const saveVisualEdit = unwrapped(raw_saveVisualEdit);
+const publishVersion = unwrapped(raw_publishVersion);
+const removeMember = unwrapped(raw_removeMember);
+const renameProject = unwrapped(raw_renameProject);
+const restoreVersion = unwrapped(raw_restoreVersion);
+const setAccessMode = unwrapped(raw_setAccessMode);
+const setGuestComments = unwrapped(raw_setGuestComments);
+const setProjectPassword = unwrapped(raw_setProjectPassword);
+const updateSlug = unwrapped(raw_updateSlug);
+const unpublish = unwrapped(raw_unpublish);
 
 type Tab = "versions" | "share" | "comments";
 const DEVICES = [

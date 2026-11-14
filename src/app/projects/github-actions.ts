@@ -1,4 +1,5 @@
 "use server";
+import { action } from "@/lib/safe-action";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -40,7 +41,7 @@ export type GitHubStatus = {
   installations: { id: number; login: string; type: string }[];
 };
 
-export async function githubStatus(next: string): Promise<GitHubStatus> {
+export const githubStatus = action(async (next: string): Promise<GitHubStatus> => {
   const { supabase, user } = await requireUser();
   const config = await getAppConfig();
   if (!config) return { configured: false, installUrl: null, installations: [] };
@@ -51,9 +52,9 @@ export async function githubStatus(next: string): Promise<GitHubStatus> {
     installUrl: `https://github.com/apps/${config.slug}/installations/new?state=${encodeURIComponent(signState({ uid: user.id, next: safeNext }))}`,
     installations: (data ?? []).map((i) => ({ id: i.id as number, login: i.account_login, type: i.account_type })),
   };
-}
+});
 
-export async function githubRepos(installationId: number) {
+export const githubRepos = action(async (installationId: number) => {
   const { supabase } = await requireInstallation(installationId);
   const repos = await listInstallationRepos(installationId);
   // Which of the caller's prototypes already use each repository.
@@ -74,17 +75,17 @@ export async function githubRepos(installationId: number) {
     pushedAt: r.pushed_at,
     usedBy: usedBy.get(r.id) ?? [],
   }));
-}
+});
 
-export async function githubBranches(installationId: number, repo: string) {
+export const githubBranches = action(async (installationId: number, repo: string) => {
   await requireInstallation(installationId);
   return listBranches(await installationToken(installationId), repo);
-}
+});
 
-export async function githubDetect(installationId: number, repo: string, branch: string, rootDir: string) {
+export const githubDetect = action(async (installationId: number, repo: string, branch: string, rootDir: string) => {
   await requireInstallation(installationId);
   return detectBuild(await installationToken(installationId), repo, branch, rootDir.replace(/^\.?\/?|\/+$/g, ""));
-}
+});
 
 export type ConnectInput = {
   projectId: string | null;
@@ -103,7 +104,7 @@ export type ConnectInput = {
 const clean = (s: string, max = 300) => s.trim().slice(0, max);
 
 /** Links a repository to a prototype (creating the prototype if needed) and starts the first build. */
-export async function connectRepo(input: ConnectInput) {
+export const connectRepo = action(async (input: ConnectInput) => {
   const { supabase, user } = await requireInstallation(input.installationId);
   // The repository must really be in this installation.
   const repos = await listInstallationRepos(input.installationId);
@@ -147,7 +148,7 @@ export async function connectRepo(input: ConnectInput) {
   const buildId = await queueBuild(projectId, user.id, ownerId, "import");
   revalidatePath(`/projects/${projectId}`);
   return { projectId, buildId };
-}
+});
 
 type UploadOrigin = { upload_path: string; settings: Record<string, unknown> };
 
@@ -191,7 +192,7 @@ async function queueBuild(
 }
 
 /** Build the latest commit now (or again after a failure). */
-export async function buildNow(projectId: string, retry = false) {
+export const buildNow = action(async (projectId: string, retry = false) => {
   const { supabase, user } = await requireUser();
   const { data: role } = await supabase.rpc("project_role", { p: projectId });
   if (role !== "owner" && role !== "editor") throw new Error("You can't build this prototype.");
@@ -221,35 +222,37 @@ export async function buildNow(projectId: string, retry = false) {
   const buildId = await queueBuild(projectId, user.id, (project?.owner_id as string) ?? user.id, retry ? "retry" : "manual", upload);
   revalidatePath(`/projects/${projectId}`);
   return buildId;
-}
+});
 
 /** Builds a source zip the browser uploaded to <project>/uploads/<id>.zip. */
-export async function buildUploadedSource(
-  projectId: string,
-  uploadPath: string,
-  settings: { installCommand: string | null; buildCommand: string | null; outputDir: string; framework: string; label: string },
-) {
-  const { supabase, user } = await requireUser();
-  const { data: role } = await supabase.rpc("project_role", { p: projectId });
-  if (role !== "owner" && role !== "editor") throw new Error("You can't build this prototype.");
-  const prefix = `${projectId}/uploads/`;
-  if (!uploadPath.startsWith(prefix) || !/^[0-9a-f-]{36}\.zip$/.test(uploadPath.slice(prefix.length))) throw new Error("Bad upload.");
-  const { data: project } = await supabase.from("projects").select("owner_id").eq("id", projectId).single();
-  const buildId = await queueBuild(projectId, user.id, (project?.owner_id as string) ?? user.id, "import", {
-    upload_path: uploadPath,
-    settings: {
-      installCommand: settings.installCommand?.slice(0, 300) ?? null,
-      buildCommand: settings.buildCommand?.slice(0, 300) ?? null,
-      outputDir: settings.outputDir.slice(0, 200),
-      framework: settings.framework.slice(0, 60),
-      label: settings.label.slice(0, 120),
-    },
-  });
-  revalidatePath(`/projects/${projectId}`);
-  return buildId;
-}
+export const buildUploadedSource = action(
+  async (
+    projectId: string,
+    uploadPath: string,
+    settings: { installCommand: string | null; buildCommand: string | null; outputDir: string; framework: string; label: string },
+  ) => {
+    const { supabase, user } = await requireUser();
+    const { data: role } = await supabase.rpc("project_role", { p: projectId });
+    if (role !== "owner" && role !== "editor") throw new Error("You can't build this prototype.");
+    const prefix = `${projectId}/uploads/`;
+    if (!uploadPath.startsWith(prefix) || !/^[0-9a-f-]{36}\.zip$/.test(uploadPath.slice(prefix.length))) throw new Error("Bad upload.");
+    const { data: project } = await supabase.from("projects").select("owner_id").eq("id", projectId).single();
+    const buildId = await queueBuild(projectId, user.id, (project?.owner_id as string) ?? user.id, "import", {
+      upload_path: uploadPath,
+      settings: {
+        installCommand: settings.installCommand?.slice(0, 300) ?? null,
+        buildCommand: settings.buildCommand?.slice(0, 300) ?? null,
+        outputDir: settings.outputDir.slice(0, 200),
+        framework: settings.framework.slice(0, 60),
+        label: settings.label.slice(0, 120),
+      },
+    });
+    revalidatePath(`/projects/${projectId}`);
+    return buildId;
+  },
+);
 
-export async function cancelBuild(projectId: string, buildId: string) {
+export const cancelBuild = action(async (projectId: string, buildId: string) => {
   const { supabase } = await requireUser();
   const { data: role } = await supabase.rpc("project_role", { p: projectId });
   if (role !== "owner" && role !== "editor") throw new Error("You can't change this prototype.");
@@ -264,9 +267,9 @@ export async function cancelBuild(projectId: string, buildId: string) {
       .catch(() => {});
   }
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function updateSource(projectId: string, patch: { buildOnPush?: boolean; publishOnPush?: boolean }) {
+export const updateSource = action(async (projectId: string, patch: { buildOnPush?: boolean; publishOnPush?: boolean }) => {
   const { supabase } = await requireUser();
   const { data: role } = await supabase.rpc("project_role", { p: projectId });
   if (role !== "owner") throw new Error("Only the owner can change the repository settings.");
@@ -275,12 +278,12 @@ export async function updateSource(projectId: string, patch: { buildOnPush?: boo
   if (typeof patch.publishOnPush === "boolean") fields.publish_on_push = patch.publishOnPush;
   await createAdminClient().from("project_sources").update(fields).eq("project_id", projectId);
   revalidatePath(`/projects/${projectId}`);
-}
+});
 
-export async function disconnectRepo(projectId: string) {
+export const disconnectRepo = action(async (projectId: string) => {
   const { supabase } = await requireUser();
   const { data: role } = await supabase.rpc("project_role", { p: projectId });
   if (role !== "owner") throw new Error("Only the owner can disconnect the repository.");
   await createAdminClient().from("project_sources").delete().eq("project_id", projectId);
   revalidatePath(`/projects/${projectId}`);
-}
+});
