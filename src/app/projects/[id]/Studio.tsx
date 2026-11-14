@@ -165,7 +165,7 @@ const setProjectPassword = unwrapped(raw_setProjectPassword);
 const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
 
-type Tab = "versions" | "share" | "comments";
+type Tab = "chat" | "versions" | "share" | "comments";
 /** What a successful action says: a message, or a message with Undo or another action. */
 type Done =
   | string
@@ -262,7 +262,7 @@ export function Studio(props: {
   const [measure, setMeasure] = useState({ percent: 100, width: 0, height: 0 });
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("versions");
+  const [tab, setTab] = useState<Tab>("chat");
   const [prompt, setPrompt] = useState("");
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
@@ -668,254 +668,6 @@ export function Studio(props: {
       </AlertDialog>
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
-        <aside
-          aria-label="Prompt"
-          className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]"
-        >
-          <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3">
-            <MessageSquare
-              className="size-4 text-stone-500"
-              aria-hidden="true"
-            />
-            <h2 className="text-[13px] font-semibold">Chat</h2>
-            {quota?.plan === "free" && (
-              <span className="ml-auto text-[11px] text-stone-500">
-                {quota.remaining}/{quota.limit} free builds left
-              </span>
-            )}
-            {quota?.plan === "team" && (
-              <span className="ml-auto rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-medium text-raspberry-800">
-                Team Pro
-              </span>
-            )}
-          </div>
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {messages.length === 0 && !busy && (
-              <div className="space-y-2">
-                <p className="text-[13px] text-stone-600">
-                  Describe what to build, or start from one of these:
-                </p>
-                {STARTERS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setPrompt(s)}
-                    className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
-                  >
-                    <Sparkles
-                      className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
-                      aria-hidden="true"
-                    />
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-            {messages.map((m) => {
-              const v = m.version_id
-                ? versions.find((x) => x.id === m.version_id)
-                : null;
-              return m.role === "user" ? (
-                <div
-                  key={m.id}
-                  className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
-                >
-                  {m.content}
-                </div>
-              ) : (
-                <div
-                  key={m.id}
-                  className="space-y-2 text-[13px] leading-relaxed text-stone-800"
-                >
-                  <p>{m.content}</p>
-                  {v && (
-                    <Button size="sm" onClick={() => setSelectedId(v.id)}>
-                      <History />v{v.number}
-                      {v.id === project.live_version_id ? " · Live" : ""}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-            {busy && (
-              <div
-                role="status"
-                className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
-              >
-                <Spinner className="mt-0.5 shrink-0" />
-                <span>
-                  {variantCount > 1
-                    ? `Building ${variantCount} variants`
-                    : `Building ${selected ? `on v${selected.number}` : "v1"}`}
-                  … {elapsed}s
-                  <span className="block text-xs text-raspberry-800/70">
-                    Larger prototypes can take a minute or two.
-                  </span>
-                </span>
-              </div>
-            )}
-            <div ref={chatEnd} />
-          </div>
-          <form onSubmit={generate} className="border-t border-stone-100 p-3">
-            {isImportedApp && (
-              <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
-                <Boxes className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                {selected?.source === "github" && props.source
-                  ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
-                  : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
-              </p>
-            )}
-            <label htmlFor="prompt" className="sr-only">
-              {versions.length
-                ? `Describe a change to v${selected?.number ?? ""}`
-                : "Describe your prototype"}
-            </label>
-            <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
-              <textarea
-                id="prompt"
-                rows={3}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
-                }}
-                placeholder={
-                  versions.length
-                    ? `Describe a change to v${selected?.number ?? ""}…`
-                    : "A dispatch board for field techs…"
-                }
-                className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
-              />
-              <div className="flex items-center gap-1.5">
-                {(props.designSystems?.length ?? 0) > 0 && (
-                  <Select
-                    value={dsId ?? "none"}
-                    disabled={busy}
-                    onValueChange={async (v) => {
-                      const next = v === "none" ? null : v;
-                      const prev = dsId;
-                      setDsId(next);
-                      try {
-                        await setProjectDesignSystem(project.id, next);
-                        notify.info(
-                          next
-                            ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
-                            : "Next build uses no design system",
-                          "Earlier versions keep their look.",
-                        );
-                      } catch (e) {
-                        setDsId(prev);
-                        notify.error(
-                          e instanceof Error
-                            ? e.message
-                            : "Couldn't change it.",
-                        );
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      aria-label="Design system"
-                      title="The design system builds follow"
-                      className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {props.designSystems!.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          <Dots colors={d.colors} />
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="none">
-                        <Sparkles className="size-4 text-stone-500" />
-                        No design system
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-                <Select
-                  value={String(variantCount)}
-                  onValueChange={(v) => setVariantCount(Number(v) as 1 | 2 | 3)}
-                  disabled={busy}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    aria-label="Number of variants"
-                    title="Generate alternatives to compare. Each variant counts as one build."
-                    className="border-transparent bg-secondary shadow-none hover:border-transparent"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 version</SelectItem>
-                    <SelectItem value="2">2 variants</SelectItem>
-                    <SelectItem value="3">3 variants</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Kbd className="ml-auto">⌘↵</Kbd>
-                <Button
-                  variant="default"
-                  size="icon"
-                  aria-label={
-                    variantCount > 1
-                      ? "Generate variants"
-                      : versions.length
-                        ? "Update prototype"
-                        : "Build prototype"
-                  }
-                  title={
-                    variantCount > 1
-                      ? "Generate variants"
-                      : versions.length
-                        ? "Update prototype"
-                        : "Build prototype"
-                  }
-                  type="submit"
-                  loading={busy}
-                  disabled={!prompt.trim() || outOfQuota || isImportedApp}
-                >
-                  <ArrowUp />
-                </Button>
-              </div>
-            </div>
-            {outOfQuota && quota?.plan === "free" && (
-              <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
-                <p className="font-semibold">
-                  You&apos;ve used this month&apos;s free builds.
-                </p>
-                <p className="mt-0.5 text-xs text-stone-700">
-                  Pro is $20/month with $10 of AI usage included.
-                </p>
-                <form
-                  action="/api/billing/checkout"
-                  method="post"
-                  className="mt-2"
-                >
-                  <Button variant="default" size="sm" type="submit">
-                    <Sparkles />
-                    Upgrade to Pro
-                  </Button>
-                </form>
-              </div>
-            )}
-            {outOfQuota &&
-              (quota?.plan === "pro" || quota?.plan === "team") &&
-              !error && (
-                <p className="mt-2 text-xs text-stone-600">
-                  You&apos;ve hit the daily safety limit of {quota.limit}{" "}
-                  builds. It frees up on a rolling 24-hour basis.
-                </p>
-              )}
-            {error && (
-              <p role="alert" className="mt-2 text-xs text-red-700">
-                {error}
-              </p>
-            )}
-          </form>
-        </aside>
-
         {variants.length > 0 ? (
           <VariantCompare
             variants={variants}
@@ -1070,20 +822,27 @@ export function Studio(props: {
             value={tab}
             onValueChange={(v) => setTab(v as Tab)}
             aria-label="Project panel"
-            className="glass flex w-[320px] shrink-0 flex-col overflow-hidden rounded-[1.75rem] xl:w-[360px]"
+            className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem] xl:w-[380px]"
           >
             <div className="border-b border-stone-100 p-3">
               <TabsList>
                 {(
                   [
+                    ["chat", "Chat", Sparkles, 0],
                     ["versions", "Versions", History, versions.length],
-                    ["share", "Share", Share2, 0],
                     ["comments", "Comments", MessageSquare, openThreads],
+                    ["share", "Share", Share2, 0],
                   ] as const
                 ).map(([id, label, Icon, count]) => (
-                  <TabsTrigger key={id} value={id}>
+                  <TabsTrigger key={id} value={id} className="gap-1 px-1.5">
                     <Icon />
                     {label}
+                    {id === "chat" && busy && tab !== "chat" && (
+                      <span
+                        className="size-1.5 animate-pulse rounded-full bg-raspberry-600"
+                        aria-label="Building"
+                      />
+                    )}
                     {count > 0 && (
                       <span className="grid h-4 min-w-4 place-items-center rounded-full bg-foreground/8 px-1 text-[10px] font-semibold tabular-nums text-stone-600">
                         {count}
@@ -1094,211 +853,466 @@ export function Studio(props: {
               </TabsList>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <TabsContent value="versions" className="space-y-5 p-4">
-                {(props.source || builds.length > 0) && (
+            <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
+              {(quota?.plan === "free" || quota?.plan === "team") && (
+                <div className="flex items-center gap-2 px-4 pt-3 text-[11px] text-stone-500">
+                  {quota.plan === "free" ? (
+                    <span>
+                      {quota.remaining}/{quota.limit} free builds left
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-raspberry-50 px-2 py-0.5 font-medium text-raspberry-800">
+                      Team Pro
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                {messages.length === 0 && !busy && (
                   <div className="space-y-2">
-                    {props.source && (
-                      <SourceCard
-                        source={props.source}
-                        isOwner={isOwner}
-                        running={buildRunning}
-                        latest={builds[0]}
-                        now={now}
-                        onBuilt={setLogBuildId}
-                      />
-                    )}
-                    <BuildList
-                      projectId={project.id}
-                      builds={builds}
-                      now={now}
-                      onShowLog={setLogBuildId}
-                      onBuilt={setLogBuildId}
-                    />
+                    <p className="text-[13px] text-stone-600">
+                      Describe what to build, or start from one of these:
+                    </p>
+                    {STARTERS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setPrompt(s)}
+                        className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
+                      >
+                        <Sparkles
+                          className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
+                          aria-hidden="true"
+                        />
+                        {s}
+                      </button>
+                    ))}
                   </div>
                 )}
-
-                <section aria-label="Versions" className="space-y-2">
-                  <div className="flex items-center gap-2 px-1">
-                    <Eyebrow>Versions</Eyebrow>
-                    <ImportDialog
-                      projectId={project.id}
-                      onImported={(id) => setSelectedId(id)}
-                      trigger={
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="-mr-2 ml-auto h-7 text-stone-600"
-                        >
-                          <Upload />
-                          Import
+                {messages.map((m) => {
+                  const v = m.version_id
+                    ? versions.find((x) => x.id === m.version_id)
+                    : null;
+                  return m.role === "user" ? (
+                    <div
+                      key={m.id}
+                      className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
+                    >
+                      {m.content}
+                    </div>
+                  ) : (
+                    <div
+                      key={m.id}
+                      className="space-y-2 text-[13px] leading-relaxed text-stone-800"
+                    >
+                      <p>{m.content}</p>
+                      {v && (
+                        <Button size="sm" onClick={() => setSelectedId(v.id)}>
+                          <History />v{v.number}
+                          {v.id === project.live_version_id ? " · Live" : ""}
                         </Button>
-                      }
-                    />
+                      )}
+                    </div>
+                  );
+                })}
+                {busy && (
+                  <div
+                    role="status"
+                    className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
+                  >
+                    <Spinner className="mt-0.5 shrink-0" />
+                    <span>
+                      {variantCount > 1
+                        ? `Building ${variantCount} variants`
+                        : `Building ${selected ? `on v${selected.number}` : "v1"}`}
+                      … {elapsed}s
+                      <span className="block text-xs text-raspberry-800/70">
+                        Larger prototypes can take a minute or two.
+                      </span>
+                    </span>
                   </div>
-                  {versions.length === 0 ? (
+                )}
+                <div ref={chatEnd} />
+              </div>
+              <form
+                onSubmit={generate}
+                className="border-t border-stone-100 p-3"
+              >
+                {isImportedApp && (
+                  <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
+                    <Boxes
+                      className="mt-px size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                    {selected?.source === "github" && props.source
+                      ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
+                      : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
+                  </p>
+                )}
+                <label htmlFor="prompt" className="sr-only">
+                  {versions.length
+                    ? `Describe a change to v${selected?.number ?? ""}`
+                    : "Describe your prototype"}
+                </label>
+                <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+                  <textarea
+                    id="prompt"
+                    rows={3}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                        generate();
+                    }}
+                    placeholder={
+                      versions.length
+                        ? `Describe a change to v${selected?.number ?? ""}…`
+                        : "A dispatch board for field techs…"
+                    }
+                    className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    {(props.designSystems?.length ?? 0) > 0 && (
+                      <Select
+                        value={dsId ?? "none"}
+                        disabled={busy}
+                        onValueChange={async (v) => {
+                          const next = v === "none" ? null : v;
+                          const prev = dsId;
+                          setDsId(next);
+                          try {
+                            await setProjectDesignSystem(project.id, next);
+                            notify.info(
+                              next
+                                ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
+                                : "Next build uses no design system",
+                              "Earlier versions keep their look.",
+                            );
+                          } catch (e) {
+                            setDsId(prev);
+                            notify.error(
+                              e instanceof Error
+                                ? e.message
+                                : "Couldn't change it.",
+                            );
+                          }
+                        }}
+                      >
+                        <SelectTrigger
+                          size="sm"
+                          aria-label="Design system"
+                          title="The design system builds follow"
+                          className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {props.designSystems!.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              <Dots colors={d.colors} />
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="none">
+                            <Sparkles className="size-4 text-stone-500" />
+                            No design system
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <Select
+                      value={String(variantCount)}
+                      onValueChange={(v) =>
+                        setVariantCount(Number(v) as 1 | 2 | 3)
+                      }
+                      disabled={busy}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        aria-label="Number of variants"
+                        title="Generate alternatives to compare. Each variant counts as one build."
+                        className="border-transparent bg-secondary shadow-none hover:border-transparent"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 version</SelectItem>
+                        <SelectItem value="2">2 variants</SelectItem>
+                        <SelectItem value="3">3 variants</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Kbd className="ml-auto">⌘↵</Kbd>
+                    <Button
+                      variant="default"
+                      size="icon"
+                      aria-label={
+                        variantCount > 1
+                          ? "Generate variants"
+                          : versions.length
+                            ? "Update prototype"
+                            : "Build prototype"
+                      }
+                      title={
+                        variantCount > 1
+                          ? "Generate variants"
+                          : versions.length
+                            ? "Update prototype"
+                            : "Build prototype"
+                      }
+                      type="submit"
+                      loading={busy}
+                      disabled={!prompt.trim() || outOfQuota || isImportedApp}
+                    >
+                      <ArrowUp />
+                    </Button>
+                  </div>
+                </div>
+                {outOfQuota && quota?.plan === "free" && (
+                  <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
+                    <p className="font-semibold">
+                      You&apos;ve used this month&apos;s free builds.
+                    </p>
+                    <p className="mt-0.5 text-xs text-stone-700">
+                      Pro is $20/month with $10 of AI usage included.
+                    </p>
+                    <form
+                      action="/api/billing/checkout"
+                      method="post"
+                      className="mt-2"
+                    >
+                      <Button variant="default" size="sm" type="submit">
+                        <Sparkles />
+                        Upgrade to Pro
+                      </Button>
+                    </form>
+                  </div>
+                )}
+                {outOfQuota &&
+                  (quota?.plan === "pro" || quota?.plan === "team") &&
+                  !error && (
+                    <p className="mt-2 text-xs text-stone-600">
+                      You&apos;ve hit the daily safety limit of {quota.limit}{" "}
+                      builds. It frees up on a rolling 24-hour basis.
+                    </p>
+                  )}
+                {error && (
+                  <p role="alert" className="mt-2 text-xs text-red-700">
+                    {error}
+                  </p>
+                )}
+              </form>
+            </TabsContent>
+            {tab !== "chat" && (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <TabsContent value="versions" className="space-y-5 p-4">
+                  {(props.source || builds.length > 0) && (
+                    <div className="space-y-2">
+                      {props.source && (
+                        <SourceCard
+                          source={props.source}
+                          isOwner={isOwner}
+                          running={buildRunning}
+                          latest={builds[0]}
+                          now={now}
+                          onBuilt={setLogBuildId}
+                        />
+                      )}
+                      <BuildList
+                        projectId={project.id}
+                        builds={builds}
+                        now={now}
+                        onShowLog={setLogBuildId}
+                        onBuilt={setLogBuildId}
+                      />
+                    </div>
+                  )}
+
+                  <section aria-label="Versions" className="space-y-2">
+                    <div className="flex items-center gap-2 px-1">
+                      <Eyebrow>Versions</Eyebrow>
+                      <ImportDialog
+                        projectId={project.id}
+                        onImported={(id) => setSelectedId(id)}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="-mr-2 ml-auto h-7 text-stone-600"
+                          >
+                            <Upload />
+                            Import
+                          </Button>
+                        }
+                      />
+                    </div>
+                    {versions.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
+                        <span
+                          aria-hidden="true"
+                          className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
+                        >
+                          <History className="size-5" />
+                        </span>
+                        <p className="text-[13px] font-medium">
+                          No versions yet
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {buildRunning
+                            ? "Your first build is running."
+                            : "Describe a prototype in the chat, or import one."}
+                        </p>
+                      </div>
+                    ) : (
+                      <ul className="space-y-1">
+                        <AnimatePresence initial={false}>
+                          {versions.map((v) => (
+                            <VersionItem
+                              key={v.id}
+                              version={v}
+                              designSystem={
+                                v.design_system_id
+                                  ? dsNames[v.design_system_id]
+                                  : undefined
+                              }
+                              selected={v.id === selected?.id}
+                              live={
+                                v.id === project.live_version_id &&
+                                project.published
+                              }
+                              canRestore={v.id !== versions[0]?.id}
+                              restoring={isBusy(`restore-${v.id}`)}
+                              disabled={pending}
+                              onSelect={() => setSelectedId(v.id)}
+                              onRestore={() =>
+                                run(
+                                  () => restoreVersion(project.id, v.id),
+                                  `restore-${v.id}`,
+                                  `Restored v${v.number} as a new version`,
+                                )
+                              }
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </ul>
+                    )}
+                  </section>
+                </TabsContent>
+
+                <TabsContent value="share">
+                  <SharePanel
+                    project={project}
+                    isOwner={isOwner}
+                    members={members}
+                    reviewUrl={reviewUrl}
+                    pending={pending}
+                    isBusy={isBusy}
+                    run={run}
+                  />
+                </TabsContent>
+
+                <TabsContent value="comments" className="space-y-1 p-3">
+                  {threads.length === 0 && (
                     <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
                       <span
                         aria-hidden="true"
                         className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
                       >
-                        <History className="size-5" />
+                        <MessageSquare className="size-5" />
                       </span>
-                      <p className="text-[13px] font-medium">No versions yet</p>
+                      <p className="text-[13px] font-medium">No comments yet</p>
                       <p className="text-xs text-muted-foreground">
-                        {buildRunning
-                          ? "Your first build is running."
-                          : "Describe a prototype in the chat, or import one."}
+                        Reviewers pin comments on the published prototype from
+                        the review link.
                       </p>
                     </div>
-                  ) : (
-                    <ul className="space-y-1">
-                      <AnimatePresence initial={false}>
-                        {versions.map((v) => (
-                          <VersionItem
-                            key={v.id}
-                            version={v}
-                            designSystem={
-                              v.design_system_id
-                                ? dsNames[v.design_system_id]
-                                : undefined
-                            }
-                            selected={v.id === selected?.id}
-                            live={
-                              v.id === project.live_version_id &&
-                              project.published
-                            }
-                            canRestore={v.id !== versions[0]?.id}
-                            restoring={isBusy(`restore-${v.id}`)}
-                            disabled={pending}
-                            onSelect={() => setSelectedId(v.id)}
-                            onRestore={() =>
-                              run(
-                                () => restoreVersion(project.id, v.id),
-                                `restore-${v.id}`,
-                                `Restored v${v.number} as a new version`,
-                              )
-                            }
-                          />
-                        ))}
-                      </AnimatePresence>
-                    </ul>
                   )}
-                </section>
-              </TabsContent>
-
-              <TabsContent value="share">
-                <SharePanel
-                  project={project}
-                  isOwner={isOwner}
-                  members={members}
-                  reviewUrl={reviewUrl}
-                  pending={pending}
-                  isBusy={isBusy}
-                  run={run}
-                />
-              </TabsContent>
-
-              <TabsContent value="comments" className="space-y-1 p-3">
-                {threads.length === 0 && (
-                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
-                    <span
-                      aria-hidden="true"
-                      className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
-                    >
-                      <MessageSquare className="size-5" />
-                    </span>
-                    <p className="text-[13px] font-medium">No comments yet</p>
-                    <p className="text-xs text-muted-foreground">
-                      Reviewers pin comments on the published prototype from the
-                      review link.
-                    </p>
-                  </div>
-                )}
-                <AnimatePresence initial={false}>
-                  {threads
-                    .slice()
-                    .reverse()
-                    .map((t, i) => {
-                      const v = versions.find((x) => x.id === t.version_id);
-                      return (
-                        <motion.article
-                          key={t.id}
-                          {...listItem}
-                          className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
-                        >
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span
-                              className={cn(
-                                "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                                t.status === "open"
-                                  ? "btn-glow"
-                                  : "bg-stone-400",
-                              )}
-                            >
-                              {threads.length - i}
-                            </span>
-                            {v && <Badge>v{v.number}</Badge>}
-                            <span className="text-stone-500">
-                              {t.status === "resolved" ? "Resolved" : "Open"}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="ml-auto h-7"
-                              onClick={async () => {
-                                await supabase
-                                  .from("comment_threads")
-                                  .update({
-                                    status:
-                                      t.status === "open" ? "resolved" : "open",
-                                    resolved_at:
-                                      t.status === "open"
-                                        ? new Date().toISOString()
-                                        : null,
-                                  })
-                                  .eq("id", t.id);
-                                router.refresh();
-                              }}
-                            >
-                              {t.status === "open" ? (
-                                <CircleCheck />
-                              ) : (
-                                <Undo2 />
-                              )}
-                              {t.status === "open" ? "Resolve" : "Reopen"}
-                            </Button>
-                          </div>
-                          {t.comments
-                            .slice()
-                            .sort((a, b) =>
-                              a.created_at.localeCompare(b.created_at),
-                            )
-                            .map((c) => (
-                              <p
-                                key={c.id}
-                                className="text-[13px] leading-relaxed"
+                  <AnimatePresence initial={false}>
+                    {threads
+                      .slice()
+                      .reverse()
+                      .map((t, i) => {
+                        const v = versions.find((x) => x.id === t.version_id);
+                        return (
+                          <motion.article
+                            key={t.id}
+                            {...listItem}
+                            className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
+                          >
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <span
+                                className={cn(
+                                  "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                                  t.status === "open"
+                                    ? "btn-glow"
+                                    : "bg-stone-400",
+                                )}
                               >
-                                <strong className="font-semibold">
-                                  {authorLabel(c)}
-                                </strong>{" "}
-                                {c.body}
-                              </p>
-                            ))}
-                        </motion.article>
-                      );
-                    })}
-                </AnimatePresence>
-                {project.published && (
-                  <Button asChild variant="ghost" size="sm" className="m-1">
-                    <a href={reviewUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink />
-                      Open the review page to reply
-                    </a>
-                  </Button>
-                )}
-              </TabsContent>
-            </div>
+                                {threads.length - i}
+                              </span>
+                              {v && <Badge>v{v.number}</Badge>}
+                              <span className="text-stone-500">
+                                {t.status === "resolved" ? "Resolved" : "Open"}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="ml-auto h-7"
+                                onClick={async () => {
+                                  await supabase
+                                    .from("comment_threads")
+                                    .update({
+                                      status:
+                                        t.status === "open"
+                                          ? "resolved"
+                                          : "open",
+                                      resolved_at:
+                                        t.status === "open"
+                                          ? new Date().toISOString()
+                                          : null,
+                                    })
+                                    .eq("id", t.id);
+                                  router.refresh();
+                                }}
+                              >
+                                {t.status === "open" ? (
+                                  <CircleCheck />
+                                ) : (
+                                  <Undo2 />
+                                )}
+                                {t.status === "open" ? "Resolve" : "Reopen"}
+                              </Button>
+                            </div>
+                            {t.comments
+                              .slice()
+                              .sort((a, b) =>
+                                a.created_at.localeCompare(b.created_at),
+                              )
+                              .map((c) => (
+                                <p
+                                  key={c.id}
+                                  className="text-[13px] leading-relaxed"
+                                >
+                                  <strong className="font-semibold">
+                                    {authorLabel(c)}
+                                  </strong>{" "}
+                                  {c.body}
+                                </p>
+                              ))}
+                          </motion.article>
+                        );
+                      })}
+                  </AnimatePresence>
+                  {project.published && (
+                    <Button asChild variant="ghost" size="sm" className="m-1">
+                      <a href={reviewUrl} target="_blank" rel="noreferrer">
+                        <ExternalLink />
+                        Open the review page to reply
+                      </a>
+                    </Button>
+                  )}
+                </TabsContent>
+              </div>
+            )}
           </Tabs>
         )}
       </div>
