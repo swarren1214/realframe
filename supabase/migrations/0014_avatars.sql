@@ -26,3 +26,6 @@ as $$
 $$;
 revoke execute on function public.team_profiles(uuid) from public, anon;
 grant execute on function public.team_profiles(uuid) to authenticated;
+
+-- Profiles only allow updates to listed columns (0002); add the photo.
+grant update (avatar_url) on public.profiles to authenticated;
