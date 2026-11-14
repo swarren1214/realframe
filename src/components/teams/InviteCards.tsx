@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { respondToInvite as raw_respondToInvite } from "@/app/team/actions";
+import { respondToInvite as raw_respondToInvite } from "@/app/(app)/team/actions";
 import { unwrapped } from "@/lib/safe-action";
 import { notify } from "@/lib/toast";
 import type { TeamInvite } from "@/lib/teams";

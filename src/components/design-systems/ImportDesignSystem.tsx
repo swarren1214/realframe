@@ -33,7 +33,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { SwitchRow } from "@/components/ui/switch-row";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createDesignSystem as raw_createDesignSystem } from "@/app/design-systems/actions";
+import { createDesignSystem as raw_createDesignSystem } from "@/app/(app)/design-systems/actions";
 import {
   githubBranches as raw_githubBranches,
   githubRepos as raw_githubRepos,

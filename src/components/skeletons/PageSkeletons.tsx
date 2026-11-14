@@ -8,22 +8,10 @@ function Loading({ label }: { label: string }) {
   );
 }
 
-/** Pill header used on projects and billing. */
-function HeaderSkeleton() {
-  return (
-    <div className="glass mx-auto mt-4 flex max-w-5xl items-center gap-2 rounded-full py-1.5 pl-5 pr-1.5">
-      <Skeleton className="h-6 w-28 rounded-full" />
-      <div className="flex-1" />
-      <Skeleton className="size-9 rounded-full" />
-    </div>
-  );
-}
-
 export function ProjectsSkeleton() {
   return (
-    <div className="min-h-screen px-4 pb-16">
+    <div>
       <Loading label="Loading your prototypes" />
-      <HeaderSkeleton />
       <main className="mx-auto max-w-5xl px-2 pt-10">
         <div className="flex items-center gap-3">
           <Skeleton className="h-8 w-56" />
@@ -51,9 +39,8 @@ export function ProjectsSkeleton() {
 
 export function BillingSkeleton() {
   return (
-    <div className="min-h-screen px-4 pb-16">
-      <Loading label="Loading billing" />
-      <HeaderSkeleton />
+    <div>
+      <Loading label="Loading" />
       <main className="mx-auto max-w-3xl px-2 pt-10">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="mt-3 h-4 w-72" />

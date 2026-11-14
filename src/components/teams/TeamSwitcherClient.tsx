@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import {
   createTeam as raw_createTeam,
   switchTeam as raw_switchTeam,
-} from "@/app/team/actions";
+} from "@/app/(app)/team/actions";
 import { unwrapped } from "@/lib/safe-action";
 import { notify } from "@/lib/toast";
 import { teamLabel, type Team } from "@/lib/team-shared";
@@ -73,7 +73,7 @@ export function TeamSwitcherClient({
   currentId: string;
   /** Open team invites for the signed-in person. */
   invites?: number;
-  variant?: "bar" | "sidebar";
+  variant?: "bar" | "sidebar" | "rail";
   /** Second line in the sidebar trigger, e.g. "Team Pro · 4 members". */
   subtitle?: string;
   ownerName?: string | null;
@@ -121,7 +121,16 @@ export function TeamSwitcherClient({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          {variant === "sidebar" ? (
+          {variant === "rail" ? (
+            <button
+              type="button"
+              className="grid size-10 place-items-center rounded-xl transition-colors hover:bg-foreground/[.05] data-[state=open]:bg-foreground/[.07]"
+              aria-label={`Workspace: ${teamLabel(current, ownerName)}. Switch workspace`}
+              title={teamLabel(current, ownerName)}
+            >
+              <TeamBadge team={current} className="size-8 rounded-xl" />
+            </button>
+          ) : variant === "sidebar" ? (
             <button
               type="button"
               className="flex w-full items-center gap-2.5 rounded-2xl bg-card/70 p-2 text-left shadow-[inset_0_0_0_1px_var(--color-border)] transition-colors hover:bg-card data-[state=open]:bg-card"

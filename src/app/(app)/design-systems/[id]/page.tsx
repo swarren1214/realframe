@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AppHeader, APP_PAGE } from "@/components/AppHeader";
 import { loadTeams } from "@/lib/teams";
 import {
   DS_COLUMNS,
@@ -50,8 +49,7 @@ export default async function DesignSystemPage({
       .limit(50),
   ]);
   return (
-    <div className={APP_PAGE}>
-      <AppHeader plan={profile?.plan} />
+    <div>
       <Detail
         ds={ds as unknown as DesignSystem}
         team={team}

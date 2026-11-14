@@ -143,7 +143,7 @@ import {
   Dots,
   type DsOption,
 } from "@/components/design-systems/DesignSystemSelect";
-import { setProjectDesignSystem as raw_setProjectDesignSystem } from "@/app/design-systems/actions";
+import { setProjectDesignSystem as raw_setProjectDesignSystem } from "@/app/(app)/design-systems/actions";
 import type { Device } from "@/lib/devices";
 import type { Team } from "@/lib/team-shared";
 

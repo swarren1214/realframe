@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupCard } from "@/components/ui/radio-group";
-import { transferProject as raw_transferProject } from "@/app/team/actions";
+import { transferProject as raw_transferProject } from "@/app/(app)/team/actions";
 import { unwrapped } from "@/lib/safe-action";
 import { notify } from "@/lib/toast";
 import { Avatar, initialsFor } from "@/components/AvatarEditor";

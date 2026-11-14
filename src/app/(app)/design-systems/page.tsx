@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AppHeader, APP_PAGE } from "@/components/AppHeader";
 import { loadTeams } from "@/lib/teams";
 import { DS_COLUMNS, type DesignSystem } from "@/lib/design-systems/types";
 import { Library } from "./Library";
@@ -53,8 +52,7 @@ export default async function DesignSystemsPage() {
         (ruleCounts[r.design_system_id as string] ?? 0) + 1;
 
   return (
-    <div className={APP_PAGE}>
-      <AppHeader plan={profile?.plan} />
+    <div>
       <Library
         team={current}
         members={members ?? 1}

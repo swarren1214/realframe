@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { AppHeader, APP_PAGE } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { InviteCards } from "@/components/teams/InviteCards";
 import { loadInvites } from "@/lib/teams";
@@ -21,8 +20,7 @@ export default async function InvitesPage() {
     loadInvites(supabase),
   ]);
   return (
-    <div className={APP_PAGE}>
-      <AppHeader plan={profile?.plan} />
+    <div>
       <main className="mx-auto max-w-2xl space-y-5 px-2 pt-10">
         <h1 className="font-display text-2xl font-bold tracking-tight">
           Team invites

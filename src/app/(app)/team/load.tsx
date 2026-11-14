@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { AppHeader, APP_PAGE } from "@/components/AppHeader";
 import { loadTeams, type TeamDeviceRow, type TeamMember } from "@/lib/teams";
 import { TeamSettings } from "./TeamSettings";
 
@@ -124,8 +123,7 @@ export async function renderTeamPage(view: TeamView, next: string) {
   );
 
   return (
-    <div className={APP_PAGE}>
-      <AppHeader plan={profile?.plan} />
+    <div>
       <TeamSettings
         view={view}
         ownerName={profile?.display_name ?? null}
