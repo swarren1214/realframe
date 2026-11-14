@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import type { Project } from "@/lib/types";
 import { Canvas, type Frame } from "./Canvas";
+import { AccountMenu } from "@/components/AccountMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
 
   return (
     <Canvas
+      accountMenu={<AccountMenu compact />}
       project={project as Project}
       frames={(frames ?? []) as Frame[]}
       latest={(latest?.[0] as { id: string; number: number; html: string } | undefined) ?? null}

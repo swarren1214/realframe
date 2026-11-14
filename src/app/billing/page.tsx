@@ -36,7 +36,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="min-h-screen px-4 pb-16">
-      <AppHeader plan={profile?.plan} name={profile?.display_name} email={user.email} />
+      <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-3xl space-y-5 px-2 pt-10">
         <h1 className="font-display text-2xl font-bold tracking-tight">Plan &amp; billing</h1>
 

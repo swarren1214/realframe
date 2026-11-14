@@ -30,7 +30,7 @@ export default async function ProjectsPage() {
 
   return (
     <div className="min-h-screen px-4 pb-16">
-      <AppHeader plan={profile?.plan} name={profile?.display_name} email={user.email} />
+      <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-5xl px-2 pt-10">
         <h1 className="font-display text-2xl font-bold tracking-tight">Your prototypes</h1>
         <form action={createProject} className="glass mt-5 flex flex-wrap items-center gap-2 rounded-full p-1.5 pl-2">

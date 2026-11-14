@@ -8,10 +8,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { slug } = await params;
   const form = await request.formData();
   const password = String(form.get("password") ?? "");
-  const name = String(form.get("name") ?? "").trim().slice(0, 60);
+  const name = String(form.get("name") ?? "")
+    .trim()
+    .slice(0, 60);
   const back = String(form.get("back") ?? `/p/${slug}`);
   const backPath = back.startsWith("/") && !back.startsWith("//") ? back : `/p/${slug}`;
-  const fail = (code: string) => NextResponse.redirect(new URL(`${backPath}?error=${code}`, request.url), 303);
+  const fail = (code: string) => {
+    const url = new URL(backPath, request.url);
+    url.searchParams.set("error", code);
+    return NextResponse.redirect(url, 303);
+  };
 
   if (!name) return fail("name");
   if (!password) return fail("password");

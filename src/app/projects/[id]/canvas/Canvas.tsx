@@ -44,7 +44,9 @@ export function Canvas({
   project,
   frames: initialFrames,
   latest,
+  accountMenu,
 }: {
+  accountMenu?: React.ReactNode;
   project: Project;
   frames: Frame[];
   latest: { id: string; number: number; html: string } | null;
@@ -294,6 +296,7 @@ export function Canvas({
           {editing ? <X /> : <PencilRuler />}
           {editing ? "Exit editing" : "Edit visually"}
         </Button>
+        {accountMenu}
       </header>
       {error && (
         <p

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Logo } from "@/components/Logo";
 import { LoginForm } from "@/components/LoginForm";
 import { ArrowRight, Clock, KeyRound, LockKeyhole, LogOut } from "lucide-react";
@@ -11,9 +11,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { guestCookieName, verifyGuest } from "@/lib/guest";
 import type { Project, Role, Thread } from "@/lib/types";
 import { Review } from "./Review";
+import { AccountMenu } from "@/components/AccountMenu";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+
+// viewport-fit=cover lets present mode use the whole screen, notch included, inside the safe areas.
+export const viewport: Viewport = { viewportFit: "cover", themeColor: "#000000" };
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  return {
+    robots: { index: false, follow: false },
+    // Added to the home screen, the review link opens as a full-screen web app (the only way to get
+    // real full screen on iPhone). The name stays generic so private prototype names never leak.
+    manifest: `/p/${slug}/manifest.webmanifest`,
+    appleWebApp: { capable: true, title: "Prototype", statusBarStyle: "black-translucent" },
+  };
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -34,10 +48,11 @@ export default async function ReviewPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; present?: string }>;
 }) {
   const { slug } = await params;
-  const { error: formError } = await searchParams;
+  const { error: formError, present: presentParam } = await searchParams;
+  const present = presentParam === "1";
   const supabase = await createClient();
   const {
     data: { user },
@@ -58,7 +73,7 @@ export default async function ReviewPage({
     if (locked) {
       const lp = locked as Project;
       const guest = verifyGuest((await cookies()).get(guestCookieName(lp.id))?.value, lp.id);
-      if (!guest) return <PasswordGate project={lp} slug={slug} error={formError} signedInAs={user?.email ?? null} />;
+      if (!guest) return <PasswordGate project={lp} slug={slug} present={present} error={formError} signedInAs={user?.email ?? null} />;
       const [{ data: version }, { data: threads }, { data: nums }] = await Promise.all([
         admin.from("versions").select("id, number, html, summary, created_at").eq("id", lp.live_version_id!).maybeSingle(),
         admin.from("comment_threads").select(THREAD_SELECT).eq("project_id", lp.id).order("created_at"),
@@ -77,6 +92,7 @@ export default async function ReviewPage({
           role="guest"
           userEmail={null}
           guestName={guest.name}
+          present={present}
           version={version as { id: string; number: number; html: string; summary: string | null; created_at: string }}
           threads={(threads ?? []) as Thread[]}
           versionNumbers={Object.fromEntries((nums ?? []).map((v: { id: string; number: number }) => [v.id, v.number]))}
@@ -157,18 +173,32 @@ export default async function ReviewPage({
       version={version as { id: string; number: number; html: string; summary: string | null; created_at: string }}
       threads={(threads ?? []) as Thread[]}
       versionNumbers={Object.fromEntries((versionNumbers ?? []).map((v: { id: string; number: number }) => [v.id, v.number]))}
+      present={present}
+      accountMenu={user ? <AccountMenu compact /> : null}
     />
   );
 }
 
-function PasswordGate({ project, slug, error, signedInAs }: { project: Project; slug: string; error?: string; signedInAs: string | null }) {
+function PasswordGate({
+  project,
+  slug,
+  present,
+  error,
+  signedInAs,
+}: {
+  project: Project;
+  slug: string;
+  present: boolean;
+  error?: string;
+  signedInAs: string | null;
+}) {
   return (
     <Shell>
       <KeyRound className="mb-3 size-6 text-raspberry-700" aria-hidden="true" />
       <h1 className="font-display text-lg font-bold tracking-tight">{project.name}</h1>
       <p className="mt-1 text-[13px] text-stone-600">This prototype is password protected. Enter the password you were given.</p>
       <form action={`/api/p/${slug}/unlock`} method="post" className="mt-4 space-y-3">
-        <input type="hidden" name="back" value={`/p/${slug}`} />
+        <input type="hidden" name="back" value={`/p/${slug}${present ? "?present=1" : ""}`} />
         <div>
           <Label htmlFor="guest-name" className="mb-1.5">
             Your name

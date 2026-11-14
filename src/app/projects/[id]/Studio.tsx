@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUp,
+  Expand,
   Check,
   CircleCheck,
   Copy,
@@ -53,6 +54,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
+import { PresentMode, enterFullscreen } from "@/components/PresentMode";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
@@ -100,6 +102,8 @@ export function Studio(props: {
   initialVersionId: string | null;
   quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
   variants: Variant[];
+  /** The profile menu, rendered on the server and passed through. */
+  accountMenu?: React.ReactNode;
 }) {
   const { project, role, versions, messages, members, threads, quota, variants } = props;
   const outOfQuota = quota !== null && quota.remaining <= 0;
@@ -115,6 +119,7 @@ export function Studio(props: {
   const [prompt, setPrompt] = useState("");
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
+  const [presenting, setPresenting] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -244,6 +249,9 @@ export function Studio(props: {
 
   return (
     <div className="flex h-screen flex-col">
+      {presenting && html && (
+        <PresentMode html={html} title={`${project.name} v${selected?.number ?? ""}`} onExit={() => setPresenting(false)} />
+      )}
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
         <Link href="/projects" aria-label="All prototypes" className="rounded-full p-1 hover:bg-stone-900/5">
           <Mark size={26} />
@@ -305,6 +313,7 @@ export function Studio(props: {
             {isLive ? `v${selected.number} is live` : `Publish v${selected.number}`}
           </Button>
         )}
+        {props.accountMenu}
       </header>
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
@@ -457,6 +466,20 @@ export function Studio(props: {
               <span className="min-w-0 flex-1 truncate text-xs text-stone-500">
                 {editMode ? "Click an element to edit it. Links and buttons are paused while editing." : selected?.summary}
               </span>
+              {html && !editMode && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="Show this version full screen"
+                  onClick={() => {
+                    enterFullscreen();
+                    setPresenting(true);
+                  }}
+                >
+                  <Expand />
+                  Full screen
+                </Button>
+              )}
               {html && (
                 <Button size="sm" aria-pressed={editMode} onClick={() => (editMode ? exitEdit() : setEditMode(true))}>
                   {editMode ? <X /> : <PencilRuler />}

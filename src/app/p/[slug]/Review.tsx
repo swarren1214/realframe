@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CircleCheck, LogIn, LogOut, MessageSquare, MessageSquarePlus, PencilRuler, Send, Undo2, X } from "lucide-react";
+import { CircleCheck, Expand, LogIn, MessageSquare, MessageSquarePlus, PencilRuler, Send, Undo2, X } from "lucide-react";
 import { Mark } from "@/components/Logo";
 import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
+import { PresentMode, enterFullscreen } from "@/components/PresentMode";
 import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
 import { authorLabel, canComment, type Project, type Role, type Thread } from "@/lib/types";
@@ -26,6 +27,8 @@ export function Review({
   threads,
   versionNumbers,
   guestName,
+  present = false,
+  accountMenu,
 }: {
   project: Project;
   role: Role;
@@ -34,6 +37,10 @@ export function Review({
   threads: Thread[];
   versionNumbers: Record<string, number>;
   guestName?: string;
+  /** Open straight into full-screen present mode (?present=1, and the home-screen web app). */
+  present?: boolean;
+  /** Profile menu for signed-in reviewers. */
+  accountMenu?: React.ReactNode;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -47,6 +54,7 @@ export function Review({
   const [filter, setFilter] = useState<"open" | "resolved" | "all">("open");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [presenting, setPresenting] = useState(present);
 
   const ordered = useMemo(() => threads.map((t, i) => ({ ...t, n: i + 1 })), [threads]);
   const pins: Pin[] = ordered
@@ -157,6 +165,19 @@ export function Review({
     router.refresh();
   }
 
+  if (presenting) {
+    return (
+      <PresentMode
+        html={version.html}
+        title={`${project.name} v${version.number}`}
+        onExit={() => {
+          setPresenting(false);
+          if (present) window.history.replaceState(null, "", window.location.pathname);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col">
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
@@ -172,6 +193,19 @@ export function Review({
           <Badge>v{version.number} · Draft</Badge>
         )}
         <div className="flex-1" />
+        <Button
+          variant="ghost"
+          title="Show the prototype full screen"
+          onClick={() => {
+            enterFullscreen();
+            setCommentMode(false);
+            setDraft(null);
+            setPresenting(true);
+          }}
+        >
+          <Expand />
+          Full screen
+        </Button>
         {(role === "owner" || role === "editor") && (
           <Button asChild variant="ghost">
             <a href={`/projects/${project.id}`}>
@@ -196,11 +230,7 @@ export function Review({
         {isGuest ? (
           <span className="px-2 text-xs text-muted-foreground">Viewing as {guestName}</span>
         ) : userEmail ? (
-          <form action="/auth/signout" method="post">
-            <Button type="submit" variant="ghost" size="icon" aria-label={`Sign out ${userEmail}`} title={`Sign out ${userEmail}`}>
-              <LogOut />
-            </Button>
-          </form>
+          accountMenu
         ) : (
           <Button asChild variant="ghost">
             <a href={`/?next=/p/${project.slug}`}>

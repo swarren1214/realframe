@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Member, Message, Project, Role, Thread, Variant, VersionMeta } from "@/lib/types";
 import { Studio } from "./Studio";
+import { AccountMenu } from "@/components/AccountMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -45,13 +46,12 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   ]);
   // Only the most recent group of unkept variants is shown for comparison.
   const pendingRows = (pending.data ?? []) as Variant[];
-  const variants = pendingRows
-    .filter((v) => v.group_id === pendingRows[0]?.group_id)
-    .sort((a, b) => a.position - b.position);
+  const variants = pendingRows.filter((v) => v.group_id === pendingRows[0]?.group_id).sort((a, b) => a.position - b.position);
   const q = (quota.data as { plan: "free" | "pro"; build_limit: number; remaining: number }[] | null)?.[0] ?? null;
 
   return (
     <Studio
+      accountMenu={<AccountMenu compact />}
       project={project as Project}
       role={role as Role}
       userEmail={user.email ?? ""}
