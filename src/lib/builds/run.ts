@@ -180,7 +180,23 @@ export async function runBuild(buildId: string) {
     await admin.from("builds").update({ sandbox_id: sandbox.name }).eq("id", buildId);
 
     // The repository (or the uploaded files) live in the sandbox's working directory.
-    const home = (sandbox.cwd || "/vercel/sandbox").replace(/\/+$/, "");
+    // Uploaded files are written to /vercel/sandbox. For clones, find the checkout rather than
+    // trusting a default: look for the folder that holds .git.
+    let home = "/vercel/sandbox";
+    if (!uploadFiles.length) {
+      const probe = await sandbox.runCommand({
+        cmd: "bash",
+        args: [
+          "-lc",
+          'for d in /vercel/sandbox "$PWD" "$HOME" /vercel /workspace /code; do if [ -d "$d/.git" ]; then echo "$d"; exit 0; fi; done; ' +
+            'g=$(find / -maxdepth 4 -type d -name .git -not -path "*/node_modules/*" 2>/dev/null | head -n 1); [ -n "$g" ] && dirname "$g"',
+        ],
+      });
+      const found = (await probe.stdout()).trim().split("\n")[0];
+      if (!found) throw new Error("Couldn't find the cloned repository in the sandbox.");
+      home = found.replace(/\/+$/, "");
+    }
+    say(`Working in ${home}${source.root_dir ? `/${source.root_dir}` : ""}`);
     if (uploadFiles.length) {
       for (let k = 0; k < uploadFiles.length; k += 100) {
         await sandbox.writeFiles(uploadFiles.slice(k, k + 100).map((f) => ({ path: `${home}/${f.path}`, content: f.content })));
