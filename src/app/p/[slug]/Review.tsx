@@ -486,31 +486,33 @@ export function Review({
                   "max-lg:pointer-events-none max-lg:translate-y-full",
               )}
             >
-              <div className="flex items-center justify-center pt-2 lg:hidden">
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen(false)}
-                  aria-label="Close comments"
-                  className="grid h-6 w-16 place-items-center rounded-full"
-                >
-                  <span className="h-1.5 w-10 rounded-full bg-stone-300" />
-                </button>
-              </div>
               <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-2.5">
                 <MessageSquare
                   className="size-4 text-muted-foreground"
                   aria-hidden="true"
                 />
-                <h2 className="text-[13px] font-semibold">Comments</h2>
+                <h2 className="text-[13px] font-semibold max-lg:text-[15px]">
+                  Comments
+                </h2>
                 <span className="text-xs text-muted-foreground">
                   {openCount} open
                 </span>
+                <div className="flex-1 lg:hidden" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPanelOpen(false)}
+                  aria-label="Close"
+                  className="-my-1 -mr-2 lg:hidden"
+                >
+                  <X />
+                </Button>
                 <ToggleGroup
                   type="single"
                   aria-label="Filter comments"
                   value={filter}
                   onValueChange={(v) => v && setFilter(v as typeof filter)}
-                  className="ml-auto"
+                  className="ml-auto max-lg:ml-0 max-lg:basis-full"
                 >
                   <ToggleGroupItem value="open">Open</ToggleGroupItem>
                   <ToggleGroupItem value="resolved">Resolved</ToggleGroupItem>

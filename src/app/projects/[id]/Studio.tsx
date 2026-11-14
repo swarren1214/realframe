@@ -1064,17 +1064,28 @@ export function Studio(props: {
               )}
               {...(!panelOpen ? { inert: true } : {})}
             >
-              <div className="flex items-center justify-center pt-2 lg:hidden">
-                <button
-                  type="button"
+              <div className="flex items-center gap-2 border-b border-stone-100 py-2 pl-4 pr-2 lg:hidden">
+                <h2 className="flex-1 text-[15px] font-semibold">
+                  {
+                    {
+                      chat: "Chat",
+                      versions: "Versions",
+                      comments: "Comments",
+                      share: "Share",
+                    }[tab]
+                  }
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setPanelOpen(false)}
-                  aria-label="Close panel"
-                  className="grid h-6 w-16 place-items-center rounded-full"
+                  aria-label="Close"
+                  className="lg:hidden"
                 >
-                  <span className="h-1.5 w-10 rounded-full bg-stone-300" />
-                </button>
+                  <X />
+                </Button>
               </div>
-              <div className="border-b border-stone-100 p-3 max-lg:pt-1">
+              <div className="border-b border-stone-100 p-3 max-lg:hidden">
                 <TabsList>
                   {(
                     [
@@ -1305,7 +1316,7 @@ export function Studio(props: {
                           <SelectItem value="3">3 variants</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Kbd className="ml-auto">⌘↵</Kbd>
+                      <Kbd className="ml-auto max-lg:invisible">⌘↵</Kbd>
                       <Button
                         variant="default"
                         size="icon"
