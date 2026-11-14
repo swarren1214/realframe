@@ -34,6 +34,7 @@ Canvas, visual editing, billing and variants are planned for later.
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Vercel (all envs) | Supabase → Project Settings → API keys (publishable) |
 | `ANTHROPIC_API_KEY` | Vercel (all envs), **secret** | console.anthropic.com → API keys |
 | `REALFRAME_CODEGEN_MODEL` | optional | Defaults to `claude-sonnet-5-5` |
+| `REALFRAME_PLANNER_MODEL` | optional | Model that breaks big requests into steps. Defaults to `claude-haiku-5-5` (rates via `REALFRAME_PLANNER_INPUT_USD_PER_MTOK` / `..._OUTPUT_...`, default 1 / 5) |
 | `SUPABASE_SECRET_KEY` | Vercel (all envs), **secret** | Supabase → Project Settings → API keys (secret). Server-only: Stripe webhook and usage bookkeeping |
 | `STRIPE_SECRET_KEY` | Vercel, **secret** | Stripe → Developers → API keys (`sk_test_…` in the sandbox) |
 | `STRIPE_WEBHOOK_SECRET` | Vercel, **secret** | Signing secret of the `/api/stripe/webhook` endpoint |
@@ -92,6 +93,8 @@ npm run dev
 src/
   proxy.ts                         session refresh on every request
   lib/ai.ts                        system prompt + Claude call + response parsing
+  lib/plan.ts                      planner: splits a request into ordered steps, and the per-step prompt
+  lib/plan-runs.ts                 planned-build bookkeeping (build_runs): save, settle cost, post summary
   lib/agent.ts                     script injected into prototypes (pins, comment clicks)
   lib/supabase/{server,client}.ts  Supabase clients
   components/PrototypeFrame.tsx    sandboxed iframe + postMessage bridge
@@ -124,3 +127,15 @@ The apps live in `apps/ios` (SwiftUI, iOS 26+) and `apps/android` (Kotlin + Jetp
 - **Setup:** apply `supabase/migrations/0016_native_apps.sql`, add `api.realframe.app` to the Vercel project's domains, and re-upload `supabase/templates/*.html` (they now include `{{ .Token }}` for the app's code sign-in).
 
 See `apps/ios/README.md` and `apps/android/README.md` to run each app.
+
+## Planned builds
+
+Prompts in the Studio go through a plan-then-build loop instead of one big generation:
+
+1. `POST /api/projects/[id]/plan` claims one build, asks the planner model for 1–6 ordered steps, and stores the run in `build_runs`. Short single-line edits skip the planner and run as one step.
+2. The Studio calls `POST /api/projects/[id]/plan/[runId]` once per step. Each step builds on the document the previous step produced, so every request stays inside the function timeout.
+3. The last step saves one version and settles the build with the summed tokens and cost (planner + every step). The chat gets a per-step summary.
+
+If a step fails after earlier ones succeeded, the finished steps are saved as a version. **Stop** in the Studio ends the run after the current step (`DELETE` on the same route). Variants still use the single-pass `/variants` route.
+
+- **Setup:** apply `supabase/migrations/0020_build_plans.sql`.

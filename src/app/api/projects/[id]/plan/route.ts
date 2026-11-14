@@ -1,0 +1,103 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { planBuild } from "@/lib/plan";
+import {
+  IMPORTED_APP_MESSAGE,
+  finishBuild,
+  limitResponse,
+  loadBuildContext,
+  readPrompt,
+} from "@/lib/builds";
+
+export const maxDuration = 60;
+
+/**
+ * Start a planned build: claim one build, break the request into ordered steps, and
+ * return them. The client then runs each step in turn with POST ./plan/[runId].
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+
+  const { data: role } = await supabase.rpc("project_role", { p: id });
+  if (role !== "owner" && role !== "editor") {
+    return NextResponse.json(
+      { error: "Only owners and editors can change this prototype." },
+      { status: 403 },
+    );
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    prompt?: string;
+    baseVersionId?: string | null;
+  };
+  const read = readPrompt(body);
+  if ("error" in read)
+    return NextResponse.json({ error: read.error }, { status: 400 });
+  const { prompt } = read;
+
+  const { current, context } = await loadBuildContext(
+    supabase,
+    id,
+    body.baseVersionId,
+  );
+  if (current?.kind === "bundle")
+    return NextResponse.json({ error: IMPORTED_APP_MESSAGE }, { status: 400 });
+
+  // The whole run is one build against the caller's plan.
+  const { data: claimId, error: claimError } = await supabase.rpc(
+    "claim_generation",
+    { p_project: id },
+  );
+  if (claimError || !claimId) return limitResponse(claimError?.message);
+
+  await supabase.from("messages").insert({
+    project_id: id,
+    role: "user",
+    content: prompt,
+    created_by: user.id,
+  });
+
+  const { steps, usage } = await planBuild({
+    prompt,
+    context,
+    currentHtml: current?.html ?? null,
+  });
+
+  const { data: run, error } = await createAdminClient()
+    .from("build_runs")
+    .insert({
+      project_id: id,
+      user_id: user.id,
+      generation_id: claimId as string,
+      base_version_id: current?.id ?? null,
+      prompt,
+      steps,
+      input_tokens: usage.input,
+      output_tokens: usage.output,
+      cost_micros: usage.costMicros,
+    })
+    .select("id")
+    .single();
+  if (error || !run) {
+    await finishBuild(claimId as string, { ok: false });
+    return NextResponse.json(
+      { error: error?.message ?? "Couldn't start the build." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({
+    runId: (run as { id: string }).id,
+    steps: steps.map((s) => ({ title: s.title })),
+  });
+}
