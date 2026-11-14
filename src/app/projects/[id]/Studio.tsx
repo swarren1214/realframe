@@ -57,6 +57,7 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { ImportDialog } from "@/components/ImportDialog";
+import { BuildList, BuildLog, SourceCard, useBuilds, type Build, type Source } from "@/components/builds/Builds";
 import { PRESENT_FRAME_CLASS, PresentControls, enterFullscreen } from "@/components/PresentMode";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
@@ -108,6 +109,9 @@ export function Studio(props: {
   initialSrc?: string | null;
   quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
   variants: Variant[];
+  /** The GitHub repository this prototype builds from, and its recent builds. */
+  source?: Source | null;
+  builds?: Build[];
   /** The profile menu, rendered on the server and passed through. */
   accountMenu?: React.ReactNode;
 }) {
@@ -129,6 +133,11 @@ export function Studio(props: {
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
   const [presenting, setPresenting] = useState(false);
+  const { builds, now } = useBuilds(project.id, props.builds ?? []);
+  const [logBuildId, setLogBuildId] = useState<string | null>(() =>
+    versions.length === 0 ? ((props.builds ?? []).find((b) => b.status === "queued" || b.status === "building")?.id ?? null) : null,
+  );
+  const buildRunning = builds.some((b) => b.status === "queued" || b.status === "building");
   const [savingEdit, setSavingEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -396,8 +405,10 @@ export function Studio(props: {
           <form onSubmit={generate} className="border-t border-stone-100 p-3">
             {isImportedApp && (
               <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
-                <Boxes className="mt-px size-3.5 shrink-0" aria-hidden="true" />v{selected?.number} is an imported app, so prompts
-                can&apos;t change it yet. Import a new zip for the next version, or pick a generated version to build on.
+                <Boxes className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                {selected?.source === "github" && props.source
+                  ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
+                  : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
               </p>
             )}
             <label htmlFor="prompt" className="sr-only">
@@ -513,7 +524,7 @@ export function Studio(props: {
             {presenting && hasPreview && <PresentControls onExit={() => setPresenting(false)} />}
             <div
               className={cn(
-                "mx-auto h-full w-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300",
+                "mx-auto min-h-0 w-full flex-1 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300",
                 presenting && hasPreview && PRESENT_FRAME_CLASS,
               )}
               style={{ maxWidth: presenting && hasPreview ? undefined : width }}
@@ -541,12 +552,19 @@ export function Studio(props: {
                       <div aria-hidden="true" className="grid size-12 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
                         <Sparkles className="size-5" />
                       </div>
-                      Your prototype will appear here. Describe it on the left to build v1.
+                      {buildRunning
+                        ? "Building from GitHub. v1 appears here when it's done."
+                        : "Your prototype will appear here. Describe it on the left to build v1."}
                     </>
                   )}
                 </div>
               )}
             </div>
+            {logBuildId && (
+              <div className="mt-3">
+                <BuildLog buildId={logBuildId} onClose={() => setLogBuildId(null)} />
+              </div>
+            )}
           </main>
         )}
 
@@ -589,6 +607,12 @@ export function Studio(props: {
 
             <div className="flex-1 overflow-y-auto">
               <TabsContent value="versions">
+                {props.source && (
+                  <div className="space-y-1 px-2 pt-2">
+                    <SourceCard source={props.source} isOwner={isOwner} running={buildRunning} onBuilt={setLogBuildId} />
+                    <BuildList projectId={project.id} builds={builds} now={now} onShowLog={setLogBuildId} onBuilt={setLogBuildId} />
+                  </div>
+                )}
                 <div className="px-2 pt-2">
                   <ImportDialog
                     projectId={project.id}
@@ -623,7 +647,13 @@ export function Studio(props: {
                               </Badge>
                             )}
                             {v.source !== "ai" && (
-                              <Badge>{{ restore: "Restore", edit: "Visual edit", variant: "Variant", import: "Import" }[v.source]}</Badge>
+                              <Badge>
+                                {
+                                  { restore: "Restore", edit: "Visual edit", variant: "Variant", import: "Import", github: "GitHub" }[
+                                    v.source
+                                  ]
+                                }
+                              </Badge>
                             )}
                             <span className="ml-auto text-[11px] text-stone-500">
                               {new Date(v.created_at).toLocaleString("en-US", {

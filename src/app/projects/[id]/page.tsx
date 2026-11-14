@@ -4,6 +4,7 @@ import type { Member, Message, Project, Role, Thread, Variant, VersionMeta } fro
 import { Studio } from "./Studio";
 import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
+import { BUILD_COLUMNS, type Build, type Source } from "@/lib/builds/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   const { data: role } = await supabase.rpc("project_role", { p: id });
   if (role !== "owner" && role !== "editor") redirect(`/p/${project.slug}`);
 
-  const [versions, messages, members, threads, latest, quota, pending] = await Promise.all([
+  const [versions, messages, members, threads, latest, quota, pending, source, builds] = await Promise.all([
     supabase
       .from("versions")
       .select("id, number, summary, prompt, source, kind, bundle_files, created_at")
@@ -44,6 +45,12 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       .is("kept_version_id", null)
       .order("created_at", { ascending: false })
       .limit(3),
+    supabase
+      .from("project_sources")
+      .select("project_id, repo_full_name, branch, root_dir, framework, build_on_push, publish_on_push")
+      .eq("project_id", id)
+      .maybeSingle(),
+    supabase.from("builds").select(BUILD_COLUMNS).eq("project_id", id).order("queued_at", { ascending: false }).limit(8),
   ]);
   // Only the most recent group of unkept variants is shown for comparison.
   const pendingRows = (pending.data ?? []) as Variant[];
@@ -65,6 +72,8 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       initialSrc={latest.data?.[0]?.kind === "bundle" ? contentUrlFor(latest.data[0].id) : null}
       quota={q ? { plan: q.plan, limit: q.build_limit, remaining: q.remaining } : null}
       variants={variants}
+      source={(source.data as Source | null) ?? null}
+      builds={(builds.data ?? []) as Build[]}
     />
   );
 }
