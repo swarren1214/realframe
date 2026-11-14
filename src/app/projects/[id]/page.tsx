@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Member, Message, Project, Role, Thread, Variant, VersionMeta } from "@/lib/types";
 import { Studio } from "./Studio";
 import { AccountMenu } from "@/components/AccountMenu";
+import { contentUrlFor } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   const [versions, messages, members, threads, latest, quota, pending] = await Promise.all([
     supabase
       .from("versions")
-      .select("id, number, summary, prompt, source, created_at")
+      .select("id, number, summary, prompt, source, kind, bundle_files, created_at")
       .eq("project_id", id)
       .order("number", { ascending: false }),
     supabase.from("messages").select("id, role, content, version_id, created_at").eq("project_id", id).order("created_at"),
@@ -34,7 +35,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       .select("id, version_id, x, y, status, created_at, comments(id, thread_id, author_email, author_name, body, created_at)")
       .eq("project_id", id)
       .order("created_at"),
-    supabase.from("versions").select("id, html").eq("project_id", id).order("number", { ascending: false }).limit(1),
+    supabase.from("versions").select("id, html, kind").eq("project_id", id).order("number", { ascending: false }).limit(1),
     supabase.rpc("generation_quota"),
     supabase
       .from("variants")
@@ -61,6 +62,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       threads={(threads.data ?? []) as Thread[]}
       initialHtml={latest.data?.[0]?.html ?? null}
       initialVersionId={latest.data?.[0]?.id ?? null}
+      initialSrc={latest.data?.[0]?.kind === "bundle" ? contentUrlFor(latest.data[0].id) : null}
       quota={q ? { plan: q.plan, limit: q.build_limit, remaining: q.remaining } : null}
       variants={variants}
     />

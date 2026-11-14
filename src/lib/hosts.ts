@@ -3,8 +3,25 @@ export const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "realframe.app
 export const APP_HOST = `www.${ROOT_DOMAIN}`;
 
 const RESERVED = new Set([
-  "www", "app", "api", "admin", "mail", "email", "auth", "login", "billing", "help",
-  "support", "docs", "blog", "status", "cdn", "static", "assets", "dashboard", "realframe",
+  "www",
+  "app",
+  "api",
+  "admin",
+  "mail",
+  "email",
+  "auth",
+  "login",
+  "billing",
+  "help",
+  "support",
+  "docs",
+  "blog",
+  "status",
+  "cdn",
+  "static",
+  "assets",
+  "dashboard",
+  "realframe",
 ]);
 
 export function isReservedSlug(slug: string) {
@@ -31,4 +48,12 @@ export function reviewUrlFor(slug: string, currentHost: string) {
   const h = currentHost.toLowerCase().split(":")[0];
   if (h === ROOT_DOMAIN || h.endsWith(`.${ROOT_DOMAIN}`)) return `https://${slug}.${ROOT_DOMAIN}`;
   return `${h.startsWith("localhost") ? "http" : "https"}://${currentHost}/p/${slug}`;
+}
+
+/** Imported apps are served from this separate domain (see src/lib/content.ts). */
+export const CONTENT_ROOT_DOMAIN = process.env.CONTENT_ROOT_DOMAIN || "realframeusercontent.com";
+
+export function isContentHost(host: string | null | undefined) {
+  const h = (host ?? "").toLowerCase().split(":")[0];
+  return h.endsWith(`.${CONTENT_ROOT_DOMAIN}`);
 }

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Project } from "@/lib/types";
 import { Canvas, type Frame } from "./Canvas";
 import { AccountMenu } from "@/components/AccountMenu";
+import { contentUrlFor } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,7 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
 
   const [{ data: frames }, { data: latest }] = await Promise.all([
     supabase.from("canvas_frames").select("id, label, route, width, height, x, y, version_id").eq("project_id", id).order("created_at"),
-    supabase.from("versions").select("id, number, html").eq("project_id", id).order("number", { ascending: false }).limit(1),
+    supabase.from("versions").select("id, number, html, kind").eq("project_id", id).order("number", { ascending: false }).limit(1),
   ]);
 
   return (
@@ -72,7 +73,14 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
       accountMenu={<AccountMenu compact />}
       project={project as Project}
       frames={(frames ?? []) as Frame[]}
-      latest={(latest?.[0] as { id: string; number: number; html: string } | undefined) ?? null}
+      latest={
+        latest?.[0]
+          ? {
+              ...(latest[0] as { id: string; number: number; html: string }),
+              src: latest[0].kind === "bundle" ? contentUrlFor(latest[0].id) : null,
+            }
+          : null
+      }
     />
   );
 }

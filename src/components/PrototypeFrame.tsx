@@ -19,7 +19,10 @@ export type FrameHandle = {
 };
 
 type Props = {
-  html: string;
+  /** A prototype document (generated or single-file import), shown via srcdoc. */
+  html?: string;
+  /** An imported app served from the content domain. Takes precedence over html. */
+  src?: string | null;
   title: string;
   commentMode?: boolean;
   pins?: Pin[];
@@ -37,7 +40,8 @@ type Props = {
 // so prototype code can never read Realframe's cookies, storage or DOM.
 export const PrototypeFrame = forwardRef<FrameHandle, Props>(function PrototypeFrame(
   {
-    html,
+    html = "",
+    src,
     title,
     commentMode = false,
     pins = [],
@@ -53,7 +57,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(function PrototypeF
   handle,
 ) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const srcDoc = useMemo(() => withAgent(html), [html]);
+  const srcDoc = useMemo(() => (src ? undefined : withAgent(html)), [html, src]);
   const latest = useRef({ commentMode, pins, onPick, onSelectPin, editMode, onSelectElement, route, onRouteChange });
   latest.current = { commentMode, pins, onPick, onSelectPin, editMode, onSelectElement, route, onRouteChange };
 
@@ -94,12 +98,19 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(function PrototypeF
     sync();
   }, [commentMode, pins, editMode, route]);
 
+  // Generated prototypes get an opaque origin. Imported apps run on their own content-domain
+  // origin (a different site from Realframe), so they may keep same-origin for storage and routing.
   return (
     <iframe
       ref={ref}
       title={title}
-      srcDoc={srcDoc}
-      sandbox="allow-scripts allow-forms allow-popups allow-modals"
+      {...(src ? { src } : { srcDoc })}
+      sandbox={
+        src
+          ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+          : "allow-scripts allow-forms allow-popups allow-modals"
+      }
+      allow="fullscreen; clipboard-write"
       className={`h-full w-full border-0 bg-white ${className}`}
       style={style}
     />

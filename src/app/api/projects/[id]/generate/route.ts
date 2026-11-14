@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generatePrototype } from "@/lib/ai";
-import { finishBuild, limitResponse, loadBuildContext, readPrompt } from "@/lib/builds";
+import { IMPORTED_APP_MESSAGE, finishBuild, limitResponse, loadBuildContext, readPrompt } from "@/lib/builds";
 
 export const maxDuration = 300;
 
@@ -24,6 +24,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { prompt } = read;
 
   const { current, history } = await loadBuildContext(supabase, id, body.baseVersionId);
+  if (current?.kind === "bundle") return NextResponse.json({ error: IMPORTED_APP_MESSAGE }, { status: 400 });
 
   // Reserve one build against the caller's plan before spending anything.
   const { data: claimId, error: claimError } = await supabase.rpc("claim_generation", { p_project: id });

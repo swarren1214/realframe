@@ -46,7 +46,7 @@ function exitFullscreen() {
  * The page itself goes full screen where the browser allows it; on iPhone, where it doesn't,
  * we point people to Add to Home Screen, which opens the review link as a full-screen web app.
  */
-export function PresentMode({ html, title, onExit }: { html: string; title: string; onExit: () => void }) {
+export function PresentMode({ html, src, title, onExit }: { html?: string; src?: string | null; title: string; onExit: () => void }) {
   const [hint, setHint] = useState<"none" | "tap" | "homescreen">("none");
   const [full, setFull] = useState(false);
   const exitRef = useRef(onExit);
@@ -98,7 +98,7 @@ export function PresentMode({ html, title, onExit }: { html: string; title: stri
       aria-label={`${title}, full screen`}
       className="fixed inset-0 z-50 bg-black pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]"
     >
-      <PrototypeFrame html={html} title={title} />
+      <PrototypeFrame html={html} src={src} title={title} />
 
       <div className="group absolute right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
         {!full && canFullscreen() && (

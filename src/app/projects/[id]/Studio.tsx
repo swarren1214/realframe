@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUp,
+  Boxes,
   Expand,
+  Upload,
   Check,
   CircleCheck,
   Copy,
@@ -54,12 +56,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
+import { ImportDialog } from "@/components/ImportDialog";
 import { PresentMode, enterFullscreen } from "@/components/PresentMode";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
 import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type Variant, type VersionMeta } from "@/lib/types";
 import {
+  contentUrl,
   deleteProject,
   discardVariants,
   inviteMember,
@@ -100,6 +104,8 @@ export function Studio(props: {
   threads: Thread[];
   initialHtml: string | null;
   initialVersionId: string | null;
+  /** Content-domain URL when the latest version is an imported app. */
+  initialSrc?: string | null;
   quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
   variants: Variant[];
   /** The profile menu, rendered on the server and passed through. */
@@ -112,6 +118,9 @@ export function Studio(props: {
   const [selectedId, setSelectedId] = useState<string | null>(props.initialVersionId);
   const [htmlCache, setHtmlCache] = useState<Record<string, string>>(
     props.initialVersionId && props.initialHtml ? { [props.initialVersionId]: props.initialHtml } : {},
+  );
+  const [srcCache, setSrcCache] = useState<Record<string, string>>(
+    props.initialVersionId && props.initialSrc ? { [props.initialVersionId]: props.initialSrc } : {},
   );
   const [device, setDevice] = useState<DeviceId>("desktop");
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -129,7 +138,10 @@ export function Studio(props: {
 
   const selected = versions.find((v) => v.id === selectedId) ?? versions[0] ?? null;
   const live = versions.find((v) => v.id === project.live_version_id) ?? null;
-  const html = selected ? htmlCache[selected.id] : undefined;
+  const isImportedApp = selected?.kind === "bundle";
+  const html = selected && !isImportedApp ? htmlCache[selected.id] : undefined;
+  const src = selected && isImportedApp ? srcCache[selected.id] : undefined;
+  const hasPreview = Boolean(html || src);
   const editor = useVisualEditor(editMode ? html : null);
 
   function exitEdit() {
@@ -162,8 +174,16 @@ export function Studio(props: {
   }, [messages.length, busy]);
 
   useEffect(() => {
-    if (!selected || htmlCache[selected.id]) return;
+    if (!selected || htmlCache[selected.id] || srcCache[selected.id]) return;
     let cancelled = false;
+    if (selected.kind === "bundle") {
+      contentUrl(selected.id)
+        .then((url) => !cancelled && setSrcCache((c) => ({ ...c, [selected.id]: url })))
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
     supabase
       .from("versions")
       .select("html")
@@ -175,7 +195,7 @@ export function Studio(props: {
     return () => {
       cancelled = true;
     };
-  }, [selected, htmlCache, supabase]);
+  }, [selected, htmlCache, srcCache, supabase]);
 
   useEffect(() => {
     if (!busy) return;
@@ -202,7 +222,7 @@ export function Studio(props: {
   async function generate(e?: React.FormEvent) {
     e?.preventDefault();
     const text = prompt.trim();
-    if (!text || busy) return;
+    if (!text || busy || isImportedApp) return;
     setBusy(true);
     setElapsed(0);
     setError("");
@@ -249,8 +269,8 @@ export function Studio(props: {
 
   return (
     <div className="flex h-screen flex-col">
-      {presenting && html && (
-        <PresentMode html={html} title={`${project.name} v${selected?.number ?? ""}`} onExit={() => setPresenting(false)} />
+      {presenting && hasPreview && (
+        <PresentMode html={html} src={src} title={`${project.name} v${selected?.number ?? ""}`} onExit={() => setPresenting(false)} />
       )}
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
         <Link href="/projects" aria-label="All prototypes" className="rounded-full p-1 hover:bg-stone-900/5">
@@ -377,6 +397,12 @@ export function Studio(props: {
             <div ref={chatEnd} />
           </div>
           <form onSubmit={generate} className="border-t border-stone-100 p-3">
+            {isImportedApp && (
+              <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
+                <Boxes className="mt-px size-3.5 shrink-0" aria-hidden="true" />v{selected?.number} is an imported app, so prompts
+                can&apos;t change it yet. Import a new zip for the next version, or pick a generated version to build on.
+              </p>
+            )}
             <label htmlFor="prompt" className="sr-only">
               {versions.length ? `Describe a change to v${selected?.number ?? ""}` : "Describe your prototype"}
             </label>
@@ -416,7 +442,7 @@ export function Studio(props: {
                   title={variantCount > 1 ? "Generate variants" : versions.length ? "Update prototype" : "Build prototype"}
                   type="submit"
                   loading={busy}
-                  disabled={!prompt.trim() || outOfQuota}
+                  disabled={!prompt.trim() || outOfQuota || isImportedApp}
                 >
                   <ArrowUp />
                 </Button>
@@ -466,7 +492,7 @@ export function Studio(props: {
               <span className="min-w-0 flex-1 truncate text-xs text-stone-500">
                 {editMode ? "Click an element to edit it. Links and buttons are paused while editing." : selected?.summary}
               </span>
-              {html && !editMode && (
+              {hasPreview && !editMode && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -491,7 +517,9 @@ export function Studio(props: {
               className="mx-auto h-full w-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300"
               style={{ maxWidth: width }}
             >
-              {html ? (
+              {src ? (
+                <PrototypeFrame src={src} title={`${project.name} v${selected?.number}`} />
+              ) : html ? (
                 editMode && editor.editableHtml ? (
                   <PrototypeFrame
                     ref={editor.frame}
@@ -560,6 +588,18 @@ export function Studio(props: {
 
             <div className="flex-1 overflow-y-auto">
               <TabsContent value="versions">
+                <div className="px-2 pt-2">
+                  <ImportDialog
+                    projectId={project.id}
+                    onImported={(id) => setSelectedId(id)}
+                    trigger={
+                      <Button variant="ghost" size="sm" className="w-full justify-start">
+                        <Upload />
+                        Import a new version
+                      </Button>
+                    }
+                  />
+                </div>
                 <ul className="space-y-1 p-2">
                   {versions.length === 0 && <li className="p-4 text-[13px] text-stone-500">No versions yet.</li>}
                   {versions.map((v) => {
@@ -582,7 +622,7 @@ export function Studio(props: {
                               </Badge>
                             )}
                             {v.source !== "ai" && (
-                              <Badge>{{ restore: "Restore", edit: "Visual edit", variant: "Variant" }[v.source]}</Badge>
+                              <Badge>{{ restore: "Restore", edit: "Visual edit", variant: "Variant", import: "Import" }[v.source]}</Badge>
                             )}
                             <span className="ml-auto text-[11px] text-stone-500">
                               {new Date(v.created_at).toLocaleString("en-US", {

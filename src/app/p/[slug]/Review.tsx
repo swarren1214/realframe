@@ -17,7 +17,7 @@ import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
 import { authorLabel, canComment, type Project, type Role, type Thread } from "@/lib/types";
 
-type Version = { id: string; number: number; html: string; summary: string | null; created_at: string };
+type Version = { id: string; number: number; html: string; src?: string | null; summary: string | null; created_at: string };
 
 export function Review({
   project,
@@ -169,6 +169,7 @@ export function Review({
     return (
       <PresentMode
         html={version.html}
+        src={version.src}
         title={`${project.name} v${version.number}`}
         onExit={() => {
           setPresenting(false);
@@ -254,6 +255,7 @@ export function Review({
           <div className="h-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
             <PrototypeFrame
               html={version.html}
+              src={version.src}
               title={`${project.name} v${version.number}`}
               commentMode={commentMode}
               pins={pins}

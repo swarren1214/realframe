@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock, FolderOpen, Plus, Users } from "lucide-react";
+import { Clock, FolderOpen, Plus, Upload, Users } from "lucide-react";
+import { ImportDialog } from "@/components/ImportDialog";
 import { createClient } from "@/lib/supabase/server";
 import { AppHeader } from "@/components/AppHeader";
 import { Badge, BadgeDot } from "@/components/ui/badge";
@@ -32,7 +33,18 @@ export default async function ProjectsPage() {
     <div className="min-h-screen px-4 pb-16">
       <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-5xl px-2 pt-10">
-        <h1 className="font-display text-2xl font-bold tracking-tight">Your prototypes</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="font-display text-2xl font-bold tracking-tight">Your prototypes</h1>
+          <div className="flex-1" />
+          <ImportDialog
+            trigger={
+              <Button>
+                <Upload />
+                Import
+              </Button>
+            }
+          />
+        </div>
         <form action={createProject} className="glass mt-5 flex flex-wrap items-center gap-2 rounded-full p-1.5 pl-2">
           <label htmlFor="name" className="sr-only">
             Prototype name

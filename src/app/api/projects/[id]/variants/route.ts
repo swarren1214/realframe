@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generatePrototype } from "@/lib/ai";
-import { finishBuild, limitResponse, loadBuildContext, readPrompt } from "@/lib/builds";
+import { IMPORTED_APP_MESSAGE, finishBuild, limitResponse, loadBuildContext, readPrompt } from "@/lib/builds";
 
 export const maxDuration = 300;
 
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const count = Math.min(3, Math.max(2, Math.round(Number(body.count) || 3)));
 
   const { current, history } = await loadBuildContext(supabase, id, body.baseVersionId);
+  if (current?.kind === "bundle") return NextResponse.json({ error: IMPORTED_APP_MESSAGE }, { status: 400 });
 
   // Each variant is a build. Claim them one at a time; stop when the plan runs out.
   const claims: string[] = [];
@@ -59,9 +60,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const groupId = crypto.randomUUID();
   const results = await Promise.allSettled(
-    claims.map((_, i) =>
-      generatePrototype({ prompt, currentHtml: current?.html ?? null, history, variantHint: DIRECTIONS[i] }),
-    ),
+    claims.map((_, i) => generatePrototype({ prompt, currentHtml: current?.html ?? null, history, variantHint: DIRECTIONS[i] })),
   );
 
   const rows = [];

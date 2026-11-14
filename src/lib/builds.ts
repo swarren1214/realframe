@@ -22,10 +22,7 @@ export function limitResponse(message: string | undefined) {
 }
 
 /** Record how a claimed build ended. Never throws: bookkeeping must not fail a build. */
-export async function finishBuild(
-  claimId: string,
-  outcome: { ok: true; input: number | null; output: number | null } | { ok: false },
-) {
+export async function finishBuild(claimId: string, outcome: { ok: true; input: number | null; output: number | null } | { ok: false }) {
   try {
     const { error } = await createAdminClient().rpc("finish_generation", {
       p_id: claimId,
@@ -42,19 +39,14 @@ export async function finishBuild(
 
 /** The version to build on plus recent chat history. */
 export async function loadBuildContext(supabase: SupabaseClient, projectId: string, baseVersionId?: string | null) {
-  let base = supabase.from("versions").select("id, html").eq("project_id", projectId);
+  let base = supabase.from("versions").select("id, html, kind").eq("project_id", projectId);
   base = baseVersionId ? base.eq("id", baseVersionId) : base.order("number", { ascending: false }).limit(1);
   const [{ data: baseRows }, { data: history }] = await Promise.all([
     base,
-    supabase
-      .from("messages")
-      .select("role, content")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false })
-      .limit(8),
+    supabase.from("messages").select("role, content").eq("project_id", projectId).order("created_at", { ascending: false }).limit(8),
   ]);
   return {
-    current: (baseRows?.[0] as { id: string; html: string } | undefined) ?? null,
+    current: (baseRows?.[0] as { id: string; html: string; kind: "html" | "bundle" } | undefined) ?? null,
     history: ((history ?? []) as { role: "user" | "assistant"; content: string }[]).reverse(),
   };
 }
@@ -65,3 +57,6 @@ export function readPrompt(body: { prompt?: unknown }) {
   if (prompt.length > 4000) return { error: "Keep the prompt under 4,000 characters." };
   return { prompt };
 }
+
+export const IMPORTED_APP_MESSAGE =
+  "Imported apps can't be changed with prompts yet. Import a new zip to add a version, or pick a generated version to build on.";

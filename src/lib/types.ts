@@ -20,7 +20,9 @@ export type VersionMeta = {
   number: number;
   summary: string | null;
   prompt: string | null;
-  source: "ai" | "restore" | "edit" | "variant";
+  source: "ai" | "restore" | "edit" | "variant" | "import";
+  kind: "html" | "bundle";
+  bundle_files?: number | null;
   created_at: string;
 };
 

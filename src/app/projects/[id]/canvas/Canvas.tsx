@@ -49,7 +49,7 @@ export function Canvas({
   accountMenu?: React.ReactNode;
   project: Project;
   frames: Frame[];
-  latest: { id: string; number: number; html: string } | null;
+  latest: { id: string; number: number; html: string; src?: string | null } | null;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -62,7 +62,7 @@ export function Canvas({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
-  const editor = useVisualEditor(editing ? latest?.html : null);
+  const editor = useVisualEditor(editing && !latest?.src ? latest?.html : null);
   const dragRef = useRef(drag);
   dragRef.current = drag;
 
@@ -283,7 +283,7 @@ export function Canvas({
         </div>
         <Button
           variant={editing ? "secondary" : "default"}
-          disabled={!activeFrame || !latest}
+          disabled={!activeFrame || !latest || Boolean(latest.src)}
           aria-pressed={editing}
           title={activeFrame ? undefined : "Select a frame first"}
           onClick={() => {
@@ -429,6 +429,7 @@ export function Canvas({
                       ) : (
                         <PrototypeFrame
                           html={latest.html}
+                          src={latest.src}
                           title={f.label}
                           route={f.route}
                           onRouteChange={(hash) => {

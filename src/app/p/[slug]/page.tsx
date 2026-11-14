@@ -12,6 +12,10 @@ import { guestCookieName, verifyGuest } from "@/lib/guest";
 import type { Project, Role, Thread } from "@/lib/types";
 import { Review } from "./Review";
 import { AccountMenu } from "@/components/AccountMenu";
+import { contentUrlFor } from "@/lib/content";
+
+type VersionRow = { id: string; number: number; html: string; kind: "html" | "bundle"; summary: string | null; created_at: string };
+const withSrc = (v: VersionRow) => ({ ...v, src: v.kind === "bundle" ? contentUrlFor(v.id) : null });
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +79,7 @@ export default async function ReviewPage({
       const guest = verifyGuest((await cookies()).get(guestCookieName(lp.id))?.value, lp.id);
       if (!guest) return <PasswordGate project={lp} slug={slug} present={present} error={formError} signedInAs={user?.email ?? null} />;
       const [{ data: version }, { data: threads }, { data: nums }] = await Promise.all([
-        admin.from("versions").select("id, number, html, summary, created_at").eq("id", lp.live_version_id!).maybeSingle(),
+        admin.from("versions").select("id, number, html, kind, summary, created_at").eq("id", lp.live_version_id!).maybeSingle(),
         admin.from("comment_threads").select(THREAD_SELECT).eq("project_id", lp.id).order("created_at"),
         admin.from("versions").select("id, number").eq("project_id", lp.id),
       ]);
@@ -93,7 +97,7 @@ export default async function ReviewPage({
           userEmail={null}
           guestName={guest.name}
           present={present}
-          version={version as { id: string; number: number; html: string; summary: string | null; created_at: string }}
+          version={withSrc(version as VersionRow)}
           threads={(threads ?? []) as Thread[]}
           versionNumbers={Object.fromEntries((nums ?? []).map((v: { id: string; number: number }) => [v.id, v.number]))}
         />
@@ -145,7 +149,7 @@ export default async function ReviewPage({
     versionId = data?.[0]?.id ?? null;
   }
   const { data: version } = versionId
-    ? await supabase.from("versions").select("id, number, html, summary, created_at").eq("id", versionId).maybeSingle()
+    ? await supabase.from("versions").select("id, number, html, kind, summary, created_at").eq("id", versionId).maybeSingle()
     : { data: null };
 
   if (!version) {
@@ -170,7 +174,7 @@ export default async function ReviewPage({
       project={p}
       role={role}
       userEmail={user?.email ?? null}
-      version={version as { id: string; number: number; html: string; summary: string | null; created_at: string }}
+      version={withSrc(version as VersionRow)}
       threads={(threads ?? []) as Thread[]}
       versionNumbers={Object.fromEntries((versionNumbers ?? []).map((v: { id: string; number: number }) => [v.id, v.number]))}
       present={present}
