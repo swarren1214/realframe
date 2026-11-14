@@ -57,6 +57,20 @@ In the Supabase dashboard → **Authentication → URL Configuration**:
 
 **Email:** Supabase's built-in email sender only delivers to members of your Supabase organization and is heavily rate-limited. Before inviting outside reviewers, set up custom SMTP (Authentication → Emails → SMTP settings), e.g. Resend (`smtp.resend.com`, port 465, user `resend`, password = Resend API key) with a verified sending domain.
 
+## Prototype addresses and review links
+
+- Every prototype is served at `https://<slug>.realframe.app` (the slug is editable in the Share panel) as well as `/p/<slug>`. `src/proxy.ts` rewrites subdomain roots to `/p/<slug>`; other subdomain paths redirect to `www`.
+- Requires the wildcard domain `*.realframe.app` on the Vercel project, and `https://*.realframe.app/auth/callback` in Supabase's redirect URLs. Session cookies are scoped to `.realframe.app` so one sign-in covers every subdomain.
+- Access modes: invite-only (sign in), password (no account: guests enter the password and a name, get a signed 30-day cookie, see the whole discussion and can comment if allowed), and public view-only.
+- Password hashes live in `project_secrets` (bcrypt via pgcrypto, no client access); `check_project_password` is service-role only.
+- `NEXT_PUBLIC_ROOT_DOMAIN` overrides `realframe.app`.
+
+## Canvas, variants and visual editing
+
+- **Variants:** pick 2 or 3 in the prompt box; each is built in a different design direction and costs one build. Keep one to make it the next version.
+- **Visual editing:** "Edit visually" in the studio or canvas. Static elements are tagged with stable `data-rf` ids and edited in place; script-rendered elements get rules in `<style data-rf-edits>`. Saving creates a version with source `edit`.
+- **Canvas (Pro):** `/projects/<id>/canvas`, live frames per screen and device size, saved in `canvas_frames`.
+
 ## Plans and billing
 
 - **Free:** 30 builds per calendar month (UTC).

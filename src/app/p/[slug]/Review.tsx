@@ -15,6 +15,7 @@ export function Review({
   version,
   threads,
   versionNumbers,
+  guestName,
 }: {
   project: Project;
   role: Role;
@@ -22,10 +23,12 @@ export function Review({
   version: Version;
   threads: Thread[];
   versionNumbers: Record<string, number>;
+  guestName?: string;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const commenter = canComment(role);
+  const isGuest = role === "guest";
+  const commenter = canComment(role) || (isGuest && project.guest_comments !== false);
   const [commentMode, setCommentMode] = useState(false);
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [draftText, setDraftText] = useState("");
@@ -43,7 +46,24 @@ export function Review({
   const openCount = threads.filter((t) => t.status === "open").length;
 
   useEffect(() => {
-    if (role === "public") return;
+    if (!isGuest) return;
+    // Guests have no session for Realtime, so poll for new comments instead.
+    const t = setInterval(() => router.refresh(), 15000);
+    return () => clearInterval(t);
+  }, [isGuest, router]);
+
+  async function guestPost(payload: Record<string, unknown>) {
+    const res = await fetch(`/api/p/${project.slug}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { data, error: null } : { data: null, error: { message: data.error || "Couldn't post that." } };
+  }
+
+  useEffect(() => {
+    if (role === "public" || isGuest) return;
     const channel = supabase
       .channel(`review-${project.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "comments", filter: `project_id=eq.${project.id}` }, () =>
@@ -68,13 +88,18 @@ export function Review({
     if (!draft || !draftText.trim()) return;
     setBusy(true);
     setError("");
-    const { data, error } = await supabase.rpc("create_thread", {
-      p_project: project.id,
-      p_version: version.id,
-      p_x: draft.x,
-      p_y: draft.y,
-      p_body: draftText.trim(),
-    });
+    const { data, error } = isGuest
+      ? await guestPost({ versionId: version.id, x: draft.x, y: draft.y, body: draftText.trim() }).then((r) => ({
+          data: r.data?.threadId as string | undefined,
+          error: r.error,
+        }))
+      : await supabase.rpc("create_thread", {
+          p_project: project.id,
+          p_version: version.id,
+          p_x: draft.x,
+          p_y: draft.y,
+          p_body: draftText.trim(),
+        });
     setBusy(false);
     if (error) return setError(error.message);
     setDraft(null);
@@ -87,9 +112,17 @@ export function Review({
 
   async function reply(threadId: string) {
     const body = (replies[threadId] ?? "").trim();
-    if (!body || !userEmail) return;
+    if (!body || (!userEmail && !isGuest)) return;
     setBusy(true);
     setError("");
+    if (isGuest) {
+      const { error } = await guestPost({ threadId, body });
+      setBusy(false);
+      if (error) return setError(error.message);
+      setReplies((r) => ({ ...r, [threadId]: "" }));
+      router.refresh();
+      return;
+    }
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -152,7 +185,9 @@ export function Review({
             {commentMode ? "Click the prototype to pin… (Esc)" : "Add comment"}
           </button>
         )}
-        {userEmail ? (
+        {isGuest ? (
+          <span className="text-sm text-stone-600">Viewing as {guestName}</span>
+        ) : userEmail ? (
           <form action="/auth/signout" method="post">
             <button className="text-sm text-stone-600 hover:underline" title={userEmail}>
               Sign out
@@ -274,7 +309,7 @@ export function Review({
                     </span>
                     <span className="rounded bg-stone-100 px-1.5 font-semibold text-stone-700">v{versionNumbers[t.version_id] ?? "?"}</span>
                     {t.version_id !== version.id && <span className="text-stone-500">earlier version</span>}
-                    {commenter && (
+                    {commenter && !isGuest && (
                       <button
                         type="button"
                         onClick={(e) => {

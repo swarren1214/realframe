@@ -1,5 +1,5 @@
-export type Role = "owner" | "editor" | "commenter" | "viewer" | "public";
-export type AccessMode = "invite" | "public";
+export type Role = "owner" | "editor" | "commenter" | "viewer" | "public" | "guest";
+export type AccessMode = "invite" | "public" | "password";
 
 export type Project = {
   id: string;
@@ -9,6 +9,8 @@ export type Project = {
   access_mode: AccessMode;
   published: boolean;
   live_version_id: string | null;
+  has_password?: boolean;
+  guest_comments?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -42,6 +44,7 @@ export type Comment = {
   thread_id: string;
   author_email: string;
   author_name: string | null;
+  is_guest?: boolean;
   body: string;
   created_at: string;
 };
@@ -53,6 +56,7 @@ export type Thread = {
   y: number;
   status: "open" | "resolved";
   created_at: string;
+  guest_name?: string | null;
   comments: Comment[];
 };
 

@@ -5,6 +5,7 @@ import { Logo } from "@/components/Logo";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
+import { reviewUrlFor } from "@/lib/hosts";
 import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type Variant, type VersionMeta } from "@/lib/types";
 import {
   deleteProject,
@@ -17,6 +18,9 @@ import {
   renameProject,
   restoreVersion,
   setAccessMode,
+  setGuestComments,
+  setProjectPassword,
+  updateSlug,
   unpublish,
 } from "../actions";
 
@@ -179,7 +183,7 @@ export function Studio(props: {
     });
   }
 
-  const reviewUrl = typeof window === "undefined" ? `/p/${project.slug}` : `${window.location.origin}/p/${project.slug}`;
+  const reviewUrl = typeof window === "undefined" ? `/p/${project.slug}` : reviewUrlFor(project.slug, window.location.host);
   const width = DEVICES.find((d) => d.id === device)!.width;
 
   return (
@@ -232,7 +236,7 @@ export function Studio(props: {
         </a>
         {project.published && (
           <a
-            href={`/p/${project.slug}`}
+            href={reviewUrl}
             target="_blank"
             className="inline-flex min-h-9 items-center rounded-lg border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
           >
@@ -613,6 +617,9 @@ function SharePanel({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"viewer" | "commenter" | "editor">("commenter");
   const [copied, setCopied] = useState(false);
+  const [password, setPassword] = useState("");
+  const [address, setAddress] = useState(project.slug);
+  const [addressError, setAddressError] = useState("");
 
   if (!isOwner) {
     return <p className="p-5 text-sm text-stone-600">Only the owner can change who has access.</p>;
@@ -652,11 +659,55 @@ function SharePanel({
         )}
       </section>
 
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">Address</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setAddressError("");
+            run(async () => {
+              try {
+                const slug = await updateSlug(project.id, address);
+                setAddress(slug);
+              } catch (err) {
+                setAddressError(err instanceof Error ? err.message : "Couldn't change the address.");
+              }
+            });
+          }}
+          className="flex items-center gap-1"
+        >
+          <label htmlFor="slug" className="sr-only">
+            Subdomain
+          </label>
+          <input
+            id="slug"
+            value={address}
+            onChange={(e) => setAddress(e.target.value.toLowerCase())}
+            maxLength={60}
+            className="min-h-9 min-w-0 flex-1 rounded-lg border border-stone-300 px-2.5 text-sm"
+          />
+          <span className="shrink-0 text-sm text-stone-500">.realframe.app</span>
+          {address !== project.slug && (
+            <button disabled={pending} className="min-h-9 rounded-lg bg-stone-900 px-3 text-sm font-semibold text-white">
+              Save
+            </button>
+          )}
+        </form>
+        {addressError ? (
+          <p role="alert" className="text-xs text-red-700">
+            {addressError}
+          </p>
+        ) : (
+          <p className="text-xs text-stone-500">Changing it breaks links you&apos;ve already shared.</p>
+        )}
+      </section>
+
       <fieldset className="space-y-2">
         <legend className="mb-2 text-sm font-semibold">Who can open it</legend>
         {(
           [
             ["invite", "Only people I invite", "They sign in with an emailed link."],
+            ["password", "Anyone with the password", "Clients enter a password and their name. No account needed."],
             ["public", "Anyone with the link", "View only. Comments stay with invited reviewers."],
           ] as const
         ).map(([value, title, desc]) => (
@@ -671,7 +722,13 @@ function SharePanel({
               name="access"
               checked={project.access_mode === value}
               disabled={pending}
-              onChange={() => run(() => setAccessMode(project.id, value))}
+              onChange={() => {
+                if (value === "password" && !project.has_password) {
+                  document.getElementById("share-password")?.focus();
+                  return;
+                }
+                run(() => setAccessMode(project.id, value));
+              }}
               className="mt-1 accent-ember-700"
             />
             <span>
@@ -680,6 +737,51 @@ function SharePanel({
             </span>
           </label>
         ))}
+        <div className={`space-y-2 rounded-xl bg-stone-50 p-3 ${project.access_mode === "password" || !project.has_password ? "" : "opacity-80"}`}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const value = password;
+              run(async () => {
+                await setProjectPassword(project.id, value);
+                setPassword("");
+              });
+            }}
+            className="flex gap-2"
+          >
+            <label htmlFor="share-password" className="sr-only">
+              {project.has_password ? "New password" : "Password"}
+            </label>
+            <input
+              id="share-password"
+              type="password"
+              autoComplete="new-password"
+              minLength={6}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={project.has_password ? "Change the password" : "Set a password (6+ characters)"}
+              className="min-h-9 min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-2.5 text-sm"
+            />
+            <button disabled={pending} className="min-h-9 rounded-lg bg-stone-900 px-3 text-sm font-semibold text-white">
+              {project.has_password ? "Change" : "Set"}
+            </button>
+          </form>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={project.guest_comments !== false}
+              disabled={pending}
+              onChange={(e) => {
+                const on = e.target.checked;
+                run(() => setGuestComments(project.id, on));
+              }}
+              className="accent-ember-700"
+            />
+            Password guests can comment
+          </label>
+          <p className="text-xs text-stone-500">Password guests see the whole discussion. Setting a password switches the link to password mode.</p>
+        </div>
       </fieldset>
 
       <section className="space-y-2">

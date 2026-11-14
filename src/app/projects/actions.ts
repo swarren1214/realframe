@@ -42,8 +42,12 @@ export async function unpublish(projectId: string) {
   revalidatePath(`/projects/${projectId}`);
 }
 
-export async function setAccessMode(projectId: string, mode: "invite" | "public") {
+export async function setAccessMode(projectId: string, mode: "invite" | "public" | "password") {
   const { supabase } = await requireUser();
+  if (mode === "password") {
+    const { data } = await supabase.from("projects").select("has_password").eq("id", projectId).single();
+    if (!data?.has_password) throw new Error("Set a password first.");
+  }
   const { error } = await supabase.from("projects").update({ access_mode: mode }).eq("id", projectId);
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
@@ -154,4 +158,39 @@ export async function saveVisualEdit(projectId: string, html: string, summary: s
   revalidatePath(`/projects/${projectId}`);
   const v = version as { id: string; number: number };
   return { versionId: v.id, number: v.number };
+}
+
+export async function setProjectPassword(projectId: string, password: string) {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.rpc("set_project_password", { p_project: projectId, p_password: password });
+  if (error) throw new Error(error.message.includes("6 to 200") ? "Use at least 6 characters." : error.message);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function setGuestComments(projectId: string, on: boolean) {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.from("projects").update({ guest_comments: on }).eq("id", projectId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+const RESERVED_SLUGS = new Set([
+  "www", "app", "api", "admin", "mail", "email", "auth", "login", "billing", "help",
+  "support", "docs", "blog", "status", "cdn", "static", "assets", "dashboard", "realframe",
+]);
+
+export async function updateSlug(projectId: string, raw: string) {
+  const { supabase } = await requireUser();
+  const slug = raw
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  if (slug.length < 3 || slug.length > 60) throw new Error("Use 3 to 60 letters, numbers or dashes.");
+  if (RESERVED_SLUGS.has(slug)) throw new Error("That address is reserved. Try another.");
+  const { error } = await supabase.from("projects").update({ slug }).eq("id", projectId);
+  if (error) throw new Error(error.code === "23505" ? "That address is taken. Try another." : error.message);
+  revalidatePath(`/projects/${projectId}`);
+  return slug;
 }
