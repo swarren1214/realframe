@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUp,
+  Ellipsis,
+  GitCommitHorizontal,
   Boxes,
   Expand,
   Upload,
@@ -37,7 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupCard } from "@/components/ui/radio-group";
-import { Switch } from "@/components/ui/switch";
+import { SwitchRow } from "@/components/ui/switch-row";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -57,6 +59,14 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { ImportDialog } from "@/components/ImportDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BuildList, BuildLog, SourceCard, useBuilds, type Build, type Source } from "@/components/builds/Builds";
 import { PRESENT_FRAME_CLASS, PresentControls, enterFullscreen } from "@/components/PresentMode";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
@@ -150,6 +160,7 @@ export function Studio(props: {
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
   const [presenting, setPresenting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
   const [logBuildId, setLogBuildId] = useState<string | null>(() =>
     versions.length === 0 ? ((props.builds ?? []).find((b) => b.status === "queued" || b.status === "building")?.id ?? null) : null,
@@ -289,7 +300,11 @@ export function Studio(props: {
   }
   const isBusy = (key: string) => pending && busyKey === key;
 
-  const reviewUrl = typeof window === "undefined" ? `/p/${project.slug}` : reviewUrlFor(project.slug, window.location.host);
+  // The review link depends on the host, which only the browser knows; work it out after mount
+  // so server and client render the same HTML.
+  const [host, setHost] = useState<string | null>(null);
+  useEffect(() => setHost(window.location.host), []);
+  const reviewUrl = host ? reviewUrlFor(project.slug, host) : `/p/${project.slug}`;
   const width = DEVICES.find((d) => d.id === device)!.width;
   const isLive = project.published && selected && project.live_version_id === selected.id;
 
@@ -356,11 +371,50 @@ export function Studio(props: {
             {isLive ? `v${selected.number} is live` : `Publish v${selected.number}`}
           </Button>
         )}
+        {isOwner && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+                <Ellipsis />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => {
+                  navigator.clipboard.writeText(reviewUrl);
+                }}
+                disabled={!project.published}
+              >
+                <Copy />
+                Copy review link
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+                <Trash2 />
+                Delete prototype
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {props.accountMenu}
       </header>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete “{project.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              All of its versions, variants and comments go with it. This can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => run(() => deleteProject(project.id), "delete")}>Delete prototype</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
-        <aside aria-label="Prompt" className="glass flex w-[360px] shrink-0 flex-col overflow-hidden rounded-[1.75rem]">
+        <aside aria-label="Prompt" className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]">
           <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3">
             <MessageSquare className="size-4 text-stone-500" aria-hidden="true" />
             <h2 className="text-[13px] font-semibold">Chat</h2>
@@ -586,7 +640,10 @@ export function Studio(props: {
         )}
 
         {editMode ? (
-          <aside aria-label="Visual editor" className="glass flex w-[320px] shrink-0 flex-col overflow-hidden rounded-[1.75rem]">
+          <aside
+            aria-label="Visual editor"
+            className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]"
+          >
             <Inspector
               selected={editor.selected}
               editCount={editor.edits.length}
@@ -602,9 +659,9 @@ export function Studio(props: {
             value={tab}
             onValueChange={(v) => setTab(v as Tab)}
             aria-label="Project panel"
-            className="glass w-[320px] shrink-0 overflow-hidden rounded-[1.75rem]"
+            className="glass flex w-[320px] shrink-0 flex-col overflow-hidden rounded-[1.75rem] xl:w-[360px]"
           >
-            <div className="border-b border-stone-100 p-2">
+            <div className="border-b border-stone-100 p-3">
               <TabsList>
                 {(
                   [
@@ -616,90 +673,76 @@ export function Studio(props: {
                   <TabsTrigger key={id} value={id}>
                     <Icon />
                     {label}
-                    {count > 0 && <span className="text-[10px] text-muted-foreground">{count}</span>}
+                    {count > 0 && (
+                      <span className="grid h-4 min-w-4 place-items-center rounded-full bg-foreground/8 px-1 text-[10px] font-semibold tabular-nums text-stone-600">
+                        {count}
+                      </span>
+                    )}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
-              <TabsContent value="versions">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <TabsContent value="versions" className="space-y-5 p-4">
                 {(props.source || builds.length > 0) && (
-                  <div className="space-y-1 px-2 pt-2">
-                    {props.source && <SourceCard source={props.source} isOwner={isOwner} running={buildRunning} onBuilt={setLogBuildId} />}
+                  <div className="space-y-2">
+                    {props.source && (
+                      <SourceCard
+                        source={props.source}
+                        isOwner={isOwner}
+                        running={buildRunning}
+                        latest={builds[0]}
+                        now={now}
+                        onBuilt={setLogBuildId}
+                      />
+                    )}
                     <BuildList projectId={project.id} builds={builds} now={now} onShowLog={setLogBuildId} onBuilt={setLogBuildId} />
                   </div>
                 )}
-                <div className="px-2 pt-2">
-                  <ImportDialog
-                    projectId={project.id}
-                    onImported={(id) => setSelectedId(id)}
-                    trigger={
-                      <Button variant="ghost" size="sm" className="w-full justify-start">
-                        <Upload />
-                        Import a new version
-                      </Button>
-                    }
-                  />
-                </div>
-                <ul className="space-y-1 p-2">
-                  {versions.length === 0 && <li className="p-4 text-[13px] text-stone-500">No versions yet.</li>}
-                  {versions.map((v) => {
-                    const on = v.id === selected?.id;
-                    return (
-                      <li
-                        key={v.id}
-                        className={cn(
-                          "rounded-2xl p-3 transition-colors",
-                          on ? "bg-glow-soft shadow-[inset_0_0_0_1px_#fbcfe8]" : "hover:bg-stone-900/[.03]",
-                        )}
-                      >
-                        <button type="button" onClick={() => setSelectedId(v.id)} className="w-full text-left">
-                          <span className="flex items-center gap-1.5">
-                            <span className="text-[13px] font-semibold">v{v.number}</span>
-                            {v.id === project.live_version_id && project.published && (
-                              <Badge variant="success">
-                                <BadgeDot />
-                                Live
-                              </Badge>
-                            )}
-                            {v.source !== "ai" && (
-                              <Badge>
-                                {
-                                  { restore: "Restore", edit: "Visual edit", variant: "Variant", import: "Import", github: "GitHub" }[
-                                    v.source
-                                  ]
-                                }
-                              </Badge>
-                            )}
-                            <span className="ml-auto text-[11px] text-stone-500">
-                              {new Date(v.created_at).toLocaleString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                hour: "numeric",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </span>
-                          {v.summary && <span className="mt-1 block text-xs leading-relaxed text-stone-700">{v.summary}</span>}
-                          {v.prompt && <span className="mt-1 block truncate text-[11px] text-stone-500">“{v.prompt}”</span>}
-                        </button>
-                        {on && v.id !== versions[0]?.id && (
-                          <Button
-                            size="sm"
-                            className="mt-2"
-                            loading={isBusy(`restore-${v.id}`)}
-                            disabled={pending}
-                            onClick={() => run(() => restoreVersion(project.id, v.id), `restore-${v.id}`)}
-                          >
-                            <RotateCcw />
-                            Restore as new version
-                          </Button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+
+                <section aria-label="Versions" className="space-y-2">
+                  <div className="flex items-center gap-2 px-1">
+                    <Eyebrow>Versions</Eyebrow>
+                    <ImportDialog
+                      projectId={project.id}
+                      onImported={(id) => setSelectedId(id)}
+                      trigger={
+                        <Button variant="ghost" size="sm" className="-mr-2 ml-auto h-7 text-stone-600">
+                          <Upload />
+                          Import
+                        </Button>
+                      }
+                    />
+                  </div>
+                  {versions.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
+                      <span aria-hidden="true" className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                        <History className="size-5" />
+                      </span>
+                      <p className="text-[13px] font-medium">No versions yet</p>
+                      <p className="text-xs text-muted-foreground">
+                        {buildRunning ? "Your first build is running." : "Describe a prototype in the chat, or import one."}
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {versions.map((v) => (
+                        <VersionItem
+                          key={v.id}
+                          version={v}
+                          selected={v.id === selected?.id}
+                          live={v.id === project.live_version_id && project.published}
+                          canRestore={v.id !== versions[0]?.id}
+                          restoring={isBusy(`restore-${v.id}`)}
+                          disabled={pending}
+                          onSelect={() => setSelectedId(v.id)}
+                          onRestore={() => run(() => restoreVersion(project.id, v.id), `restore-${v.id}`)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </section>
               </TabsContent>
 
               <TabsContent value="share">
@@ -714,97 +757,74 @@ export function Studio(props: {
                 />
               </TabsContent>
 
-              <TabsContent value="comments">
-                <div className="space-y-1 p-2">
-                  {threads.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 p-6 text-center text-[13px] text-stone-500">
-                      <MessageSquare className="size-5 text-stone-400" aria-hidden="true" />
-                      No comments yet. Reviewers pin comments on the published prototype from the review link.
-                    </div>
-                  )}
-                  {threads
-                    .slice()
-                    .reverse()
-                    .map((t, i) => {
-                      const v = versions.find((x) => x.id === t.version_id);
-                      return (
-                        <article key={t.id} className="space-y-2 rounded-2xl p-3 hover:bg-stone-900/[.03]">
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span
-                              className={cn(
-                                "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                                t.status === "open" ? "btn-glow" : "bg-stone-400",
-                              )}
-                            >
-                              {threads.length - i}
-                            </span>
-                            {v && <Badge>v{v.number}</Badge>}
-                            <span className="text-stone-500">{t.status === "resolved" ? "Resolved" : "Open"}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="ml-auto h-7"
-                              onClick={async () => {
-                                await supabase
-                                  .from("comment_threads")
-                                  .update({
-                                    status: t.status === "open" ? "resolved" : "open",
-                                    resolved_at: t.status === "open" ? new Date().toISOString() : null,
-                                  })
-                                  .eq("id", t.id);
-                                router.refresh();
-                              }}
-                            >
-                              {t.status === "open" ? <CircleCheck /> : <Undo2 />}
-                              {t.status === "open" ? "Resolve" : "Reopen"}
-                            </Button>
-                          </div>
-                          {t.comments
-                            .slice()
-                            .sort((a, b) => a.created_at.localeCompare(b.created_at))
-                            .map((c) => (
-                              <p key={c.id} className="text-[13px] leading-relaxed">
-                                <strong className="font-semibold">{authorLabel(c)}</strong> {c.body}
-                              </p>
-                            ))}
-                        </article>
-                      );
-                    })}
-                  {project.published && (
-                    <Button asChild variant="ghost" size="sm" className="m-1">
-                      <a href={reviewUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink />
-                        Open the review page to reply
-                      </a>
-                    </Button>
-                  )}
-                </div>
+              <TabsContent value="comments" className="space-y-1 p-3">
+                {threads.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
+                    <span aria-hidden="true" className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                      <MessageSquare className="size-5" />
+                    </span>
+                    <p className="text-[13px] font-medium">No comments yet</p>
+                    <p className="text-xs text-muted-foreground">Reviewers pin comments on the published prototype from the review link.</p>
+                  </div>
+                )}
+                {threads
+                  .slice()
+                  .reverse()
+                  .map((t, i) => {
+                    const v = versions.find((x) => x.id === t.version_id);
+                    return (
+                      <article key={t.id} className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]">
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <span
+                            className={cn(
+                              "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                              t.status === "open" ? "btn-glow" : "bg-stone-400",
+                            )}
+                          >
+                            {threads.length - i}
+                          </span>
+                          {v && <Badge>v{v.number}</Badge>}
+                          <span className="text-stone-500">{t.status === "resolved" ? "Resolved" : "Open"}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto h-7"
+                            onClick={async () => {
+                              await supabase
+                                .from("comment_threads")
+                                .update({
+                                  status: t.status === "open" ? "resolved" : "open",
+                                  resolved_at: t.status === "open" ? new Date().toISOString() : null,
+                                })
+                                .eq("id", t.id);
+                              router.refresh();
+                            }}
+                          >
+                            {t.status === "open" ? <CircleCheck /> : <Undo2 />}
+                            {t.status === "open" ? "Resolve" : "Reopen"}
+                          </Button>
+                        </div>
+                        {t.comments
+                          .slice()
+                          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                          .map((c) => (
+                            <p key={c.id} className="text-[13px] leading-relaxed">
+                              <strong className="font-semibold">{authorLabel(c)}</strong> {c.body}
+                            </p>
+                          ))}
+                      </article>
+                    );
+                  })}
+                {project.published && (
+                  <Button asChild variant="ghost" size="sm" className="m-1">
+                    <a href={reviewUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink />
+                      Open the review page to reply
+                    </a>
+                  </Button>
+                )}
               </TabsContent>
             </div>
-            {isOwner && (
-              <div className="flex justify-end border-t border-stone-100 p-2">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm" loading={isBusy("delete")}>
-                      <Trash2 />
-                      Delete prototype
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete “{project.name}”?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        All of its versions, variants and comments go with it. This can&apos;t be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => run(() => deleteProject(project.id), "delete")}>Delete prototype</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            )}
           </Tabs>
         )}
       </div>
@@ -992,17 +1012,16 @@ function SharePanel({
               {project.has_password ? "Change" : "Set"}
             </Button>
           </form>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="guest-comments"
-              checked={project.guest_comments !== false}
-              disabled={pending}
-              onCheckedChange={(on) => run(() => setGuestComments(project.id, on), "guests")}
-            />
-            <Label htmlFor="guest-comments" className="text-stone-700">
-              Password guests can comment
-            </Label>
-          </div>
+          <SwitchRow
+            id="guest-comments"
+            className="-mx-1"
+            label="Password guests can comment"
+            description="Guests add a name when they enter the password."
+            checked={project.guest_comments !== false}
+            loading={isBusy("guests")}
+            disabled={pending && !isBusy("guests")}
+            onCheckedChange={(on) => run(() => setGuestComments(project.id, on), "guests")}
+          />
         </div>
       </section>
 
@@ -1124,5 +1143,101 @@ function VariantCompare({
         ))}
       </div>
     </main>
+  );
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  restore: "Restore",
+  edit: "Visual edit",
+  variant: "Variant",
+  import: "Import",
+  github: "GitHub",
+};
+
+function versionTime(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function VersionItem({
+  version: v,
+  selected,
+  live,
+  canRestore,
+  restoring,
+  disabled,
+  onSelect,
+  onRestore,
+}: {
+  version: VersionMeta;
+  selected: boolean;
+  live: boolean;
+  canRestore: boolean;
+  restoring: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+  onRestore: () => void;
+}) {
+  const summary = v.summary ?? "";
+  const long = summary.length > 90;
+  const body = <span className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-700">{summary}</span>;
+  return (
+    <li
+      className={cn(
+        "rounded-2xl transition-colors duration-[var(--duration-fast)]",
+        selected ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]" : "hover:bg-foreground/[.03]",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected || undefined}
+        className="block w-full rounded-2xl p-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+      >
+        <span className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold">v{v.number}</span>
+          {live && (
+            <Badge variant="success">
+              <BadgeDot />
+              Live
+            </Badge>
+          )}
+          {v.source !== "ai" && <Badge>{SOURCE_LABEL[v.source] ?? v.source}</Badge>}
+          <span suppressHydrationWarning className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {versionTime(v.created_at)}
+          </span>
+        </span>
+        {summary &&
+          (long ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{body}</TooltipTrigger>
+              <TooltipContent side="left">{summary}</TooltipContent>
+            </Tooltip>
+          ) : (
+            body
+          ))}
+        {v.commit_sha ? (
+          <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+            <GitCommitHorizontal className="size-3" aria-hidden="true" />
+            <code className="font-mono">{v.commit_sha.slice(0, 7)}</code>
+            {v.commit_author && <span className="truncate">· {v.commit_author}</span>}
+          </span>
+        ) : (
+          v.prompt && <span className="mt-1 block truncate text-[11px] text-muted-foreground">“{v.prompt}”</span>
+        )}
+      </button>
+      {selected && canRestore && (
+        <div className="px-3 pb-3">
+          <Button size="sm" loading={restoring} disabled={disabled} onClick={onRestore}>
+            <RotateCcw />
+            Restore as new version
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }

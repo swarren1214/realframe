@@ -23,6 +23,8 @@ export type VersionMeta = {
   source: "ai" | "restore" | "edit" | "variant" | "import" | "github";
   kind: "html" | "bundle";
   bundle_files?: number | null;
+  commit_sha?: string | null;
+  commit_author?: string | null;
   created_at: string;
 };
 

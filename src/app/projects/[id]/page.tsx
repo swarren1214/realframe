@@ -24,7 +24,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   const [versions, messages, members, threads, latest, quota, pending, source, builds] = await Promise.all([
     supabase
       .from("versions")
-      .select("id, number, summary, prompt, source, kind, bundle_files, created_at")
+      .select("id, number, summary, prompt, source, kind, bundle_files, commit_sha, commit_author, created_at")
       .eq("project_id", id)
       .order("number", { ascending: false }),
     supabase.from("messages").select("id, role, content, version_id, created_at").eq("project_id", id).order("created_at"),

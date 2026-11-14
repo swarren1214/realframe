@@ -373,7 +373,7 @@ export function Review({
                     .map((c) => (
                       <div key={c.id} className="text-[13px] leading-relaxed">
                         <span className="font-semibold">{authorLabel(c)}</span>{" "}
-                        <span className="text-[11px] text-muted-foreground">
+                        <span suppressHydrationWarning className="text-[11px] text-muted-foreground">
                           {new Date(c.created_at).toLocaleString("en-US", {
                             month: "short",
                             day: "numeric",

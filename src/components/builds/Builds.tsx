@@ -1,11 +1,25 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleX, ExternalLink, GitBranch, GitCommitHorizontal, Hammer, RotateCcw, Square, SquareTerminal, Unplug, X } from "lucide-react";
+import {
+  ChevronDown,
+  CircleX,
+  ExternalLink,
+  Folder,
+  GitBranch,
+  GitCommitHorizontal,
+  Hammer,
+  RotateCcw,
+  Settings2,
+  Square,
+  SquareTerminal,
+  Unplug,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { SwitchRow } from "@/components/ui/switch-row";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,117 +103,216 @@ export function useBuilds(projectId: string, initial: Build[]) {
   return { builds, setBuilds, now };
 }
 
+/** Shortens long names in the middle so both ends stay readable: ticket-sp…react. */
+export function middleTruncate(text: string, max = 22) {
+  if (text.length <= max) return text;
+  const keep = max - 1;
+  return `${text.slice(0, Math.ceil(keep / 2))}…${text.slice(text.length - Math.floor(keep / 2))}`;
+}
+
+function Chip({ children, title, mono }: { children: React.ReactNode; title?: string; mono?: boolean }) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex h-6 max-w-full items-center gap-1 rounded-full bg-white px-2 text-[11px] text-stone-700 shadow-[inset_0_0_0_1px_var(--color-border)] [&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-stone-400",
+        mono && "font-mono",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function timeAgo(iso: string, now: number) {
+  const s = Math.max(0, (now - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export function SourceCard({
   source,
   isOwner,
   running,
+  latest,
+  now,
   onBuilt,
 }: {
   source: Source;
   isOwner: boolean;
   running: boolean;
+  latest?: Build;
+  now: number;
   onBuilt: (buildId: string) => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // Switches update at once and roll back if saving fails.
+  const [buildOnPush, setBuildOnPush] = useState(source.build_on_push);
+  const [publishOnPush, setPublishOnPush] = useState(source.publish_on_push);
+  useEffect(() => {
+    setBuildOnPush(source.build_on_push);
+    setPublishOnPush(source.publish_on_push);
+  }, [source.build_on_push, source.publish_on_push]);
 
-  async function act(key: string, fn: () => Promise<unknown>) {
+  async function act(key: string, fn: () => Promise<unknown>, rollback?: () => void) {
     setBusy(key);
     setError("");
     try {
       await fn();
       router.refresh();
     } catch (e) {
+      rollback?.();
       setError(e instanceof Error ? e.message : "That didn't work.");
     } finally {
       setBusy(null);
     }
   }
 
+  const status = running
+    ? "Building…"
+    : latest?.status === "succeeded" && latest.commit_sha
+      ? `Built ${latest.commit_sha.slice(0, 7)} · ${timeAgo(latest.finished_at ?? latest.queued_at, now)}`
+      : latest?.status === "failed"
+        ? `Last build failed · ${timeAgo(latest.finished_at ?? latest.queued_at, now)}`
+        : latest?.status === "succeeded"
+          ? `Built · ${timeAgo(latest.finished_at ?? latest.queued_at, now)}`
+          : "Not built yet";
+
   return (
-    <div className="space-y-2.5 rounded-2xl bg-stone-50 p-3 shadow-[inset_0_0_0_1px_var(--color-border)]">
-      <div className="flex items-center gap-2">
-        <GitHubMark className="size-4 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <a
-            href={`https://github.com/${source.repo_full_name}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1 truncate text-xs font-semibold text-foreground no-underline hover:underline"
-          >
+    <section aria-label="Repository" className="rounded-2xl bg-stone-50/80 shadow-[inset_0_0_0_1px_var(--color-border)]">
+      <div className="space-y-2.5 p-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <GitHubMark className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" title={source.repo_full_name}>
             {source.repo_full_name}
-            <ExternalLink className="size-3 shrink-0 text-stone-400" aria-hidden="true" />
-          </a>
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-            <GitBranch className="size-3" aria-hidden="true" />
-            {source.branch}
-            {source.root_dir && <span className="font-mono">· {source.root_dir}</span>}
-            {source.framework && <span>· {source.framework}</span>}
           </span>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 text-stone-500"
+            aria-label="Open on GitHub"
+            title="Open on GitHub"
+          >
+            <a href={`https://github.com/${source.repo_full_name}`} target="_blank" rel="noreferrer">
+              <ExternalLink />
+            </a>
+          </Button>
         </div>
-        <Button
-          size="sm"
-          className="h-7"
-          loading={busy === "build"}
-          disabled={running || busy !== null}
-          title={running ? "A build is already running" : "Build the latest commit"}
-          onClick={() => act("build", async () => onBuilt(await buildNow(source.project_id)))}
-        >
-          <Hammer />
-          Build
-        </Button>
+        <div className="flex flex-wrap gap-1.5">
+          <Chip title={`Branch: ${source.branch}`}>
+            <GitBranch />
+            <span className="truncate">{source.branch}</span>
+          </Chip>
+          {source.root_dir && (
+            <Chip title={`App folder: ${source.root_dir}`} mono>
+              <Folder />
+              {middleTruncate(source.root_dir)}
+            </Chip>
+          )}
+          {source.framework && <Chip title="Detected framework">{source.framework}</Chip>}
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            suppressHydrationWarning
+            className={cn(
+              "min-w-0 flex-1 truncate text-[11px]",
+              latest?.status === "failed" && !running ? "text-red-700" : "text-muted-foreground",
+            )}
+          >
+            {running && <Spinner className="mr-1 inline size-3 align-[-2px]" />}
+            {status}
+          </span>
+          <Button
+            size="sm"
+            loading={busy === "build"}
+            disabled={running || busy !== null}
+            title={running ? "A build is already running" : "Build the latest commit"}
+            onClick={() => act("build", async () => onBuilt(await buildNow(source.project_id)))}
+          >
+            <Hammer />
+            Build
+          </Button>
+        </div>
       </div>
+
       {isOwner && (
-        <div className="space-y-1.5 border-t border-stone-200/70 pt-2.5">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="build-on-push"
-              checked={source.build_on_push}
-              disabled={busy !== null}
-              onCheckedChange={(v) => act("bop", () => updateSource(source.project_id, { buildOnPush: v }))}
+        <Collapsible>
+          <CollapsibleTrigger className="group flex w-full items-center gap-1.5 border-t border-stone-200/70 px-3 py-2 text-left text-xs font-medium text-stone-600 outline-none transition-colors hover:text-foreground focus-visible:bg-foreground/[.03]">
+            <Settings2 className="size-3.5" aria-hidden="true" />
+            Settings
+            <ChevronDown
+              className="ml-auto size-3.5 transition-transform duration-[var(--duration-base)] group-data-[state=open]:rotate-180"
+              aria-hidden="true"
             />
-            <Label htmlFor="build-on-push" className="text-stone-700">
-              Build on every push to {source.branch}
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="publish-on-push"
-              checked={source.publish_on_push}
-              disabled={busy !== null || !source.build_on_push}
-              onCheckedChange={(v) => act("pop", () => updateSource(source.project_id, { publishOnPush: v }))}
-            />
-            <Label htmlFor="publish-on-push" className="text-stone-700">
-              Publish each successful build
-            </Label>
-          </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="-ml-2 h-7 text-stone-500" disabled={busy !== null}>
-                <Unplug />
-                Disconnect repository
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect {source.repo_full_name}?</AlertDialogTitle>
-                <AlertDialogDescription>Pushes stop building new versions. Every version already built stays.</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => act("disconnect", () => disconnectRepo(source.project_id))}>Disconnect</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="space-y-0.5 px-1 pb-2">
+              <SwitchRow
+                id="build-on-push"
+                label={`Build every push to ${source.branch}`}
+                checked={buildOnPush}
+                loading={busy === "bop"}
+                disabled={busy !== null && busy !== "bop"}
+                onCheckedChange={(v) => {
+                  setBuildOnPush(v);
+                  act(
+                    "bop",
+                    () => updateSource(source.project_id, { buildOnPush: v }),
+                    () => setBuildOnPush(!v),
+                  );
+                }}
+              />
+              <SwitchRow
+                id="publish-on-push"
+                label="Publish each successful build"
+                description="The review link always shows the latest push."
+                checked={publishOnPush}
+                loading={busy === "pop"}
+                disabled={!buildOnPush || (busy !== null && busy !== "pop")}
+                onCheckedChange={(v) => {
+                  setPublishOnPush(v);
+                  act(
+                    "pop",
+                    () => updateSource(source.project_id, { publishOnPush: v }),
+                    () => setPublishOnPush(!v),
+                  );
+                }}
+              />
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" className="ml-1 mt-1" disabled={busy !== null}>
+                    <Unplug />
+                    Disconnect repository
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Disconnect {source.repo_full_name}?</AlertDialogTitle>
+                    <AlertDialogDescription>Pushes stop building new versions. Every version already built stays.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => act("disconnect", () => disconnectRepo(source.project_id))}>
+                      Disconnect
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
       {error && (
-        <p role="alert" className="text-xs text-red-700">
+        <p role="alert" className="border-t border-stone-200/70 px-3 py-2 text-xs text-red-700">
           {error}
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
