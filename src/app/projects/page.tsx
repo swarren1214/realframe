@@ -8,7 +8,7 @@ import { defaultDevice, readSettings } from "@/lib/devices";
 import { Clock, FolderOpen, Plus, Upload, Users } from "lucide-react";
 import { ImportDialog } from "@/components/ImportDialog";
 import { createClient } from "@/lib/supabase/server";
-import { AppHeader } from "@/components/AppHeader";
+import { AppHeader, APP_PAGE } from "@/components/AppHeader";
 import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,7 +78,7 @@ export default async function ProjectsPage() {
   );
 
   return (
-    <div className="min-h-screen px-4 pb-16">
+    <div className={APP_PAGE}>
       <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-5xl px-2 pt-10">
         {invites.length > 0 && (

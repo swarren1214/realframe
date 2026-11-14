@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   const { data: role } = await supabase.rpc("team_role", { t: teamId });
   if (role !== "admin")
     return NextResponse.redirect(
-      new URL("/team?toast=Only%20admins%20can%20manage%20billing", origin),
+      new URL("/team/billing?toast=Only%20admins%20can%20manage%20billing", origin),
       303,
     );
 
@@ -28,9 +28,9 @@ export async function POST(request: NextRequest) {
     .eq("id", teamId)
     .single();
   if (!team || team.personal)
-    return NextResponse.redirect(new URL("/team", origin), 303);
+    return NextResponse.redirect(new URL("/team/billing", origin), 303);
   if (team.plan === "team")
-    return NextResponse.redirect(new URL("/team", origin), 303);
+    return NextResponse.redirect(new URL("/team/billing", origin), 303);
 
   const stripe = getStripe();
   let customerId = team.stripe_customer_id as string | null;
@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       metadata: { realframe_team_id: teamId, app: "realframe" },
     },
     metadata: { realframe_team_id: teamId },
-    success_url: `${origin}/team?toast=${encodeURIComponent("Team Pro is on")}`,
-    cancel_url: `${origin}/team`,
+    success_url: `${origin}/team/billing?toast=${encodeURIComponent("Team Pro is on")}`,
+    cancel_url: `${origin}/team/billing`,
   });
   return NextResponse.redirect(session.url!, 303);
 }

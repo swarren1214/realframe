@@ -6,7 +6,7 @@ import {
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
-import { AppHeader } from "@/components/AppHeader";
+import { AppHeader, APP_PAGE } from "@/components/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -62,7 +62,7 @@ export default async function BillingPage({
     : 0;
 
   return (
-    <div className="min-h-screen px-4 pb-16">
+    <div className={APP_PAGE}>
       <AppHeader plan={profile?.plan} />
       <main className="mx-auto max-w-3xl space-y-5 px-2 pt-10">
         <h1 className="font-display text-2xl font-bold tracking-tight">

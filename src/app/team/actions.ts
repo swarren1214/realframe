@@ -122,15 +122,13 @@ export const inviteToTeam = action(
           ? `${clean} already has an invite. Send it again from the list.`
           : `${clean} is already on this team.`,
       );
-    const { error } = await supabase
-      .from("team_members")
-      .insert({
-        team_id: teamId,
-        email: clean,
-        role,
-        invited_by: user.id,
-        status: "pending",
-      });
+    const { error } = await supabase.from("team_members").insert({
+      team_id: teamId,
+      email: clean,
+      role,
+      invited_by: user.id,
+      status: "pending",
+    });
     if (error)
       throw new Error(
         error.message.includes("row-level security")
@@ -144,7 +142,8 @@ export const inviteToTeam = action(
       user.id,
       user.email ?? "A teammate",
     );
-    revalidatePath("/team");
+    revalidatePath("/team", "layout");
+    revalidatePath("/devices");
     return { emailed: mail.sent };
   },
 );
@@ -202,7 +201,8 @@ export const changeTeamRole = action(
       .eq("team_id", teamId)
       .eq("email", email);
     if (error) throw new Error(error.message);
-    revalidatePath("/team");
+    revalidatePath("/team", "layout");
+    revalidatePath("/devices");
   },
 );
 
@@ -218,7 +218,8 @@ export const removeFromTeam = action(async (teamId: string, email: string) => {
   if (email === user.email?.toLowerCase()) {
     (await cookies()).delete(TEAM_COOKIE);
     revalidatePath("/", "layout");
-  } else revalidatePath("/team");
+  } else revalidatePath("/team", "layout");
+  revalidatePath("/devices");
 });
 
 export const deleteTeam = action(async (teamId: string) => {
@@ -283,7 +284,8 @@ export const addTeamDevice = action(
           ? "Only admins can add team devices."
           : error.message,
       );
-    revalidatePath("/team");
+    revalidatePath("/team", "layout");
+    revalidatePath("/devices");
   },
 );
 
@@ -294,7 +296,8 @@ export const removeTeamDevice = action(async (deviceId: string) => {
     .delete()
     .eq("id", deviceId);
   if (error) throw new Error(error.message);
-  revalidatePath("/team");
+  revalidatePath("/team", "layout");
+  revalidatePath("/devices");
 });
 
 /** Owners move a prototype into another of their teams. */
@@ -343,13 +346,11 @@ export const shareGitHub = action(
         .maybeSingle();
       if (!mine)
         throw new Error("You can only share a GitHub account you connected.");
-      const { error } = await admin
-        .from("team_github_installations")
-        .upsert({
-          team_id: teamId,
-          installation_id: installationId,
-          shared_by: user.id,
-        });
+      const { error } = await admin.from("team_github_installations").upsert({
+        team_id: teamId,
+        installation_id: installationId,
+        shared_by: user.id,
+      });
       if (error) throw new Error(error.message);
     } else {
       const { error } = await admin
@@ -359,6 +360,7 @@ export const shareGitHub = action(
         .eq("installation_id", installationId);
       if (error) throw new Error(error.message);
     }
-    revalidatePath("/team");
+    revalidatePath("/team", "layout");
+    revalidatePath("/devices");
   },
 );

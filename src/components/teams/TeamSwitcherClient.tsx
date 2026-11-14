@@ -65,11 +65,18 @@ export function TeamSwitcherClient({
   teams,
   currentId,
   invites = 0,
+  variant = "bar",
+  subtitle,
+  ownerName,
 }: {
   teams: Team[];
   currentId: string;
   /** Open team invites for the signed-in person. */
   invites?: number;
+  variant?: "bar" | "sidebar";
+  /** Second line in the sidebar trigger, e.g. "Team Pro · 4 members". */
+  subtitle?: string;
+  ownerName?: string | null;
 }) {
   const router = useRouter();
   const current = teams.find((t) => t.id === currentId)!;
@@ -83,7 +90,9 @@ export function TeamSwitcherClient({
       await switchTeam(t.id);
       router.refresh();
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : "Couldn't switch teams.");
+      notify.error(
+        e instanceof Error ? e.message : "Couldn't switch workspaces.",
+      );
     }
   }
 
@@ -95,13 +104,13 @@ export function TeamSwitcherClient({
       setCreating(false);
       setName("");
       notify.success(`Created ${name.trim()}`, {
-        description: "Invite people from team settings.",
+        description: "Invite people from Members.",
       });
-      router.push("/team");
+      router.push("/team/members");
       router.refresh();
     } catch (err) {
       notify.error(
-        err instanceof Error ? err.message : "Couldn't create the team.",
+        err instanceof Error ? err.message : "Couldn't create the workspace.",
       );
     } finally {
       setBusy(false);
@@ -112,28 +121,56 @@ export function TeamSwitcherClient({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="gap-2 pl-1.5 pr-2.5"
-            aria-label={`Team: ${teamLabel(current)}. Switch team`}
-          >
-            <TeamBadge team={current} />
-            <span className="max-w-[12rem] truncate font-semibold">
-              {teamLabel(current)}
-            </span>
-            {invites > 0 && (
-              <span
-                className="grid size-4.5 min-w-4.5 place-items-center rounded-full bg-raspberry-600 px-1 text-[10px] font-bold text-white"
-                aria-label={`${invites} team invite${invites === 1 ? "" : "s"}`}
-              >
-                {invites}
+          {variant === "sidebar" ? (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 rounded-2xl bg-card/70 p-2 text-left shadow-[inset_0_0_0_1px_var(--color-border)] transition-colors hover:bg-card data-[state=open]:bg-card"
+              aria-label={`Workspace: ${teamLabel(current, ownerName)}. Switch workspace`}
+            >
+              <TeamBadge team={current} className="size-8 rounded-xl" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold">
+                  {teamLabel(current, ownerName)}
+                </span>
+                {subtitle && (
+                  <span className="block truncate text-[11px] text-stone-500">
+                    {subtitle}
+                  </span>
+                )}
               </span>
-            )}
-            <ChevronDown className="text-stone-400" />
-          </Button>
+              <ChevronDown className="size-4 shrink-0 text-stone-400" />
+            </button>
+          ) : (
+            <Button
+              variant="ghost"
+              className="gap-2 pl-1.5 pr-2.5"
+              aria-label={`Team: ${teamLabel(current)}. Switch team`}
+            >
+              <TeamBadge team={current} />
+              <span className="max-w-[12rem] truncate font-semibold">
+                {teamLabel(current)}
+              </span>
+              {invites > 0 && (
+                <span
+                  className="grid size-4.5 min-w-4.5 place-items-center rounded-full bg-raspberry-600 px-1 text-[10px] font-bold text-white"
+                  aria-label={`${invites} team invite${invites === 1 ? "" : "s"}`}
+                >
+                  {invites}
+                </span>
+              )}
+              <ChevronDown className="text-stone-400" />
+            </Button>
+          )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Teams</DropdownMenuLabel>
+        <DropdownMenuContent
+          align="start"
+          className={
+            variant === "sidebar"
+              ? "w-(--radix-dropdown-menu-trigger-width) min-w-56"
+              : "w-64"
+          }
+        >
+          <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
           {teams.map((t) => (
             <DropdownMenuItem
               key={t.id}
@@ -141,11 +178,13 @@ export function TeamSwitcherClient({
               className="gap-2.5"
             >
               <TeamBadge team={t} />
-              <span className="min-w-0 flex-1 truncate">{teamLabel(t)}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {teamLabel(t, ownerName)}
+              </span>
               {t.id === currentId && (
                 <Check
                   className="size-4 text-raspberry-600"
-                  aria-label="Current team"
+                  aria-label="Current workspace"
                 />
               )}
             </DropdownMenuItem>
@@ -164,12 +203,12 @@ export function TeamSwitcherClient({
           )}
           <DropdownMenuItem onSelect={() => setCreating(true)}>
             <Plus />
-            Create team
+            Create workspace
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href="/team">
               <Settings />
-              Team settings
+              Workspace settings
             </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -179,14 +218,15 @@ export function TeamSwitcherClient({
         <DialogContent className="sm:max-w-sm">
           <form onSubmit={create} className="grid gap-4">
             <DialogHeader>
-              <DialogTitle>Create a team</DialogTitle>
+              <DialogTitle>Create a workspace</DialogTitle>
               <DialogDescription>
-                Teammates share prototypes, devices and design systems. Builds
-                still count against each person&apos;s own plan.
+                Everyone in a workspace shares its prototypes, devices and
+                design systems. Builds count against each person&apos;s own plan
+                until the workspace upgrades to Team Pro.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-1.5">
-              <Label htmlFor="team-name">Team name</Label>
+              <Label htmlFor="team-name">Workspace name</Label>
               <Input
                 id="team-name"
                 value={name}
@@ -207,7 +247,7 @@ export function TeamSwitcherClient({
               </Button>
               <Button type="submit" loading={busy}>
                 <Plus />
-                Create team
+                Create workspace
               </Button>
             </DialogFooter>
           </form>

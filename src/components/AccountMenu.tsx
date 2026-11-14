@@ -6,7 +6,13 @@ import { AccountMenuClient } from "@/components/AccountMenuClient";
  * The profile menu in the top bar. A server component: it loads the signed-in user's
  * profile and plan usage itself, so any page (or client component, via a prop) can drop it in.
  */
-export async function AccountMenu({ compact = false }: { compact?: boolean }) {
+export async function AccountMenu({
+  compact = false,
+  variant,
+}: {
+  compact?: boolean;
+  variant?: "sidebar";
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,6 +32,7 @@ export async function AccountMenu({ compact = false }: { compact?: boolean }) {
   return (
     <AccountMenuClient
       compact={compact}
+      sidebar={variant === "sidebar"}
       name={profile?.display_name ?? null}
       avatarUrl={profile?.avatar_url ?? null}
       email={user.email ?? ""}

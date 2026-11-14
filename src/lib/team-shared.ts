@@ -26,8 +26,13 @@ export type TeamDeviceRow = {
   frame: "bezel" | "none";
 };
 
-export function teamLabel(t: Pick<Team, "name" | "personal">) {
-  return t.personal ? "Personal" : t.name;
+export function teamLabel(
+  t: Pick<Team, "name" | "personal">,
+  ownerName?: string | null,
+) {
+  if (!t.personal) return t.name;
+  const first = ownerName?.trim().split(/\s+/)[0];
+  return first ? `${first}'s workspace` : "Personal workspace";
 }
 
 export function toDevice(r: TeamDeviceRow): Device {

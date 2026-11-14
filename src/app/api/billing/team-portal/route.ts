@@ -14,17 +14,17 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.redirect(new URL("/?next=/team", origin), 303);
   const { data: role } = await supabase.rpc("team_role", { t: teamId });
   if (role !== "admin")
-    return NextResponse.redirect(new URL("/team", origin), 303);
+    return NextResponse.redirect(new URL("/team/billing", origin), 303);
   const { data: team } = await createAdminClient()
     .from("teams")
     .select("stripe_customer_id")
     .eq("id", teamId)
     .single();
   if (!team?.stripe_customer_id)
-    return NextResponse.redirect(new URL("/team", origin), 303);
+    return NextResponse.redirect(new URL("/team/billing", origin), 303);
   const session = await getStripe().billingPortal.sessions.create({
     customer: team.stripe_customer_id,
-    return_url: `${origin}/team`,
+    return_url: `${origin}/team/billing`,
   });
   return NextResponse.redirect(session.url, 303);
 }

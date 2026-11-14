@@ -78,6 +78,7 @@ const shortDate = (d: string) =>
 
 export function AccountMenuClient({
   compact,
+  sidebar = false,
   name,
   email,
   plan,
@@ -85,6 +86,7 @@ export function AccountMenuClient({
   avatarUrl = null,
 }: {
   compact: boolean;
+  sidebar?: boolean;
   name: string | null;
   avatarUrl?: string | null;
   email: string;
@@ -98,7 +100,24 @@ export function AccountMenuClient({
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        {compact ? (
+        {sidebar ? (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2.5 rounded-xl p-1.5 text-left transition-colors hover:bg-foreground/[.04] data-[state=open]:bg-foreground/6"
+            aria-label={label}
+          >
+            <MenuAvatar url={avatarUrl} initials={initials} size="sm" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold">
+                {name || first}
+              </span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {email}
+              </span>
+            </span>
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+          </button>
+        ) : compact ? (
           <Button
             variant="ghost"
             size="icon"
@@ -121,7 +140,11 @@ export function AccountMenuClient({
         )}
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-[300px]">
+      <DropdownMenuContent
+        align={sidebar ? "start" : "end"}
+        side={sidebar ? "top" : "bottom"}
+        className="w-[300px]"
+      >
         <DropdownMenuLabel className="flex items-center gap-2.5 p-2.5 font-normal">
           <MenuAvatar url={avatarUrl} initials={initials} size="lg" />
           <span className="min-w-0">

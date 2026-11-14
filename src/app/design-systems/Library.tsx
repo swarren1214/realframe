@@ -216,7 +216,7 @@ export function Library({
           </span>
           <Badge>{admin ? "You're an admin" : "Member"}</Badge>
           <Button asChild variant="link" size="sm">
-            <Link href="/team">Manage team</Link>
+            <Link href="/team/members">Members</Link>
           </Button>
         </div>
       )}

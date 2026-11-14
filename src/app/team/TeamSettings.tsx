@@ -107,7 +107,15 @@ function Section({
   );
 }
 
+const VIEW_TITLE = {
+  members: "Members",
+  billing: "Billing",
+  devices: "Devices",
+} as const;
+
 export function TeamSettings({
+  view = "settings",
+  ownerName = null,
   team,
   me,
   members,
@@ -117,6 +125,8 @@ export function TeamSettings({
   github = { mine: [], shared: [] },
   billing,
 }: {
+  view?: "settings" | "members" | "billing" | "devices";
+  ownerName?: string | null;
   billing?: {
     plan: "free" | "team";
     seats: number;
@@ -171,41 +181,64 @@ export function TeamSettings({
 
   return (
     <main className="mx-auto max-w-3xl space-y-5 px-2 pt-10">
-      <div className="flex items-center gap-3">
-        <TeamBadge team={team} className="size-10 rounded-xl text-base" />
-        {admin && !team.personal ? (
-          <>
-            <label htmlFor="team-name" className="sr-only">
-              Team name
-            </label>
-            <input
-              id="team-name"
-              defaultValue={team.name}
-              maxLength={60}
-              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (!v) e.target.value = team.name;
-                else if (v !== team.name)
-                  run("rename", () => renameTeam(team.id, v), "Team renamed");
-              }}
-              className="min-w-0 flex-1 rounded-xl bg-transparent px-2 py-1 font-display text-2xl font-bold tracking-tight outline-none hover:bg-stone-900/[.04] focus:bg-card focus:ring-2 focus:ring-raspberry-200"
-            />
-          </>
-        ) : (
-          <h1 className="flex-1 font-display text-2xl font-bold tracking-tight">
-            {teamLabel(team)}
+      {view === "settings" ? (
+        <>
+          <div className="flex items-center gap-3">
+            <TeamBadge team={team} className="size-10 rounded-xl text-base" />
+            {admin && !team.personal ? (
+              <>
+                <label htmlFor="team-name" className="sr-only">
+                  Team name
+                </label>
+                <input
+                  id="team-name"
+                  defaultValue={team.name}
+                  maxLength={60}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (!v) e.target.value = team.name;
+                    else if (v !== team.name)
+                      run(
+                        "rename",
+                        () => renameTeam(team.id, v),
+                        "Team renamed",
+                      );
+                  }}
+                  className="min-w-0 flex-1 rounded-xl bg-transparent px-2 py-1 font-display text-2xl font-bold tracking-tight outline-none hover:bg-stone-900/[.04] focus:bg-card focus:ring-2 focus:ring-raspberry-200"
+                />
+              </>
+            ) : (
+              <h1 className="flex-1 font-display text-2xl font-bold tracking-tight">
+                {teamLabel(team, ownerName)}
+              </h1>
+            )}
+            <Badge>{admin ? "Admin" : "Member"}</Badge>
+          </div>
+          <p className="text-sm text-stone-600">
+            {team.personal
+              ? "Your personal workspace is just you. Create a workspace from the workspace menu to share prototypes, devices and design systems with other people."
+              : `Everyone here can open and build on the workspace's ${prototypes} prototype${prototypes === 1 ? "" : "s"}, and use its devices and design systems. ${billing?.plan === "team" ? "Builds in team prototypes run on Team Pro." : "Builds count against each person's own plan until the workspace upgrades."}`}
+          </p>
+        </>
+      ) : (
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            {VIEW_TITLE[view as keyof typeof VIEW_TITLE]}
           </h1>
-        )}
-        <Badge>{admin ? "Admin" : "Member"}</Badge>
-      </div>
-      <p className="text-sm text-stone-600">
-        {team.personal
-          ? "Your personal team is just you. Create a team from the menu at the top to share prototypes, devices and design systems with others."
-          : `Everyone here can open and build on the team's ${prototypes} prototype${prototypes === 1 ? "" : "s"}, and use its devices and design systems. ${billing?.plan === "team" ? "Builds in team prototypes run on Team Pro." : "Builds count against each person's own plan until the team upgrades."}`}
-      </p>
+          <p className="mt-1 text-sm text-stone-600">
+            {view === "members"
+              ? team.personal
+                ? "Your personal workspace is just you."
+                : `People in ${teamLabel(team)} can open and build on its prototypes and use its devices and design systems.`
+              : view === "billing"
+                ? `${teamLabel(team)} is billed per seat: one seat for each active member.`
+                : `Screen sizes everyone in ${teamLabel(team, ownerName)} can pick when previewing a prototype.`}
+          </p>
+        </div>
+      )}
 
-      {!team.personal && billing && (
+      {view === "billing" && !team.personal && billing && (
         <Section
           title="Plan"
           action={
@@ -301,7 +334,17 @@ export function TeamSettings({
         </Section>
       )}
 
-      {!team.personal && (
+      {view === "members" && team.personal && (
+        <section className="flex flex-col items-center gap-2 rounded-3xl border border-dashed border-stone-200 px-6 py-10 text-center">
+          <Users className="size-6 text-stone-400" aria-hidden="true" />
+          <p className="text-sm font-medium">No one else here yet</p>
+          <p className="max-w-sm text-[13px] text-stone-600">
+            To work with other people, create a workspace from the workspace
+            menu and invite them there.
+          </p>
+        </section>
+      )}
+      {view === "members" && !team.personal && (
         <Section title={`People · ${members.length}`}>
           {admin && (
             <form
@@ -490,7 +533,7 @@ export function TeamSettings({
         </Section>
       )}
 
-      {!team.personal && (
+      {view === "settings" && !team.personal && (
         <Section title="GitHub">
           <p className="-mt-2 mb-4 text-[13px] text-stone-600">
             Share a GitHub account you connected so everyone on the team can
@@ -555,172 +598,182 @@ export function TeamSettings({
         </Section>
       )}
 
-      <Section title="Team devices">
-        <p className="-mt-2 mb-4 text-[13px] text-stone-600">
-          Your own screens, like a rugged tablet or a kitchen display. They show
-          up in every team prototype&apos;s device menu.
-        </p>
-        {devices.length > 0 && (
-          <ul className="mb-4 space-y-1.5">
-            <AnimatePresence initial={false}>
-              {devices.map((d) => {
-                const Icon = KIND_ICON[d.kind];
-                return (
-                  <motion.li
-                    key={d.id}
-                    {...listItem}
-                    className="flex items-center gap-3 rounded-2xl bg-stone-50 px-3 py-2"
-                  >
-                    <Icon
-                      className="size-4 text-stone-500"
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {d.name}
-                    </span>
-                    <span className="font-mono text-xs text-stone-500">
-                      {d.width} × {d.height}
-                    </span>
-                    {admin && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Remove ${d.name}`}
-                        loading={busy === `dev-${d.id}`}
-                        onClick={() =>
-                          run(
-                            `dev-${d.id}`,
-                            () => removeTeamDevice(d.id),
-                            `Removed ${d.name}`,
-                          )
-                        }
-                      >
-                        <Trash2 />
-                      </Button>
-                    )}
-                  </motion.li>
-                );
-              })}
-            </AnimatePresence>
-          </ul>
-        )}
-        {admin ? (
-          <form
-            className="grid gap-3 rounded-2xl border border-dashed border-stone-300 p-4 sm:grid-cols-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const ok = await run(
-                "add-dev",
-                () =>
-                  addTeamDevice(team.id, {
-                    ...dev,
-                    width: Number(dev.width),
-                    height: Number(dev.height),
-                  }),
-                `Added ${dev.name.trim()}`,
-              );
-              if (ok)
-                setDev((d) => ({ ...d, name: "", width: "", height: "" }));
-            }}
-          >
-            <div className="grid gap-1.5">
-              <Label htmlFor="dev-name">Name</Label>
-              <Input
-                id="dev-name"
-                required
-                maxLength={60}
-                value={dev.name}
-                onChange={(e) => setDev({ ...dev, name: e.target.value })}
-                placeholder="Kitchen display"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="dev-kind">Type</Label>
-              <Select
-                value={dev.kind}
-                onValueChange={(v) => setDev({ ...dev, kind: v as DeviceKind })}
-              >
-                <SelectTrigger id="dev-kind">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tablet">Tablet</SelectItem>
-                  <SelectItem value="phone">Phone</SelectItem>
-                  <SelectItem value="desktop">Desktop or display</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <span className="text-sm font-medium leading-none">
-                Screen size (CSS pixels)
-              </span>
-              <div className="flex items-center gap-2">
-                <Input
-                  aria-label="Width"
-                  required
-                  inputMode="numeric"
-                  value={dev.width}
-                  onChange={(e) =>
-                    setDev({ ...dev, width: e.target.value.replace(/\D/g, "") })
-                  }
-                  placeholder="1920"
-                  className="font-mono"
-                />
-                <span className="text-stone-400">×</span>
-                <Input
-                  aria-label="Height"
-                  required
-                  inputMode="numeric"
-                  value={dev.height}
-                  onChange={(e) =>
-                    setDev({
+      {view === "devices" && (
+        <Section title="Workspace devices">
+          <p className="-mt-2 mb-4 text-[13px] text-stone-600">
+            Your own screens, like a rugged tablet or a kitchen display. They
+            show up in every team prototype&apos;s device menu.
+          </p>
+          {devices.length > 0 && (
+            <ul className="mb-4 space-y-1.5">
+              <AnimatePresence initial={false}>
+                {devices.map((d) => {
+                  const Icon = KIND_ICON[d.kind];
+                  return (
+                    <motion.li
+                      key={d.id}
+                      {...listItem}
+                      className="flex items-center gap-3 rounded-2xl bg-stone-50 px-3 py-2"
+                    >
+                      <Icon
+                        className="size-4 text-stone-500"
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {d.name}
+                      </span>
+                      <span className="font-mono text-xs text-stone-500">
+                        {d.width} × {d.height}
+                      </span>
+                      {admin && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Remove ${d.name}`}
+                          loading={busy === `dev-${d.id}`}
+                          onClick={() =>
+                            run(
+                              `dev-${d.id}`,
+                              () => removeTeamDevice(d.id),
+                              `Removed ${d.name}`,
+                            )
+                          }
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
+                    </motion.li>
+                  );
+                })}
+              </AnimatePresence>
+            </ul>
+          )}
+          {admin ? (
+            <form
+              className="grid gap-3 rounded-2xl border border-dashed border-stone-300 p-4 sm:grid-cols-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const ok = await run(
+                  "add-dev",
+                  () =>
+                    addTeamDevice(team.id, {
                       ...dev,
-                      height: e.target.value.replace(/\D/g, ""),
-                    })
-                  }
-                  placeholder="1080"
-                  className="font-mono"
+                      width: Number(dev.width),
+                      height: Number(dev.height),
+                    }),
+                  `Added ${dev.name.trim()}`,
+                );
+                if (ok)
+                  setDev((d) => ({ ...d, name: "", width: "", height: "" }));
+              }}
+            >
+              <div className="grid gap-1.5">
+                <Label htmlFor="dev-name">Name</Label>
+                <Input
+                  id="dev-name"
+                  required
+                  maxLength={60}
+                  value={dev.name}
+                  onChange={(e) => setDev({ ...dev, name: e.target.value })}
+                  placeholder="Kitchen display"
                 />
               </div>
-            </div>
-            <div className="grid gap-1.5">
-              <span id="dev-frame" className="text-sm font-medium leading-none">
-                Frame
-              </span>
-              <ToggleGroup
-                type="single"
-                aria-labelledby="dev-frame"
-                value={dev.frame}
-                onValueChange={(v) =>
-                  v && setDev({ ...dev, frame: v as "bezel" | "none" })
-                }
-              >
-                <ToggleGroupItem value="bezel">Bezel</ToggleGroupItem>
-                <ToggleGroupItem value="none">None</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            <div className="sm:col-span-2">
-              <Button
-                type="submit"
-                variant="outline"
-                loading={busy === "add-dev"}
-              >
-                <Plus />
-                Add device
-              </Button>
-            </div>
-          </form>
-        ) : (
-          devices.length === 0 && (
-            <p className="text-[13px] text-stone-500">
-              No team devices yet. Admins can add them.
-            </p>
-          )
-        )}
-      </Section>
+              <div className="grid gap-1.5">
+                <Label htmlFor="dev-kind">Type</Label>
+                <Select
+                  value={dev.kind}
+                  onValueChange={(v) =>
+                    setDev({ ...dev, kind: v as DeviceKind })
+                  }
+                >
+                  <SelectTrigger id="dev-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tablet">Tablet</SelectItem>
+                    <SelectItem value="phone">Phone</SelectItem>
+                    <SelectItem value="desktop">Desktop or display</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <span className="text-sm font-medium leading-none">
+                  Screen size (CSS pixels)
+                </span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label="Width"
+                    required
+                    inputMode="numeric"
+                    value={dev.width}
+                    onChange={(e) =>
+                      setDev({
+                        ...dev,
+                        width: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                    placeholder="1920"
+                    className="font-mono"
+                  />
+                  <span className="text-stone-400">×</span>
+                  <Input
+                    aria-label="Height"
+                    required
+                    inputMode="numeric"
+                    value={dev.height}
+                    onChange={(e) =>
+                      setDev({
+                        ...dev,
+                        height: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                    placeholder="1080"
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <span
+                  id="dev-frame"
+                  className="text-sm font-medium leading-none"
+                >
+                  Frame
+                </span>
+                <ToggleGroup
+                  type="single"
+                  aria-labelledby="dev-frame"
+                  value={dev.frame}
+                  onValueChange={(v) =>
+                    v && setDev({ ...dev, frame: v as "bezel" | "none" })
+                  }
+                >
+                  <ToggleGroupItem value="bezel">Bezel</ToggleGroupItem>
+                  <ToggleGroupItem value="none">None</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              <div className="sm:col-span-2">
+                <Button
+                  type="submit"
+                  variant="outline"
+                  loading={busy === "add-dev"}
+                >
+                  <Plus />
+                  Add device
+                </Button>
+              </div>
+            </form>
+          ) : (
+            devices.length === 0 && (
+              <p className="text-[13px] text-stone-500">
+                No team devices yet. Admins can add them.
+              </p>
+            )
+          )}
+        </Section>
+      )}
 
-      {admin && !team.personal && (
-        <Section title="Delete team">
+      {view === "settings" && admin && !team.personal && (
+        <Section title="Delete workspace">
           <div className="flex flex-wrap items-center gap-3">
             <p className="min-w-0 flex-1 text-[13px] text-stone-600">
               {prototypes
@@ -764,10 +817,10 @@ export function TeamSettings({
           </div>
         </Section>
       )}
-      {team.personal && (
+      {view === "settings" && team.personal && (
         <p className="flex items-center gap-2 text-xs text-stone-500">
           <Users className="size-3.5" aria-hidden="true" />
-          Your personal team can&apos;t have other members or be deleted.
+          Your personal workspace can&apos;t have other members or be deleted.
         </p>
       )}
     </main>
