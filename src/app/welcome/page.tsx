@@ -30,20 +30,31 @@ async function saveProfile(formData: FormData) {
     .update({ display_name: name, onboarded_at: new Date().toISOString() })
     .eq("id", user.id);
   if (error) redirect(`/welcome?next=${encodeURIComponent(next)}&error=save`);
-  redirect(next);
+  redirect(
+    `${next}${next.includes("?") ? "&" : "?"}toast=${encodeURIComponent("Profile saved")}`,
+  );
 }
 
-export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ next?: string; edit?: string; error?: string }> }) {
+export default async function WelcomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string; edit?: string; error?: string }>;
+}) {
   const { next, edit, error } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  const { data: profile } = await supabase.from("profiles").select("display_name, onboarded_at").maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, onboarded_at")
+    .maybeSingle();
   const editing = Boolean(edit) || Boolean(profile?.onboarded_at);
   const { data: quota } = await supabase.rpc("generation_quota");
-  const q = (quota as { plan: string; build_limit: number; remaining: number }[] | null)?.[0];
+  const q = (
+    quota as { plan: string; build_limit: number; remaining: number }[] | null
+  )?.[0];
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
@@ -53,9 +64,13 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
         className="w-full max-w-sm space-y-4 rounded-[1.75rem] border border-stone-200/80 bg-white p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
       >
         <div>
-          <h1 className="font-display text-xl font-bold tracking-tight">{editing ? "Your account" : "Welcome to Realframe"}</h1>
+          <h1 className="font-display text-xl font-bold tracking-tight">
+            {editing ? "Your account" : "Welcome to Realframe"}
+          </h1>
           <p className="mt-1 text-[13px] text-stone-600">
-            {editing ? `Signed in as ${user.email}.` : "What should reviewers see next to your comments?"}
+            {editing
+              ? `Signed in as ${user.email}.`
+              : "What should reviewers see next to your comments?"}
           </p>
         </div>
         <input type="hidden" name="next" value={safeNext(next)} />
@@ -76,7 +91,9 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
           />
           {error && (
             <p role="alert" className="mt-2 text-xs text-red-700">
-              {error === "name" ? "Enter a name to continue." : "Couldn't save that. Try again."}
+              {error === "name"
+                ? "Enter a name to continue."
+                : "Couldn't save that. Try again."}
             </p>
           )}
         </div>

@@ -71,6 +71,7 @@ export const AGENT_SCRIPT = `(function(){
   document.addEventListener('submit', function(e){ if (editing) e.preventDefault(); }, true);
 
   window.addEventListener('message', function(e){ if (e.source !== parent) return; var m = e.data || {};
+    if (m.type === 'rf:ping' && document.readyState === 'complete') ready();
     if (m.type === 'rf:mode') { mode = !!m.on; if (!editing) document.documentElement.style.cursor = mode ? 'crosshair' : ''; }
     if (m.type === 'rf:pins') { pins = Array.isArray(m.pins) ? m.pins : []; draw(); }
     if (m.type === 'rf:edit') setEditing(m.on);

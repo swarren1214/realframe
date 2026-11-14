@@ -40,7 +40,13 @@ import { Kbd } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupCard } from "@/components/ui/radio-group";
 import { SwitchRow } from "@/components/ui/switch-row";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -57,6 +63,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
+import { copyWithToast, notify } from "@/lib/toast";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -66,13 +73,37 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { BuildList, BuildLog, SourceCard, useBuilds, type Build, type Source } from "@/components/builds/Builds";
-import { PRESENT_FRAME_CLASS, PresentControls, enterFullscreen } from "@/components/PresentMode";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  BuildList,
+  BuildLog,
+  SourceCard,
+  useBuilds,
+  type Build,
+  type Source,
+} from "@/components/builds/Builds";
+import {
+  PRESENT_FRAME_CLASS,
+  PresentControls,
+  enterFullscreen,
+} from "@/components/PresentMode";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
-import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type Variant, type VersionMeta } from "@/lib/types";
+import {
+  authorLabel,
+  type Member,
+  type Message,
+  type Project,
+  type Role,
+  type Thread,
+  type Variant,
+  type VersionMeta,
+} from "@/lib/types";
 import {
   contentUrl as raw_contentUrl,
   deleteProject as raw_deleteProject,
@@ -109,6 +140,19 @@ const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
 
 type Tab = "versions" | "share" | "comments";
+/** What a successful action says: a message, or a message with Undo or another action. */
+type Done =
+  | string
+  | {
+      title: string;
+      undo?: () => Promise<unknown>;
+      action?: { label: string; onClick: () => void };
+    };
+type Run = (
+  action: () => Promise<void | Done>,
+  key?: string,
+  done?: Done,
+) => void;
 const DEVICES = [
   { id: "desktop", label: "Desktop", width: "100%", icon: Monitor },
   { id: "tablet", label: "Tablet", width: "820px", icon: Tablet },
@@ -142,16 +186,31 @@ export function Studio(props: {
   /** The profile menu, rendered on the server and passed through. */
   accountMenu?: React.ReactNode;
 }) {
-  const { project, role, versions, messages, members, threads, quota, variants } = props;
+  const {
+    project,
+    role,
+    versions,
+    messages,
+    members,
+    threads,
+    quota,
+    variants,
+  } = props;
   const outOfQuota = quota !== null && quota.remaining <= 0;
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [selectedId, setSelectedId] = useState<string | null>(props.initialVersionId);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    props.initialVersionId,
+  );
   const [htmlCache, setHtmlCache] = useState<Record<string, string>>(
-    props.initialVersionId && props.initialHtml ? { [props.initialVersionId]: props.initialHtml } : {},
+    props.initialVersionId && props.initialHtml
+      ? { [props.initialVersionId]: props.initialHtml }
+      : {},
   );
   const [srcCache, setSrcCache] = useState<Record<string, string>>(
-    props.initialVersionId && props.initialSrc ? { [props.initialVersionId]: props.initialSrc } : {},
+    props.initialVersionId && props.initialSrc
+      ? { [props.initialVersionId]: props.initialSrc }
+      : {},
   );
   const [device, setDevice] = useState<DeviceId>("desktop");
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -163,9 +222,15 @@ export function Studio(props: {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
   const [logBuildId, setLogBuildId] = useState<string | null>(() =>
-    versions.length === 0 ? ((props.builds ?? []).find((b) => b.status === "queued" || b.status === "building")?.id ?? null) : null,
+    versions.length === 0
+      ? ((props.builds ?? []).find(
+          (b) => b.status === "queued" || b.status === "building",
+        )?.id ?? null)
+      : null,
   );
-  const buildRunning = builds.some((b) => b.status === "queued" || b.status === "building");
+  const buildRunning = builds.some(
+    (b) => b.status === "queued" || b.status === "building",
+  );
   const [savingEdit, setSavingEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -173,7 +238,8 @@ export function Studio(props: {
   const [pending, startTransition] = useTransition();
   const chatEnd = useRef<HTMLDivElement>(null);
 
-  const selected = versions.find((v) => v.id === selectedId) ?? versions[0] ?? null;
+  const selected =
+    versions.find((v) => v.id === selectedId) ?? versions[0] ?? null;
   const live = versions.find((v) => v.id === project.live_version_id) ?? null;
   const isImportedApp = selected?.kind === "bundle";
   const html = selected && !isImportedApp ? htmlCache[selected.id] : undefined;
@@ -197,8 +263,12 @@ export function Studio(props: {
       setSelectedId(saved.versionId);
       exitEdit();
       router.refresh();
+      notify.success(`Saved as v${saved.number}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save the edit.");
+      notify.error(
+        err instanceof Error ? err.message : "Couldn't save your edits.",
+        { action: { label: "Retry", onClick: saveEdits } },
+      );
     } finally {
       setSavingEdit(false);
     }
@@ -215,7 +285,10 @@ export function Studio(props: {
     let cancelled = false;
     if (selected.kind === "bundle") {
       contentUrl(selected.id)
-        .then((url) => !cancelled && setSrcCache((c) => ({ ...c, [selected.id]: url })))
+        .then(
+          (url) =>
+            !cancelled && setSrcCache((c) => ({ ...c, [selected.id]: url })),
+        )
         .catch(() => {});
       return () => {
         cancelled = true;
@@ -227,7 +300,8 @@ export function Studio(props: {
       .eq("id", selected.id)
       .single()
       .then(({ data }) => {
-        if (!cancelled && data) setHtmlCache((c) => ({ ...c, [selected.id]: data.html }));
+        if (!cancelled && data)
+          setHtmlCache((c) => ({ ...c, [selected.id]: data.html }));
       });
     return () => {
       cancelled = true;
@@ -237,18 +311,35 @@ export function Studio(props: {
   useEffect(() => {
     if (!busy) return;
     const started = Date.now();
-    const t = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
+    const t = setInterval(
+      () => setElapsed(Math.round((Date.now() - started) / 1000)),
+      1000,
+    );
     return () => clearInterval(t);
   }, [busy]);
 
   useEffect(() => {
     const channel = supabase
       .channel(`studio-${project.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "comments", filter: `project_id=eq.${project.id}` }, () =>
-        router.refresh(),
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "comments",
+          filter: `project_id=eq.${project.id}`,
+        },
+        () => router.refresh(),
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "comment_threads", filter: `project_id=eq.${project.id}` }, () =>
-        router.refresh(),
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "comment_threads",
+          filter: `project_id=eq.${project.id}`,
+        },
+        () => router.refresh(),
       )
       .subscribe();
     return () => {
@@ -263,18 +354,34 @@ export function Studio(props: {
     setBusy(true);
     setElapsed(0);
     setError("");
+    const startedAt = Date.now();
     try {
       const many = variantCount > 1;
-      const res = await fetch(`/api/projects/${project.id}/${many ? "variants" : "generate"}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: text, baseVersionId: selected?.id ?? null, count: variantCount }),
-      });
+      const res = await fetch(
+        `/api/projects/${project.id}/${many ? "variants" : "generate"}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            prompt: text,
+            baseVersionId: selected?.id ?? null,
+            count: variantCount,
+          }),
+        },
+      );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      if (!res.ok)
+        throw new Error(data.error || `Request failed (${res.status})`);
       setPrompt("");
       if (!many) setSelectedId(data.versionId);
       router.refresh();
+      // Only worth a toast if they looked away while it built.
+      if (document.hidden || Date.now() - startedAt > 20_000)
+        notify.success(
+          many
+            ? `${variantCount} variants ready to compare`
+            : "New version ready",
+        );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       router.refresh();
@@ -283,16 +390,27 @@ export function Studio(props: {
     }
   }
 
-  /** Run a server action; `key` lets the triggering button show its own loading state. */
-  function run(action: () => Promise<void>, key?: string) {
-    setError("");
+  /**
+   * Run a server action. `key` lets the triggering button show its own loading state; `done`
+   * is the success toast (with an optional Undo). Failures always show an error toast.
+   */
+  function run(action: () => Promise<void | Done>, key?: string, done?: Done) {
     setBusyKey(key ?? null);
     startTransition(async () => {
       try {
-        await action();
+        const result = await action();
+        const message = (result as Done | undefined) ?? done;
         router.refresh();
+        if (typeof message === "string") notify.success(message);
+        else if (message)
+          notify.success(message.title, {
+            undo: message.undo,
+            action: message.action,
+          });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong.");
+        notify.error(
+          err instanceof Error ? err.message : "Something went wrong.",
+        );
       } finally {
         setBusyKey(null);
       }
@@ -304,14 +422,21 @@ export function Studio(props: {
   // so server and client render the same HTML.
   const [host, setHost] = useState<string | null>(null);
   useEffect(() => setHost(window.location.host), []);
-  const reviewUrl = host ? reviewUrlFor(project.slug, host) : `/p/${project.slug}`;
+  const reviewUrl = host
+    ? reviewUrlFor(project.slug, host)
+    : `/p/${project.slug}`;
   const width = DEVICES.find((d) => d.id === device)!.width;
-  const isLive = project.published && selected && project.live_version_id === selected.id;
+  const isLive =
+    project.published && selected && project.live_version_id === selected.id;
 
   return (
     <div className="flex h-screen flex-col">
       <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
-        <Link href="/projects" aria-label="All prototypes" className="rounded-full p-1 hover:bg-stone-900/5">
+        <Link
+          href="/projects"
+          aria-label="All prototypes"
+          className="rounded-full p-1 hover:bg-stone-900/5"
+        >
           <Mark size={26} />
         </Link>
         <label htmlFor="pname" className="sr-only">
@@ -321,7 +446,24 @@ export function Studio(props: {
           id="pname"
           defaultValue={project.name}
           readOnly={!isOwner}
-          onBlur={(e) => isOwner && e.target.value !== project.name && run(() => renameProject(project.id, e.target.value))}
+          onBlur={(e) => {
+            const input = e.target;
+            const name = input.value.trim();
+            if (!isOwner || name === project.name) return;
+            if (!name) {
+              input.value = project.name;
+              return;
+            }
+            run(async () => {
+              try {
+                await renameProject(project.id, name);
+              } catch (err) {
+                input.value = project.name;
+                throw err;
+              }
+            });
+          }}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           className="h-8 min-w-0 max-w-56 rounded-full border border-transparent px-2.5 text-sm font-semibold hover:border-stone-200 focus:border-raspberry-600 focus:outline-none"
         />
         {project.published && live ? (
@@ -333,9 +475,19 @@ export function Studio(props: {
           <Badge>Not published</Badge>
         )}
         <div className="flex-1" />
-        <ToggleGroup type="single" aria-label="Preview size" value={device} onValueChange={(v) => v && setDevice(v as DeviceId)}>
+        <ToggleGroup
+          type="single"
+          aria-label="Preview size"
+          value={device}
+          onValueChange={(v) => v && setDevice(v as DeviceId)}
+        >
           {DEVICES.map(({ id, label, icon: Icon }) => (
-            <ToggleGroupItem key={id} value={id} aria-label={label} title={label}>
+            <ToggleGroupItem
+              key={id}
+              value={id}
+              aria-label={label}
+              title={label}
+            >
               <Icon />
               <span className="hidden xl:inline">{label}</span>
             </ToggleGroupItem>
@@ -365,31 +517,47 @@ export function Studio(props: {
             variant="default"
             loading={isBusy("publish")}
             disabled={pending || Boolean(isLive)}
-            onClick={() => run(() => publishVersion(project.id, selected.id), "publish")}
+            onClick={() =>
+              run(() => publishVersion(project.id, selected.id), "publish", {
+                title: `v${selected.number} is live`,
+                action: {
+                  label: "Copy link",
+                  onClick: () => copyWithToast(reviewUrl),
+                },
+              })
+            }
           >
             {isLive ? <Check /> : <Rocket />}
-            {isLive ? `v${selected.number} is live` : `Publish v${selected.number}`}
+            {isLive
+              ? `v${selected.number} is live`
+              : `Publish v${selected.number}`}
           </Button>
         )}
         {isOwner && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="More actions"
+                title="More actions"
+              >
                 <Ellipsis />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onSelect={() => {
-                  navigator.clipboard.writeText(reviewUrl);
-                }}
+                onSelect={() => copyWithToast(reviewUrl)}
                 disabled={!project.published}
               >
                 <Copy />
                 Copy review link
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => setConfirmDelete(true)}
+              >
                 <Trash2 />
                 Delete prototype
               </DropdownMenuItem>
@@ -403,20 +571,31 @@ export function Studio(props: {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{project.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              All of its versions, variants and comments go with it. This can&apos;t be undone.
+              All of its versions, variants and comments go with it. This
+              can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => run(() => deleteProject(project.id), "delete")}>Delete prototype</AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => run(() => deleteProject(project.id), "delete")}
+            >
+              Delete prototype
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
-        <aside aria-label="Prompt" className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]">
+        <aside
+          aria-label="Prompt"
+          className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]"
+        >
           <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3">
-            <MessageSquare className="size-4 text-stone-500" aria-hidden="true" />
+            <MessageSquare
+              className="size-4 text-stone-500"
+              aria-hidden="true"
+            />
             <h2 className="text-[13px] font-semibold">Chat</h2>
             {quota?.plan === "free" && (
               <span className="ml-auto text-[11px] text-stone-500">
@@ -427,7 +606,9 @@ export function Studio(props: {
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             {messages.length === 0 && !busy && (
               <div className="space-y-2">
-                <p className="text-[13px] text-stone-600">Describe what to build, or start from one of these:</p>
+                <p className="text-[13px] text-stone-600">
+                  Describe what to build, or start from one of these:
+                </p>
                 {STARTERS.map((s) => (
                   <button
                     key={s}
@@ -435,14 +616,19 @@ export function Studio(props: {
                     onClick={() => setPrompt(s)}
                     className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-white p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
                   >
-                    <Sparkles className="mt-0.5 size-3.5 shrink-0 text-raspberry-700" aria-hidden="true" />
+                    <Sparkles
+                      className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
+                      aria-hidden="true"
+                    />
                     {s}
                   </button>
                 ))}
               </div>
             )}
             {messages.map((m) => {
-              const v = m.version_id ? versions.find((x) => x.id === m.version_id) : null;
+              const v = m.version_id
+                ? versions.find((x) => x.id === m.version_id)
+                : null;
               return m.role === "user" ? (
                 <div
                   key={m.id}
@@ -451,7 +637,10 @@ export function Studio(props: {
                   {m.content}
                 </div>
               ) : (
-                <div key={m.id} className="space-y-2 text-[13px] leading-relaxed text-stone-800">
+                <div
+                  key={m.id}
+                  className="space-y-2 text-[13px] leading-relaxed text-stone-800"
+                >
                   <p>{m.content}</p>
                   {v && (
                     <Button size="sm" onClick={() => setSelectedId(v.id)}>
@@ -463,11 +652,19 @@ export function Studio(props: {
               );
             })}
             {busy && (
-              <div role="status" className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800">
+              <div
+                role="status"
+                className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
+              >
                 <Spinner className="mt-0.5 shrink-0" />
                 <span>
-                  {variantCount > 1 ? `Building ${variantCount} variants` : `Building ${selected ? `on v${selected.number}` : "v1"}`}…{" "}
-                  {elapsed}s<span className="block text-xs text-raspberry-800/70">Larger prototypes can take a minute or two.</span>
+                  {variantCount > 1
+                    ? `Building ${variantCount} variants`
+                    : `Building ${selected ? `on v${selected.number}` : "v1"}`}
+                  … {elapsed}s
+                  <span className="block text-xs text-raspberry-800/70">
+                    Larger prototypes can take a minute or two.
+                  </span>
                 </span>
               </div>
             )}
@@ -483,7 +680,9 @@ export function Studio(props: {
               </p>
             )}
             <label htmlFor="prompt" className="sr-only">
-              {versions.length ? `Describe a change to v${selected?.number ?? ""}` : "Describe your prototype"}
+              {versions.length
+                ? `Describe a change to v${selected?.number ?? ""}`
+                : "Describe your prototype"}
             </label>
             <div className="rounded-3xl border border-stone-200 bg-white p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
               <textarea
@@ -494,11 +693,19 @@ export function Studio(props: {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
                 }}
-                placeholder={versions.length ? `Describe a change to v${selected?.number ?? ""}…` : "A dispatch board for field techs…"}
+                placeholder={
+                  versions.length
+                    ? `Describe a change to v${selected?.number ?? ""}…`
+                    : "A dispatch board for field techs…"
+                }
                 className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
               />
               <div className="flex items-center gap-1.5">
-                <Select value={String(variantCount)} onValueChange={(v) => setVariantCount(Number(v) as 1 | 2 | 3)} disabled={busy}>
+                <Select
+                  value={String(variantCount)}
+                  onValueChange={(v) => setVariantCount(Number(v) as 1 | 2 | 3)}
+                  disabled={busy}
+                >
                   <SelectTrigger
                     size="sm"
                     aria-label="Number of variants"
@@ -517,8 +724,20 @@ export function Studio(props: {
                 <Button
                   variant="default"
                   size="icon"
-                  aria-label={variantCount > 1 ? "Generate variants" : versions.length ? "Update prototype" : "Build prototype"}
-                  title={variantCount > 1 ? "Generate variants" : versions.length ? "Update prototype" : "Build prototype"}
+                  aria-label={
+                    variantCount > 1
+                      ? "Generate variants"
+                      : versions.length
+                        ? "Update prototype"
+                        : "Build prototype"
+                  }
+                  title={
+                    variantCount > 1
+                      ? "Generate variants"
+                      : versions.length
+                        ? "Update prototype"
+                        : "Build prototype"
+                  }
                   type="submit"
                   loading={busy}
                   disabled={!prompt.trim() || outOfQuota || isImportedApp}
@@ -529,9 +748,17 @@ export function Studio(props: {
             </div>
             {outOfQuota && quota?.plan === "free" && (
               <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
-                <p className="font-semibold">You&apos;ve used this month&apos;s free builds.</p>
-                <p className="mt-0.5 text-xs text-stone-700">Pro is $20/month with $10 of AI usage included.</p>
-                <form action="/api/billing/checkout" method="post" className="mt-2">
+                <p className="font-semibold">
+                  You&apos;ve used this month&apos;s free builds.
+                </p>
+                <p className="mt-0.5 text-xs text-stone-700">
+                  Pro is $20/month with $10 of AI usage included.
+                </p>
+                <form
+                  action="/api/billing/checkout"
+                  method="post"
+                  className="mt-2"
+                >
                   <Button variant="default" size="sm" type="submit">
                     <Sparkles />
                     Upgrade to Pro
@@ -541,7 +768,8 @@ export function Studio(props: {
             )}
             {outOfQuota && quota?.plan === "pro" && !error && (
               <p className="mt-2 text-xs text-stone-600">
-                You&apos;ve hit the daily safety limit of {quota.limit} builds. It frees up on a rolling 24-hour basis.
+                You&apos;ve hit the daily safety limit of {quota.limit} builds.
+                It frees up on a rolling 24-hour basis.
               </p>
             )}
             {error && (
@@ -560,16 +788,31 @@ export function Studio(props: {
               run(async () => {
                 const kept = await keepVariant(project.id, v.id);
                 setSelectedId(kept.versionId);
+                return `Kept variant ${v.position} as v${kept.number}`;
               }, `keep-${v.id}`)
             }
-            onDiscard={() => run(() => discardVariants(project.id, variants[0].group_id), "discard")}
+            onDiscard={() =>
+              run(
+                () => discardVariants(project.id, variants[0].group_id),
+                "discard",
+                "Variants discarded",
+              )
+            }
           />
         ) : (
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4">
             <div className="mb-3 flex items-center gap-2">
-              {selected && <Badge>{editMode ? `Editing v${selected.number}` : `v${selected.number}`}</Badge>}
+              {selected && (
+                <Badge>
+                  {editMode
+                    ? `Editing v${selected.number}`
+                    : `v${selected.number}`}
+                </Badge>
+              )}
               <span className="min-w-0 flex-1 truncate text-xs text-stone-500">
-                {editMode ? "Click an element to edit it. Links and buttons are paused while editing." : selected?.summary}
+                {editMode
+                  ? "Click an element to edit it. Links and buttons are paused while editing."
+                  : selected?.summary}
               </span>
               {hasPreview && !editMode && (
                 <Button
@@ -586,13 +829,19 @@ export function Studio(props: {
                 </Button>
               )}
               {html && (
-                <Button size="sm" aria-pressed={editMode} onClick={() => (editMode ? exitEdit() : setEditMode(true))}>
+                <Button
+                  size="sm"
+                  aria-pressed={editMode}
+                  onClick={() => (editMode ? exitEdit() : setEditMode(true))}
+                >
                   {editMode ? <X /> : <PencilRuler />}
                   {editMode ? "Exit editing" : "Edit visually"}
                 </Button>
               )}
             </div>
-            {presenting && hasPreview && <PresentControls onExit={() => setPresenting(false)} />}
+            {presenting && hasPreview && (
+              <PresentControls onExit={() => setPresenting(false)} />
+            )}
             <div
               className={cn(
                 "mx-auto min-h-0 w-full flex-1 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width] duration-300",
@@ -601,7 +850,10 @@ export function Studio(props: {
               style={{ maxWidth: presenting && hasPreview ? undefined : width }}
             >
               {src ? (
-                <PrototypeFrame src={src} title={`${project.name} v${selected?.number}`} />
+                <PrototypeFrame
+                  src={src}
+                  title={`${project.name} v${selected?.number}`}
+                />
               ) : html ? (
                 editMode && editor.editableHtml ? (
                   <PrototypeFrame
@@ -612,7 +864,10 @@ export function Studio(props: {
                     onSelectElement={editor.setSelected}
                   />
                 ) : (
-                  <PrototypeFrame html={html} title={`${project.name} v${selected?.number}`} />
+                  <PrototypeFrame
+                    html={html}
+                    title={`${project.name} v${selected?.number}`}
+                  />
                 )
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-[13px] text-stone-500">
@@ -620,7 +875,10 @@ export function Studio(props: {
                     <Spinner />
                   ) : (
                     <>
-                      <div aria-hidden="true" className="grid size-12 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                      <div
+                        aria-hidden="true"
+                        className="grid size-12 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
+                      >
                         <Sparkles className="size-5" />
                       </div>
                       {buildRunning
@@ -633,7 +891,10 @@ export function Studio(props: {
             </div>
             {logBuildId && (
               <div className="mt-3">
-                <BuildLog buildId={logBuildId} onClose={() => setLogBuildId(null)} />
+                <BuildLog
+                  buildId={logBuildId}
+                  onClose={() => setLogBuildId(null)}
+                />
               </div>
             )}
           </main>
@@ -697,7 +958,13 @@ export function Studio(props: {
                         onBuilt={setLogBuildId}
                       />
                     )}
-                    <BuildList projectId={project.id} builds={builds} now={now} onShowLog={setLogBuildId} onBuilt={setLogBuildId} />
+                    <BuildList
+                      projectId={project.id}
+                      builds={builds}
+                      now={now}
+                      onShowLog={setLogBuildId}
+                      onBuilt={setLogBuildId}
+                    />
                   </div>
                 )}
 
@@ -708,7 +975,11 @@ export function Studio(props: {
                       projectId={project.id}
                       onImported={(id) => setSelectedId(id)}
                       trigger={
-                        <Button variant="ghost" size="sm" className="-mr-2 ml-auto h-7 text-stone-600">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="-mr-2 ml-auto h-7 text-stone-600"
+                        >
                           <Upload />
                           Import
                         </Button>
@@ -717,12 +988,17 @@ export function Studio(props: {
                   </div>
                   {versions.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
-                      <span aria-hidden="true" className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                      <span
+                        aria-hidden="true"
+                        className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
+                      >
                         <History className="size-5" />
                       </span>
                       <p className="text-[13px] font-medium">No versions yet</p>
                       <p className="text-xs text-muted-foreground">
-                        {buildRunning ? "Your first build is running." : "Describe a prototype in the chat, or import one."}
+                        {buildRunning
+                          ? "Your first build is running."
+                          : "Describe a prototype in the chat, or import one."}
                       </p>
                     </div>
                   ) : (
@@ -732,12 +1008,21 @@ export function Studio(props: {
                           key={v.id}
                           version={v}
                           selected={v.id === selected?.id}
-                          live={v.id === project.live_version_id && project.published}
+                          live={
+                            v.id === project.live_version_id &&
+                            project.published
+                          }
                           canRestore={v.id !== versions[0]?.id}
                           restoring={isBusy(`restore-${v.id}`)}
                           disabled={pending}
                           onSelect={() => setSelectedId(v.id)}
-                          onRestore={() => run(() => restoreVersion(project.id, v.id), `restore-${v.id}`)}
+                          onRestore={() =>
+                            run(
+                              () => restoreVersion(project.id, v.id),
+                              `restore-${v.id}`,
+                              `Restored v${v.number} as a new version`,
+                            )
+                          }
                         />
                       ))}
                     </ul>
@@ -760,11 +1045,17 @@ export function Studio(props: {
               <TabsContent value="comments" className="space-y-1 p-3">
                 {threads.length === 0 && (
                   <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
-                    <span aria-hidden="true" className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
+                    <span
+                      aria-hidden="true"
+                      className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
+                    >
                       <MessageSquare className="size-5" />
                     </span>
                     <p className="text-[13px] font-medium">No comments yet</p>
-                    <p className="text-xs text-muted-foreground">Reviewers pin comments on the published prototype from the review link.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Reviewers pin comments on the published prototype from the
+                      review link.
+                    </p>
                   </div>
                 )}
                 {threads
@@ -773,7 +1064,10 @@ export function Studio(props: {
                   .map((t, i) => {
                     const v = versions.find((x) => x.id === t.version_id);
                     return (
-                      <article key={t.id} className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]">
+                      <article
+                        key={t.id}
+                        className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
+                      >
                         <div className="flex items-center gap-1.5 text-xs">
                           <span
                             className={cn(
@@ -784,7 +1078,9 @@ export function Studio(props: {
                             {threads.length - i}
                           </span>
                           {v && <Badge>v{v.number}</Badge>}
-                          <span className="text-stone-500">{t.status === "resolved" ? "Resolved" : "Open"}</span>
+                          <span className="text-stone-500">
+                            {t.status === "resolved" ? "Resolved" : "Open"}
+                          </span>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -793,8 +1089,12 @@ export function Studio(props: {
                               await supabase
                                 .from("comment_threads")
                                 .update({
-                                  status: t.status === "open" ? "resolved" : "open",
-                                  resolved_at: t.status === "open" ? new Date().toISOString() : null,
+                                  status:
+                                    t.status === "open" ? "resolved" : "open",
+                                  resolved_at:
+                                    t.status === "open"
+                                      ? new Date().toISOString()
+                                      : null,
                                 })
                                 .eq("id", t.id);
                               router.refresh();
@@ -806,10 +1106,18 @@ export function Studio(props: {
                         </div>
                         {t.comments
                           .slice()
-                          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                          .sort((a, b) =>
+                            a.created_at.localeCompare(b.created_at),
+                          )
                           .map((c) => (
-                            <p key={c.id} className="text-[13px] leading-relaxed">
-                              <strong className="font-semibold">{authorLabel(c)}</strong> {c.body}
+                            <p
+                              key={c.id}
+                              className="text-[13px] leading-relaxed"
+                            >
+                              <strong className="font-semibold">
+                                {authorLabel(c)}
+                              </strong>{" "}
+                              {c.body}
                             </p>
                           ))}
                       </article>
@@ -833,14 +1141,24 @@ export function Studio(props: {
 }
 
 const ACCESS = [
-  { value: "invite", title: "Only people I invite", desc: "They sign in with an emailed link.", icon: Users },
+  {
+    value: "invite",
+    title: "Only people I invite",
+    desc: "They sign in with an emailed link.",
+    icon: Users,
+  },
   {
     value: "password",
     title: "Anyone with the password",
     desc: "No account needed. Guests enter the password and a name.",
     icon: KeyRound,
   },
-  { value: "public", title: "Anyone with the link", desc: "View only. Comments stay with invited reviewers.", icon: Globe },
+  {
+    value: "public",
+    title: "Anyone with the link",
+    desc: "View only. Comments stay with invited reviewers.",
+    icon: Globe,
+  },
 ] as const;
 
 function SharePanel({
@@ -858,17 +1176,24 @@ function SharePanel({
   reviewUrl: string;
   pending: boolean;
   isBusy: (key: string) => boolean;
-  run: (a: () => Promise<void>, key?: string) => void;
+  run: Run;
 }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"viewer" | "commenter" | "editor">("commenter");
+  const [role, setRole] = useState<"viewer" | "commenter" | "editor">(
+    "commenter",
+  );
   const [copied, setCopied] = useState(false);
   const [password, setPassword] = useState("");
   const [address, setAddress] = useState(project.slug);
   const [addressError, setAddressError] = useState("");
 
   if (!isOwner) {
-    return <p className="p-4 text-[13px] text-stone-600">Only the owner can change who has access.</p>;
+    return (
+      <p className="p-4 text-[13px] text-stone-600">
+        Only the owner can change who has access.
+      </p>
+    );
   }
 
   return (
@@ -878,13 +1203,18 @@ function SharePanel({
         {project.published ? (
           <>
             <div className="flex gap-1.5">
-              <Input readOnly value={reviewUrl} aria-label="Review link" className="text-xs text-stone-600" />
+              <Input
+                readOnly
+                value={reviewUrl}
+                aria-label="Review link"
+                className="text-xs text-stone-600"
+              />
               <Button
                 size="icon"
                 aria-label={copied ? "Copied" : "Copy link"}
                 title={copied ? "Copied" : "Copy link"}
                 onClick={async () => {
-                  await navigator.clipboard.writeText(reviewUrl);
+                  await copyWithToast(reviewUrl);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 }}
@@ -897,13 +1227,28 @@ function SharePanel({
               size="sm"
               loading={isBusy("unpublish")}
               disabled={pending}
-              onClick={() => run(() => unpublish(project.id), "unpublish")}
+              onClick={() =>
+                run(() => unpublish(project.id), "unpublish", {
+                  title: "Review link turned off",
+                  undo: project.live_version_id
+                    ? async () => {
+                        await publishVersion(
+                          project.id,
+                          project.live_version_id!,
+                        );
+                        router.refresh();
+                      }
+                    : undefined,
+                })
+              }
             >
               Unpublish
             </Button>
           </>
         ) : (
-          <p className="text-xs text-stone-600">Publish a version (top right) to get a review link.</p>
+          <p className="text-xs text-stone-600">
+            Publish a version (top right) to get a review link.
+          </p>
         )}
       </section>
 
@@ -917,8 +1262,19 @@ function SharePanel({
               try {
                 const slug = await updateSlug(project.id, address);
                 setAddress(slug);
+                notify.success(`Address changed to ${slug}`, {
+                  action: {
+                    label: "Copy link",
+                    onClick: () =>
+                      copyWithToast(reviewUrlFor(slug, window.location.host)),
+                  },
+                });
               } catch (err) {
-                setAddressError(err instanceof Error ? err.message : "Couldn't change the address.");
+                setAddressError(
+                  err instanceof Error
+                    ? err.message
+                    : "Couldn't change the address.",
+                );
               }
             }, "slug");
           }}
@@ -935,10 +1291,17 @@ function SharePanel({
               maxLength={60}
               className="h-9 min-w-0 flex-1 rounded-full bg-transparent pl-3.5 text-[13px] outline-none"
             />
-            <span className="shrink-0 text-xs text-stone-400">.realframe.app</span>
+            <span className="shrink-0 text-xs text-stone-400">
+              .realframe.app
+            </span>
           </div>
           {address !== project.slug && (
-            <Button variant="secondary" type="submit" loading={isBusy("slug")} disabled={pending}>
+            <Button
+              variant="secondary"
+              type="submit"
+              loading={isBusy("slug")}
+              disabled={pending}
+            >
               Save
             </Button>
           )}
@@ -948,7 +1311,9 @@ function SharePanel({
             {addressError}
           </p>
         ) : (
-          <p className="text-[11px] text-stone-500">Changing it breaks links you&apos;ve already shared.</p>
+          <p className="text-[11px] text-stone-500">
+            Changing it breaks links you&apos;ve already shared.
+          </p>
         )}
       </section>
 
@@ -963,7 +1328,22 @@ function SharePanel({
               document.getElementById("share-password")?.focus();
               return;
             }
-            run(() => setAccessMode(project.id, value as Project["access_mode"]), "access");
+            const previous = project.access_mode;
+            run(
+              () => setAccessMode(project.id, value as Project["access_mode"]),
+              "access",
+              {
+                title: {
+                  invite: "Only invited people can open it",
+                  password: "Anyone with the password can open it",
+                  public: "Anyone with the link can view",
+                }[value as Project["access_mode"]],
+                undo: async () => {
+                  await setAccessMode(project.id, previous);
+                  router.refresh();
+                },
+              },
+            );
           }}
         >
           {ACCESS.map(({ value, title, desc, icon: Icon }) => (
@@ -978,7 +1358,10 @@ function SharePanel({
                 <span className="block text-[13px] font-semibold">{title}</span>
                 <span className="block text-xs text-stone-600">{desc}</span>
               </span>
-              <Check className="ml-auto hidden size-4 shrink-0 text-raspberry-700 group-data-[state=checked]:block" aria-hidden="true" />
+              <Check
+                className="ml-auto hidden size-4 shrink-0 text-raspberry-700 group-data-[state=checked]:block"
+                aria-hidden="true"
+              />
             </RadioGroupCard>
           ))}
         </RadioGroup>
@@ -987,10 +1370,14 @@ function SharePanel({
             onSubmit={(e) => {
               e.preventDefault();
               const value = password;
-              run(async () => {
-                await setProjectPassword(project.id, value);
-                setPassword("");
-              }, "password");
+              run(
+                async () => {
+                  await setProjectPassword(project.id, value);
+                  setPassword("");
+                },
+                "password",
+                project.has_password ? "Password changed" : "Password set",
+              );
             }}
             className="flex gap-1.5"
           >
@@ -1005,9 +1392,18 @@ function SharePanel({
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={project.has_password ? "Change the password" : "Set a password (6+ characters)"}
+              placeholder={
+                project.has_password
+                  ? "Change the password"
+                  : "Set a password (6+ characters)"
+              }
             />
-            <Button variant="secondary" type="submit" loading={isBusy("password")} disabled={pending}>
+            <Button
+              variant="secondary"
+              type="submit"
+              loading={isBusy("password")}
+              disabled={pending}
+            >
               <KeyRound />
               {project.has_password ? "Change" : "Set"}
             </Button>
@@ -1020,7 +1416,9 @@ function SharePanel({
             checked={project.guest_comments !== false}
             loading={isBusy("guests")}
             disabled={pending && !isBusy("guests")}
-            onCheckedChange={(on) => run(() => setGuestComments(project.id, on), "guests")}
+            onCheckedChange={(on) =>
+              run(() => setGuestComments(project.id, on), "guests")
+            }
           />
         </div>
       </section>
@@ -1031,19 +1429,33 @@ function SharePanel({
           onSubmit={(e) => {
             e.preventDefault();
             const value = email;
-            run(async () => {
-              await inviteMember(project.id, value, role);
-              setEmail("");
-            }, "invite");
+            run(
+              async () => {
+                await inviteMember(project.id, value, role);
+                setEmail("");
+              },
+              "invite",
+              `Invited ${value.trim().toLowerCase()} as ${role}`,
+            );
           }}
           className="space-y-1.5"
         >
           <label htmlFor="inv" className="sr-only">
             Email
           </label>
-          <Input id="inv" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" />
+          <Input
+            id="inv"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@company.com"
+          />
           <div className="flex gap-1.5">
-            <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
+            <Select
+              value={role}
+              onValueChange={(v) => setRole(v as typeof role)}
+            >
               <SelectTrigger aria-label="Role" className="flex-1">
                 <SelectValue />
               </SelectTrigger>
@@ -1053,24 +1465,36 @@ function SharePanel({
                 <SelectItem value="editor">Editor</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="secondary" type="submit" loading={isBusy("invite")} disabled={pending}>
+            <Button
+              variant="secondary"
+              type="submit"
+              loading={isBusy("invite")}
+              disabled={pending}
+            >
               <UserPlus />
               Invite
             </Button>
           </div>
         </form>
-        <p className="text-[11px] text-stone-500">Send them the review link. They sign in with this email to get access.</p>
+        <p className="text-[11px] text-stone-500">
+          Send them the review link. They sign in with this email to get access.
+        </p>
         {members.length > 0 && (
           <ul className="space-y-0.5">
             {members.map((m) => (
-              <li key={m.email} className="flex items-center gap-2 rounded-full py-1 pl-1 pr-0.5 hover:bg-stone-900/[.03]">
+              <li
+                key={m.email}
+                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-0.5 hover:bg-stone-900/[.03]"
+              >
                 <span
                   aria-hidden="true"
                   className="grid size-7 shrink-0 place-items-center rounded-full bg-glow-soft text-[11px] font-semibold uppercase text-raspberry-800"
                 >
                   {m.email[0]}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-xs">{m.email}</span>
+                <span className="min-w-0 flex-1 truncate text-xs">
+                  {m.email}
+                </span>
                 <Badge className="capitalize">{m.role}</Badge>
                 <Button
                   variant="destructive"
@@ -1079,7 +1503,21 @@ function SharePanel({
                   title={`Remove ${m.email}`}
                   loading={isBusy(`remove-${m.email}`)}
                   disabled={pending}
-                  onClick={() => run(() => removeMember(project.id, m.email), `remove-${m.email}`)}
+                  onClick={() =>
+                    run(
+                      () => removeMember(project.id, m.email),
+                      `remove-${m.email}`,
+                      {
+                        title: `Removed ${m.email}`,
+                        undo: () =>
+                          inviteMember(
+                            project.id,
+                            m.email,
+                            m.role as "viewer" | "commenter" | "editor",
+                          ),
+                      },
+                    )
+                  }
                 >
                   <Trash2 />
                 </Button>
@@ -1109,17 +1547,31 @@ function VariantCompare({
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-            <Sparkles className="size-4 text-raspberry-700" aria-hidden="true" />
+            <Sparkles
+              className="size-4 text-raspberry-700"
+              aria-hidden="true"
+            />
             Compare {variants.length} variants
           </h2>
-          <p className="truncate text-xs text-stone-600">“{variants[0].prompt}” · Keep one to make it the next version.</p>
+          <p className="truncate text-xs text-stone-600">
+            “{variants[0].prompt}” · Keep one to make it the next version.
+          </p>
         </div>
-        <Button loading={busyKey === "discard"} disabled={anyBusy} onClick={onDiscard}>
+        <Button
+          loading={busyKey === "discard"}
+          disabled={anyBusy}
+          onClick={onDiscard}
+        >
           <X />
           Discard all
         </Button>
       </div>
-      <div className={cn("grid min-h-0 flex-1 gap-3", variants.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2")}>
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 gap-3",
+          variants.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2",
+        )}
+      >
         {variants.map((v) => (
           <section
             key={v.id}
@@ -1128,10 +1580,22 @@ function VariantCompare({
           >
             <div className="flex items-start gap-3 border-b border-stone-100 p-3">
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold">Variant {v.position}</p>
-                {v.summary && <p className="line-clamp-2 text-xs text-stone-600">{v.summary}</p>}
+                <p className="text-[13px] font-semibold">
+                  Variant {v.position}
+                </p>
+                {v.summary && (
+                  <p className="line-clamp-2 text-xs text-stone-600">
+                    {v.summary}
+                  </p>
+                )}
               </div>
-              <Button variant="default" size="sm" loading={busyKey === `keep-${v.id}`} disabled={anyBusy} onClick={() => onKeep(v)}>
+              <Button
+                variant="default"
+                size="sm"
+                loading={busyKey === `keep-${v.id}`}
+                disabled={anyBusy}
+                onClick={() => onKeep(v)}
+              >
                 <Check />
                 Keep
               </Button>
@@ -1184,12 +1648,18 @@ function VersionItem({
 }) {
   const summary = v.summary ?? "";
   const long = summary.length > 90;
-  const body = <span className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-700">{summary}</span>;
+  const body = (
+    <span className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-700">
+      {summary}
+    </span>
+  );
   return (
     <li
       className={cn(
         "rounded-2xl transition-colors duration-[var(--duration-fast)]",
-        selected ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]" : "hover:bg-foreground/[.03]",
+        selected
+          ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
+          : "hover:bg-foreground/[.03]",
       )}
     >
       <button
@@ -1206,8 +1676,13 @@ function VersionItem({
               Live
             </Badge>
           )}
-          {v.source !== "ai" && <Badge>{SOURCE_LABEL[v.source] ?? v.source}</Badge>}
-          <span suppressHydrationWarning className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          {v.source !== "ai" && (
+            <Badge>{SOURCE_LABEL[v.source] ?? v.source}</Badge>
+          )}
+          <span
+            suppressHydrationWarning
+            className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground"
+          >
             {versionTime(v.created_at)}
           </span>
         </span>
@@ -1224,15 +1699,26 @@ function VersionItem({
           <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
             <GitCommitHorizontal className="size-3" aria-hidden="true" />
             <code className="font-mono">{v.commit_sha.slice(0, 7)}</code>
-            {v.commit_author && <span className="truncate">· {v.commit_author}</span>}
+            {v.commit_author && (
+              <span className="truncate">· {v.commit_author}</span>
+            )}
           </span>
         ) : (
-          v.prompt && <span className="mt-1 block truncate text-[11px] text-muted-foreground">“{v.prompt}”</span>
+          v.prompt && (
+            <span className="mt-1 block truncate text-[11px] text-muted-foreground">
+              “{v.prompt}”
+            </span>
+          )
         )}
       </button>
       {selected && canRestore && (
         <div className="px-3 pb-3">
-          <Button size="sm" loading={restoring} disabled={disabled} onClick={onRestore}>
+          <Button
+            size="sm"
+            loading={restoring}
+            disabled={disabled}
+            onClick={onRestore}
+          >
             <RotateCcw />
             Restore as new version
           </Button>

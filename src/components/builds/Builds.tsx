@@ -19,7 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SwitchRow } from "@/components/ui/switch-row";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { notify } from "@/lib/toast";
 import {
   buildNow as raw_buildNow,
   cancelBuild as raw_cancelBuild,
@@ -53,7 +58,12 @@ const active = (b: Build) => b.status === "queued" || b.status === "building";
 
 function GitHubMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={cn("size-4", className)} fill="currentColor">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={cn("size-4", className)}
+      fill="currentColor"
+    >
       <path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z" />
     </svg>
   );
@@ -89,7 +99,28 @@ export function useBuilds(projectId: string, initial: Build[]) {
         .limit(8);
       if (!data) return;
       const next = data as Build[];
-      const finished = next.some((b) => !active(b) && prev.current.some((p) => p.id === b.id && active(p)));
+      const done = next.filter(
+        (b) =>
+          !active(b) && prev.current.some((p) => p.id === b.id && active(p)),
+      );
+      const finished = done.length > 0;
+      for (const b of done) {
+        const sha =
+          b.commit_sha && b.commit_sha !== "upload"
+            ? b.commit_sha.slice(0, 7)
+            : null;
+        if (b.status === "succeeded")
+          notify.success(sha ? `Built ${sha}` : "Build finished", {
+            description:
+              b.trigger === "push"
+                ? "Published to the review link."
+                : undefined,
+          });
+        else if (b.status === "failed")
+          notify.error(sha ? `Build ${sha} failed` : "Build failed", {
+            description: b.error_summary ?? undefined,
+          });
+      }
       prev.current = next;
       setBuilds(next);
       if (finished) router.refresh();
@@ -110,7 +141,15 @@ export function middleTruncate(text: string, max = 22) {
   return `${text.slice(0, Math.ceil(keep / 2))}…${text.slice(text.length - Math.floor(keep / 2))}`;
 }
 
-function Chip({ children, title, mono }: { children: React.ReactNode; title?: string; mono?: boolean }) {
+function Chip({
+  children,
+  title,
+  mono,
+}: {
+  children: React.ReactNode;
+  title?: string;
+  mono?: boolean;
+}) {
   return (
     <span
       title={title}
@@ -129,7 +168,10 @@ function timeAgo(iso: string, now: number) {
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export function SourceCard({
@@ -149,7 +191,6 @@ export function SourceCard({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState("");
   // Switches update at once and roll back if saving fails.
   const [buildOnPush, setBuildOnPush] = useState(source.build_on_push);
   const [publishOnPush, setPublishOnPush] = useState(source.publish_on_push);
@@ -158,15 +199,20 @@ export function SourceCard({
     setPublishOnPush(source.publish_on_push);
   }, [source.build_on_push, source.publish_on_push]);
 
-  async function act(key: string, fn: () => Promise<unknown>, rollback?: () => void) {
+  async function act(
+    key: string,
+    fn: () => Promise<unknown>,
+    rollback?: () => void,
+    success?: string,
+  ) {
     setBusy(key);
-    setError("");
     try {
       await fn();
       router.refresh();
+      if (success) notify.success(success);
     } catch (e) {
       rollback?.();
-      setError(e instanceof Error ? e.message : "That didn't work.");
+      notify.error(e instanceof Error ? e.message : "That didn't work.");
     } finally {
       setBusy(null);
     }
@@ -183,11 +229,17 @@ export function SourceCard({
           : "Not built yet";
 
   return (
-    <section aria-label="Repository" className="rounded-2xl bg-stone-50/80 shadow-[inset_0_0_0_1px_var(--color-border)]">
+    <section
+      aria-label="Repository"
+      className="rounded-2xl bg-stone-50/80 shadow-[inset_0_0_0_1px_var(--color-border)]"
+    >
       <div className="space-y-2.5 p-3">
         <div className="flex min-w-0 items-center gap-2">
           <GitHubMark className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" title={source.repo_full_name}>
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-semibold"
+            title={source.repo_full_name}
+          >
             {source.repo_full_name}
           </span>
           <Button
@@ -198,7 +250,11 @@ export function SourceCard({
             aria-label="Open on GitHub"
             title="Open on GitHub"
           >
-            <a href={`https://github.com/${source.repo_full_name}`} target="_blank" rel="noreferrer">
+            <a
+              href={`https://github.com/${source.repo_full_name}`}
+              target="_blank"
+              rel="noreferrer"
+            >
               <ExternalLink />
             </a>
           </Button>
@@ -214,14 +270,18 @@ export function SourceCard({
               {middleTruncate(source.root_dir)}
             </Chip>
           )}
-          {source.framework && <Chip title="Detected framework">{source.framework}</Chip>}
+          {source.framework && (
+            <Chip title="Detected framework">{source.framework}</Chip>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span
             suppressHydrationWarning
             className={cn(
               "min-w-0 flex-1 truncate text-[11px]",
-              latest?.status === "failed" && !running ? "text-red-700" : "text-muted-foreground",
+              latest?.status === "failed" && !running
+                ? "text-red-700"
+                : "text-muted-foreground",
             )}
           >
             {running && <Spinner className="mr-1 inline size-3 align-[-2px]" />}
@@ -231,8 +291,17 @@ export function SourceCard({
             size="sm"
             loading={busy === "build"}
             disabled={running || busy !== null}
-            title={running ? "A build is already running" : "Build the latest commit"}
-            onClick={() => act("build", async () => onBuilt(await buildNow(source.project_id)))}
+            title={
+              running ? "A build is already running" : "Build the latest commit"
+            }
+            onClick={() =>
+              act(
+                "build",
+                async () => onBuilt(await buildNow(source.project_id)),
+                undefined,
+                "Building the latest commit",
+              )
+            }
           >
             <Hammer />
             Build
@@ -285,19 +354,38 @@ export function SourceCard({
               />
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm" className="ml-1 mt-1" disabled={busy !== null}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="ml-1 mt-1"
+                    disabled={busy !== null}
+                  >
                     <Unplug />
                     Disconnect repository
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Disconnect {source.repo_full_name}?</AlertDialogTitle>
-                    <AlertDialogDescription>Pushes stop building new versions. Every version already built stays.</AlertDialogDescription>
+                    <AlertDialogTitle>
+                      Disconnect {source.repo_full_name}?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Pushes stop building new versions. Every version already
+                      built stays.
+                    </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => act("disconnect", () => disconnectRepo(source.project_id))}>
+                    <AlertDialogAction
+                      onClick={() =>
+                        act(
+                          "disconnect",
+                          () => disconnectRepo(source.project_id),
+                          undefined,
+                          `Disconnected ${source.repo_full_name}`,
+                        )
+                      }
+                    >
                       Disconnect
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -306,11 +394,6 @@ export function SourceCard({
             </div>
           </CollapsibleContent>
         </Collapsible>
-      )}
-      {error && (
-        <p role="alert" className="border-t border-stone-200/70 px-3 py-2 text-xs text-red-700">
-          {error}
-        </p>
       )}
     </section>
   );
@@ -335,11 +418,18 @@ export function BuildList({
   const shown = builds.filter((b) => b.status !== "succeeded").slice(0, 3);
   if (!shown.length) return null;
 
-  async function act(key: string, fn: () => Promise<unknown>) {
+  async function act(
+    key: string,
+    fn: () => Promise<unknown>,
+    success?: string,
+  ) {
     setBusy(key);
     try {
       await fn();
       router.refresh();
+      if (success) notify.success(success);
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "That didn't work.");
     } finally {
       setBusy(null);
     }
@@ -348,12 +438,19 @@ export function BuildList({
   return (
     <ul className="space-y-1">
       {shown.map((b) => (
-        <li key={b.id} className="flex gap-2.5 rounded-2xl p-3 hover:bg-foreground/[.03]">
+        <li
+          key={b.id}
+          className="flex gap-2.5 rounded-2xl p-3 hover:bg-foreground/[.03]"
+        >
           <span
             aria-hidden="true"
             className={cn(
               "grid size-6 shrink-0 place-items-center rounded-full",
-              active(b) ? "bg-blue-50 text-blue-700" : b.status === "failed" ? "bg-red-50 text-red-700" : "bg-stone-100 text-stone-500",
+              active(b)
+                ? "bg-blue-50 text-blue-700"
+                : b.status === "failed"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-stone-100 text-stone-500",
             )}
           >
             {active(b) ? (
@@ -379,12 +476,19 @@ export function BuildList({
             </p>
             {b.commit_sha && (
               <p className="flex items-center gap-1 text-[11px] text-stone-600">
-                <GitCommitHorizontal className="size-3 text-stone-400" aria-hidden="true" />
+                <GitCommitHorizontal
+                  className="size-3 text-stone-400"
+                  aria-hidden="true"
+                />
                 <code className="font-mono">{b.commit_sha.slice(0, 7)}</code>
                 {b.commit_author && <span>· {b.commit_author}</span>}
               </p>
             )}
-            {b.commit_message && <p className="truncate text-[11px] text-muted-foreground">“{b.commit_message}”</p>}
+            {b.commit_message && (
+              <p className="truncate text-[11px] text-muted-foreground">
+                “{b.commit_message}”
+              </p>
+            )}
             {b.status === "failed" && b.error_summary && (
               <code className="mt-1 block rounded-lg bg-red-50 px-2 py-1.5 font-mono text-[10.5px] leading-snug text-red-800">
                 {b.error_summary}
@@ -401,7 +505,13 @@ export function BuildList({
                   variant="ghost"
                   className="h-7"
                   loading={busy === b.id}
-                  onClick={() => act(b.id, () => cancelBuild(projectId, b.id))}
+                  onClick={() =>
+                    act(
+                      b.id,
+                      () => cancelBuild(projectId, b.id),
+                      "Build cancelled",
+                    )
+                  }
                 >
                   <X />
                   Cancel
@@ -413,7 +523,13 @@ export function BuildList({
                   className="h-7"
                   loading={busy === b.id}
                   disabled={builds.some(active)}
-                  onClick={() => act(b.id, async () => onBuilt(await buildNow(projectId, true)))}
+                  onClick={() =>
+                    act(
+                      b.id,
+                      async () => onBuilt(await buildNow(projectId, true)),
+                      "Building again",
+                    )
+                  }
                 >
                   <RotateCcw />
                   Retry
@@ -428,7 +544,13 @@ export function BuildList({
 }
 
 /** The build log, streaming while the build runs. */
-export function BuildLog({ buildId, onClose }: { buildId: string; onClose: () => void }) {
+export function BuildLog({
+  buildId,
+  onClose,
+}: {
+  buildId: string;
+  onClose: () => void;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [build, setBuild] = useState<(Build & { log: string }) | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -439,7 +561,11 @@ export function BuildLog({ buildId, onClose }: { buildId: string; onClose: () =>
     let stop = false;
     let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
-      const { data } = await supabase.from("builds").select(`${BUILD_COLUMNS}, log`).eq("id", buildId).maybeSingle();
+      const { data } = await supabase
+        .from("builds")
+        .select(`${BUILD_COLUMNS}, log`)
+        .eq("id", buildId)
+        .maybeSingle();
       if (stop) return;
       if (data) setBuild(data as Build & { log: string });
       if (!data || active(data as Build)) timer = setTimeout(load, 1500);
@@ -456,14 +582,20 @@ export function BuildLog({ buildId, onClose }: { buildId: string; onClose: () =>
   }, [build?.log]);
 
   return (
-    <section aria-label="Build log" className="flex h-64 shrink-0 flex-col overflow-hidden rounded-[1.4rem] bg-stone-900 text-stone-200">
+    <section
+      aria-label="Build log"
+      className="flex h-64 shrink-0 flex-col overflow-hidden rounded-[1.4rem] bg-stone-900 text-stone-200"
+    >
       <div className="flex items-center gap-2 border-b border-stone-800 px-3.5 py-2 text-xs">
         {build && active(build) ? (
           <Spinner className="size-3.5 text-blue-300" />
         ) : build?.status === "failed" ? (
           <CircleX className="size-3.5 text-red-400" aria-hidden="true" />
         ) : (
-          <SquareTerminal className="size-3.5 text-stone-400" aria-hidden="true" />
+          <SquareTerminal
+            className="size-3.5 text-stone-400"
+            aria-hidden="true"
+          />
         )}
         <strong className="font-semibold">
           {build?.status === "building"
@@ -475,7 +607,11 @@ export function BuildLog({ buildId, onClose }: { buildId: string; onClose: () =>
                 : "Build"}{" "}
           {build?.commit_sha?.slice(0, 7)}
         </strong>
-        {build?.commit_message && <span className="truncate text-stone-400">· {build.commit_message}</span>}
+        {build?.commit_message && (
+          <span className="truncate text-stone-400">
+            · {build.commit_message}
+          </span>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -489,11 +625,15 @@ export function BuildLog({ buildId, onClose }: { buildId: string; onClose: () =>
         ref={box}
         onScroll={() => {
           const el = box.current;
-          if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          if (el)
+            stick.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
         className="flex-1 overflow-y-auto px-3.5 py-2.5"
       >
-        <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed">{build?.log || "Starting…"}</pre>
+        <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed">
+          {build?.log || "Starting…"}
+        </pre>
         <div ref={end} />
       </div>
     </section>

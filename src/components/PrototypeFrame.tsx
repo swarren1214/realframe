@@ -1,8 +1,26 @@
 "use client";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { RotateCw, TriangleAlert } from "lucide-react";
 import { withAgent } from "@/lib/agent";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
-export type Pin = { id: string; n: number; x: number; y: number; status: "open" | "resolved"; selected?: boolean };
+export type Pin = {
+  id: string;
+  n: number;
+  x: number;
+  y: number;
+  status: "open" | "resolved";
+  selected?: boolean;
+};
 
 export type SelectedElement = {
   rf: string | null;
@@ -15,7 +33,10 @@ export type SelectedElement = {
 };
 
 export type FrameHandle = {
-  apply: (target: { rf: string | null; selector: string }, change: { styles?: Record<string, string>; text?: string }) => void;
+  apply: (
+    target: { rf: string | null; selector: string },
+    change: { styles?: Record<string, string>; text?: string },
+  ) => void;
 };
 
 type Props = {
@@ -38,79 +59,213 @@ type Props = {
 
 // Renders a prototype in a sandboxed iframe with an opaque origin (no allow-same-origin),
 // so prototype code can never read Realframe's cookies, storage or DOM.
-export const PrototypeFrame = forwardRef<FrameHandle, Props>(function PrototypeFrame(
-  {
-    html = "",
-    src,
-    title,
-    commentMode = false,
-    pins = [],
-    onPick,
-    onSelectPin,
-    editMode = false,
-    onSelectElement,
-    route,
-    onRouteChange,
-    className = "",
-    style,
-  },
-  handle,
-) {
-  const ref = useRef<HTMLIFrameElement>(null);
-  const srcDoc = useMemo(() => (src ? undefined : withAgent(html)), [html, src]);
-  const latest = useRef({ commentMode, pins, onPick, onSelectPin, editMode, onSelectElement, route, onRouteChange });
-  latest.current = { commentMode, pins, onPick, onSelectPin, editMode, onSelectElement, route, onRouteChange };
-
-  function post(message: unknown) {
-    ref.current?.contentWindow?.postMessage(message, "*");
-  }
-
-  function sync() {
-    post({ type: "rf:mode", on: latest.current.commentMode });
-    post({ type: "rf:pins", pins: latest.current.pins });
-    post({ type: "rf:edit", on: latest.current.editMode });
-    if (typeof latest.current.route === "string") post({ type: "rf:route", hash: latest.current.route });
-  }
-
-  useImperativeHandle(handle, () => ({
-    apply: (target, change) => post({ type: "rf:apply", rf: target.rf, selector: target.selector, ...change }),
-  }));
-
-  useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      if (!ref.current || e.source !== ref.current.contentWindow) return;
-      const m = e.data as { type?: string; x?: number; y?: number; id?: string; hash?: string } & Partial<SelectedElement>;
-      if (m?.type === "rf:ready") sync();
-      if (m?.type === "rf:pick" && typeof m.x === "number" && typeof m.y === "number") {
-        latest.current.onPick?.(Math.max(0, Math.min(1, m.x)), Math.max(0, Math.min(1, m.y)));
-      }
-      if (m?.type === "rf:select" && typeof m.id === "string") latest.current.onSelectPin?.(m.id);
-      if (m?.type === "rf:selected" && typeof m.selector === "string") {
-        latest.current.onSelectElement?.(m as SelectedElement);
-      }
-      if (m?.type === "rf:route-changed" && typeof m.hash === "string") latest.current.onRouteChange?.(m.hash);
+export const PrototypeFrame = forwardRef<FrameHandle, Props>(
+  function PrototypeFrame(
+    {
+      html = "",
+      src,
+      title,
+      commentMode = false,
+      pins = [],
+      onPick,
+      onSelectPin,
+      editMode = false,
+      onSelectElement,
+      route,
+      onRouteChange,
+      className = "",
+      style,
+    },
+    handle,
+  ) {
+    const ref = useRef<HTMLIFrameElement>(null);
+    const srcDoc = useMemo(
+      () => (src ? undefined : withAgent(html)),
+      [html, src],
+    );
+    // "loading" until the agent inside says it's ready; "failed" if the page loads without it
+    // (an error page) or never loads at all.
+    const [state, setState] = useState<"loading" | "ready" | "failed">(
+      "loading",
+    );
+    const [attempt, setAttempt] = useState(0);
+    const content = src ?? srcDoc;
+    const [shown, setShown] = useState(content);
+    if (shown !== content) {
+      setShown(content);
+      setState("loading");
     }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
+    const timers = useRef<number[]>([]);
+    function clearTimers() {
+      timers.current.forEach((t) => window.clearTimeout(t));
+      timers.current = [];
+    }
+    useEffect(() => {
+      clearTimers();
+      // A page that never finishes loading.
+      timers.current.push(
+        window.setTimeout(
+          () => setState((s) => (s === "loading" ? "failed" : s)),
+          25_000,
+        ),
+      );
+      // The page can finish loading before React hydrates, so its ready message goes unheard.
+      // Ask again; the agent answers once the page has loaded.
+      post({ type: "rf:ping" });
+      return clearTimers;
+    }, [content, attempt]);
 
-  useEffect(() => {
-    sync();
-  }, [commentMode, pins, editMode, route]);
+    function onLoad() {
+      post({ type: "rf:ping" });
+      // The agent posts ready on the page's load event, just before this fires. Give it a beat.
+      timers.current.push(
+        window.setTimeout(
+          () =>
+            setState((s) => (s === "loading" ? (src ? "failed" : "ready") : s)),
+          src ? 2500 : 600,
+        ),
+      );
+    }
+    const latest = useRef({
+      commentMode,
+      pins,
+      onPick,
+      onSelectPin,
+      editMode,
+      onSelectElement,
+      route,
+      onRouteChange,
+    });
+    latest.current = {
+      commentMode,
+      pins,
+      onPick,
+      onSelectPin,
+      editMode,
+      onSelectElement,
+      route,
+      onRouteChange,
+    };
 
-  // Every prototype runs with an opaque origin (no allow-same-origin), so its code can't reach
-  // Realframe's cookies or storage. Imported apps load by URL from their own subdomain.
-  return (
-    <iframe
-      ref={ref}
-      title={title}
-      {...(src ? { src } : { srcDoc })}
-      sandbox={
-        src ? "allow-scripts allow-forms allow-popups allow-modals allow-downloads" : "allow-scripts allow-forms allow-popups allow-modals"
+    function post(message: unknown) {
+      ref.current?.contentWindow?.postMessage(message, "*");
+    }
+
+    function sync() {
+      post({ type: "rf:mode", on: latest.current.commentMode });
+      post({ type: "rf:pins", pins: latest.current.pins });
+      post({ type: "rf:edit", on: latest.current.editMode });
+      if (typeof latest.current.route === "string")
+        post({ type: "rf:route", hash: latest.current.route });
+    }
+
+    useImperativeHandle(handle, () => ({
+      apply: (target, change) =>
+        post({
+          type: "rf:apply",
+          rf: target.rf,
+          selector: target.selector,
+          ...change,
+        }),
+    }));
+
+    useEffect(() => {
+      function onMessage(e: MessageEvent) {
+        if (!ref.current || e.source !== ref.current.contentWindow) return;
+        const m = e.data as {
+          type?: string;
+          x?: number;
+          y?: number;
+          id?: string;
+          hash?: string;
+        } & Partial<SelectedElement>;
+        if (m?.type === "rf:ready") {
+          sync();
+          setState("ready");
+        }
+        if (
+          m?.type === "rf:pick" &&
+          typeof m.x === "number" &&
+          typeof m.y === "number"
+        ) {
+          latest.current.onPick?.(
+            Math.max(0, Math.min(1, m.x)),
+            Math.max(0, Math.min(1, m.y)),
+          );
+        }
+        if (m?.type === "rf:select" && typeof m.id === "string")
+          latest.current.onSelectPin?.(m.id);
+        if (m?.type === "rf:selected" && typeof m.selector === "string") {
+          latest.current.onSelectElement?.(m as SelectedElement);
+        }
+        if (m?.type === "rf:route-changed" && typeof m.hash === "string")
+          latest.current.onRouteChange?.(m.hash);
       }
-      allow="fullscreen; clipboard-write"
-      className={`h-full w-full border-0 bg-white ${className}`}
-      style={style}
-    />
-  );
-});
+      window.addEventListener("message", onMessage);
+      return () => window.removeEventListener("message", onMessage);
+    }, []);
+
+    useEffect(() => {
+      sync();
+    }, [commentMode, pins, editMode, route]);
+
+    // Every prototype runs with an opaque origin (no allow-same-origin), so its code can't reach
+    // Realframe's cookies or storage. Imported apps load by URL from their own subdomain.
+    return (
+      <div className={cn("relative h-full w-full", className)} style={style}>
+        <iframe
+          key={attempt}
+          ref={ref}
+          title={title}
+          {...(src ? { src } : { srcDoc })}
+          onLoad={onLoad}
+          sandbox={
+            src
+              ? "allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+              : "allow-scripts allow-forms allow-popups allow-modals"
+          }
+          allow="fullscreen; clipboard-write"
+          className={cn(
+            "h-full w-full border-0 bg-white transition-opacity duration-(--duration-slow) ease-(--ease-out)",
+            state === "ready" ? "opacity-100" : "opacity-0",
+          )}
+        />
+        {state === "loading" && (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-white">
+            <Spinner className="size-5 text-stone-400 [animation-delay:200ms]" />
+          </div>
+        )}
+        {state === "failed" && (
+          <div
+            role="alert"
+            className="absolute inset-0 grid place-items-center bg-white p-6 text-center"
+          >
+            <div className="flex max-w-xs flex-col items-center gap-2">
+              <span className="grid size-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">
+                <TriangleAlert className="size-5" aria-hidden="true" />
+              </span>
+              <p className="text-sm font-semibold text-stone-900">
+                This version didn&apos;t load
+              </p>
+              <p className="text-[13px] text-stone-500">
+                It may still be starting up, or the page hit an error.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1"
+                onClick={() => {
+                  setState("loading");
+                  setAttempt((a) => a + 1);
+                }}
+              >
+                <RotateCw />
+                Try again
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  },
+);
