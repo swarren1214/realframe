@@ -44,7 +44,8 @@ const PLAN_LIST: Plan[] = [
   {
     name: "Pro",
     tagline: "For product people prototyping every week.",
-    price: (i) => `$${i === "year" ? PLANS.pro.annualUsd : PLANS.pro.monthlyUsd}`,
+    price: (i) =>
+      `$${i === "year" ? PLANS.pro.annualUsd : PLANS.pro.monthlyUsd}`,
     unit: (i) => (i === "year" ? "/ year" : "/ month"),
     note: (i) =>
       i === "year"

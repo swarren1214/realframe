@@ -395,3 +395,33 @@ html:has(.rf-present-frame) {
     scroll-behavior: auto !important;
   }
 }
+
+/* Long-form legal text on the marketing site (Privacy, Terms). */
+.legal p,
+.legal ul {
+  margin-top: 0.85rem;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--color-stone-700);
+}
+.legal ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.legal li + li {
+  margin-top: 0.35rem;
+}
+.legal h3 {
+  margin-top: 1.5rem;
+  font-weight: 700;
+  font-size: 16px;
+}
+.legal a {
+  color: var(--color-raspberry-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.legal strong {
+  font-weight: 600;
+  color: var(--color-stone-900);
+}
