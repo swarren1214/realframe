@@ -3,7 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 // E2E_BASE_URL: run against a deployment (e.g. a Vercel preview). Without it, tests start the
 // production build locally on port 3100 (run `npm run build` first).
 // PLAYWRIGHT_CHROME: path to a Chrome binary, for machines where `playwright install` can't run.
-const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3100";
+// CI passes unset secrets as empty strings, so treat "" the same as missing.
+const deployment = process.env.E2E_BASE_URL?.trim() || undefined;
+const baseURL = deployment ?? "http://localhost:3100";
 const chrome = process.env.PLAYWRIGHT_CHROME;
 
 export default defineConfig({
@@ -26,7 +28,7 @@ export default defineConfig({
       testMatch: /marketing\.spec/,
     },
   ],
-  webServer: process.env.E2E_BASE_URL
+  webServer: deployment
     ? undefined
     : {
         command: "npx next start -p 3100",
