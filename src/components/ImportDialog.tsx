@@ -10,11 +10,12 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
-import { mimeFor, readBundle } from "@/lib/bundle";
+import { SourceZip, mimeFor, readBundle } from "@/lib/bundle";
 import { SINGLE_FILE_TYPES } from "@/lib/import";
 import { cn } from "@/lib/utils";
 import { GitHubImport } from "@/components/GitHubImport";
 import { finishBundle, importFile, prepareBundle } from "@/app/projects/actions";
+import { buildUploadedSource } from "@/app/projects/github-actions";
 
 const ACCEPT = [...SINGLE_FILE_TYPES, ".zip"].join(",");
 
@@ -111,7 +112,27 @@ export function ImportDialog({
       }
 
       // A built app: check it here, upload the files straight to storage, then record the version.
-      const bundle = await readBundle(file);
+      let bundle: Awaited<ReturnType<typeof readBundle>>;
+      try {
+        bundle = await readBundle(file);
+      } catch (err) {
+        if (!(err instanceof SourceZip)) throw err;
+        // Source code (for example an unbuilt Vite app): upload the zip and build it in the sandbox.
+        const target = await prepareBundle(projectId, name);
+        const uploadPath = `${target.projectId}/uploads/${target.bundleId}.zip`;
+        setProgress(30);
+        const { error: upErr } = await createClient()
+          .storage.from("bundles")
+          .upload(uploadPath, file, { contentType: "application/zip", upsert: false });
+        if (upErr) throw new Error(`Couldn't upload the zip: ${upErr.message}`);
+        setProgress(100);
+        await buildUploadedSource(target.projectId, uploadPath, { ...err.settings, label: file.name });
+        setOpen(false);
+        reset();
+        if (projectId) router.refresh();
+        else router.push(`/projects/${target.projectId}`);
+        return;
+      }
       const target = await prepareBundle(projectId, name);
       const supabase = createClient();
       const base = `${target.projectId}/${target.bundleId}/`;

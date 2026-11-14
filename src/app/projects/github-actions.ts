@@ -149,10 +149,24 @@ export async function connectRepo(input: ConnectInput) {
   return { projectId, buildId };
 }
 
-async function queueBuild(projectId: string, requestedBy: string, billedTo: string, trigger: "import" | "manual" | "retry") {
+type UploadOrigin = { upload_path: string; settings: Record<string, unknown> };
+
+async function queueBuild(
+  projectId: string,
+  requestedBy: string,
+  billedTo: string,
+  trigger: "import" | "manual" | "retry",
+  upload?: UploadOrigin,
+) {
   const admin = createAdminClient();
-  const { data: source } = await admin.from("project_sources").select("repo_full_name, branch").eq("project_id", projectId).single();
-  if (!source) throw new Error("This prototype isn't connected to a repository.");
+  let from: Record<string, unknown>;
+  if (upload) {
+    from = upload;
+  } else {
+    const { data: source } = await admin.from("project_sources").select("repo_full_name, branch").eq("project_id", projectId).maybeSingle();
+    if (!source) throw new Error("This prototype isn't connected to a repository.");
+    from = { repo_full_name: source.repo_full_name, branch: source.branch };
+  }
   const { count } = await admin
     .from("builds")
     .select("id", { count: "exact", head: true })
@@ -166,9 +180,8 @@ async function queueBuild(projectId: string, requestedBy: string, billedTo: stri
       project_id: projectId,
       requested_by: requestedBy,
       billed_to: billedTo,
-      repo_full_name: source.repo_full_name,
-      branch: source.branch,
       trigger,
+      ...from,
     })
     .select("id")
     .single();
@@ -190,7 +203,48 @@ export async function buildNow(projectId: string, retry = false) {
     .eq("project_id", projectId)
     .in("status", ["queued", "building"])
     .lt("queued_at", new Date(Date.now() - 25 * 60_000).toISOString());
-  const buildId = await queueBuild(projectId, user.id, (project?.owner_id as string) ?? user.id, retry ? "retry" : "manual");
+  // A prototype built from an uploaded zip rebuilds that same upload.
+  const { data: source } = await supabase.from("project_sources").select("project_id").eq("project_id", projectId).maybeSingle();
+  let upload: UploadOrigin | undefined;
+  if (!source) {
+    const { data: last } = await createAdminClient()
+      .from("builds")
+      .select("upload_path, settings")
+      .eq("project_id", projectId)
+      .not("upload_path", "is", null)
+      .order("queued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!last) throw new Error("This prototype isn't connected to a repository.");
+    upload = { upload_path: last.upload_path as string, settings: last.settings as Record<string, unknown> };
+  }
+  const buildId = await queueBuild(projectId, user.id, (project?.owner_id as string) ?? user.id, retry ? "retry" : "manual", upload);
+  revalidatePath(`/projects/${projectId}`);
+  return buildId;
+}
+
+/** Builds a source zip the browser uploaded to <project>/uploads/<id>.zip. */
+export async function buildUploadedSource(
+  projectId: string,
+  uploadPath: string,
+  settings: { installCommand: string | null; buildCommand: string | null; outputDir: string; framework: string; label: string },
+) {
+  const { supabase, user } = await requireUser();
+  const { data: role } = await supabase.rpc("project_role", { p: projectId });
+  if (role !== "owner" && role !== "editor") throw new Error("You can't build this prototype.");
+  const prefix = `${projectId}/uploads/`;
+  if (!uploadPath.startsWith(prefix) || !/^[0-9a-f-]{36}\.zip$/.test(uploadPath.slice(prefix.length))) throw new Error("Bad upload.");
+  const { data: project } = await supabase.from("projects").select("owner_id").eq("id", projectId).single();
+  const buildId = await queueBuild(projectId, user.id, (project?.owner_id as string) ?? user.id, "import", {
+    upload_path: uploadPath,
+    settings: {
+      installCommand: settings.installCommand?.slice(0, 300) ?? null,
+      buildCommand: settings.buildCommand?.slice(0, 300) ?? null,
+      outputDir: settings.outputDir.slice(0, 200),
+      framework: settings.framework.slice(0, 60),
+      label: settings.label.slice(0, 120),
+    },
+  });
   revalidatePath(`/projects/${projectId}`);
   return buildId;
 }

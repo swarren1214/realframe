@@ -607,9 +607,9 @@ export function Studio(props: {
 
             <div className="flex-1 overflow-y-auto">
               <TabsContent value="versions">
-                {props.source && (
+                {(props.source || builds.length > 0) && (
                   <div className="space-y-1 px-2 pt-2">
-                    <SourceCard source={props.source} isOwner={isOwner} running={buildRunning} onBuilt={setLogBuildId} />
+                    {props.source && <SourceCard source={props.source} isOwner={isOwner} running={buildRunning} onBuilt={setLogBuildId} />}
                     <BuildList projectId={project.id} builds={builds} now={now} onShowLog={setLogBuildId} onBuilt={setLogBuildId} />
                   </div>
                 )}

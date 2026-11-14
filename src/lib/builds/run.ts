@@ -3,7 +3,8 @@ import { createHmac } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCommit, installationToken } from "@/lib/github/app";
-import { mimeFor } from "@/lib/bundle";
+import { unzipSync } from "fflate";
+import { IGNORE, mimeFor } from "@/lib/bundle";
 
 const MAX_FILES = 1500;
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -50,7 +51,28 @@ export async function runBuild(buildId: string) {
   const admin = createAdminClient();
   const { data: build } = await admin.from("builds").select("*").eq("id", buildId).maybeSingle();
   if (!build || build.status !== "queued") return;
-  const { data: source } = await admin.from("project_sources").select("*").eq("project_id", build.project_id).maybeSingle();
+  const { data: repoSource } = build.upload_path
+    ? { data: null }
+    : await admin.from("project_sources").select("*").eq("project_id", build.project_id).maybeSingle();
+  // An uploaded source zip carries its own build settings.
+  const settings = (build.settings ?? {}) as {
+    installCommand?: string | null;
+    buildCommand?: string | null;
+    outputDir?: string;
+    label?: string;
+  };
+  const source = build.upload_path
+    ? {
+        installation_id: 0,
+        repo_full_name: null as string | null,
+        branch: null as string | null,
+        root_dir: "",
+        install_command: settings.installCommand ?? null,
+        build_command: settings.buildCommand ?? null,
+        output_dir: settings.outputDir ?? "dist",
+        publish_on_push: false,
+      }
+    : repoSource;
 
   let log = "";
   let dirty = false;
@@ -97,31 +119,14 @@ export async function runBuild(buildId: string) {
 
   let sandbox: Sandbox | null = null;
   try {
-    const token = await installationToken(source.installation_id);
-    const commit = build.commit_sha
-      ? { sha: build.commit_sha as string, message: build.commit_message as string | null, author: build.commit_author as string | null }
-      : await getCommit(token, source.repo_full_name, source.branch);
-    await admin
-      .from("builds")
-      .update({ commit_sha: commit.sha, commit_message: commit.message, commit_author: commit.author })
-      .eq("id", buildId);
-
-    say(`$ git clone ${source.repo_full_name}@${commit.sha.slice(0, 7)} (${source.branch})`);
-    sandbox = await Sandbox.create({
-      source: {
-        type: "git",
-        url: `https://github.com/${source.repo_full_name}.git`,
-        username: "x-access-token",
-        password: token,
-        depth: 1,
-        revision: commit.sha,
-      },
+    const sandboxBase = {
       image: "vercel/sandbox/node:22",
       resources: { vcpus: 4 },
       timeout: BUILD_TIMEOUT_MS,
       networkPolicy: { allow: ALLOWED_HOSTS },
       tags: { app: "realframe", build: buildId.slice(0, 32) },
-    }).catch((err: unknown) => {
+    } as const;
+    const authHint = (err: unknown) => {
       const m = err instanceof Error ? err.message : String(err);
       if (/unauthori|forbidden|token|credential|oidc/i.test(m)) {
         throw new Error(
@@ -129,11 +134,58 @@ export async function runBuild(buildId: string) {
         );
       }
       throw err;
-    });
+    };
+
+    let commit: { sha: string; message: string | null; author: string | null };
+    let uploadFiles: { path: string; content: Uint8Array }[] = [];
+    if (build.upload_path) {
+      // Uploaded source zip: unzip it here, then write the files into an empty sandbox.
+      say(`Unpacking ${settings.label ?? "the uploaded zip"}…`);
+      const { data: blob, error: dlErr } = await admin.storage.from("bundles").download(build.upload_path);
+      if (dlErr || !blob) throw new Error("The uploaded zip is missing.");
+      const entries = Object.entries(unzipSync(new Uint8Array(await blob.arrayBuffer())))
+        .filter(([p]) => !p.endsWith("/") && !IGNORE.test(p) && !/(^|\/)(dist|build|out|\.next)\//.test(p))
+        .map(([path, content]) => ({ path: path.replace(/^\.?\//, ""), content }));
+      let list = entries;
+      while (list.length && list.every((f) => f.path.includes("/")) && new Set(list.map((f) => f.path.split("/")[0])).size === 1) {
+        list = list.map((f) => ({ ...f, path: f.path.slice(f.path.indexOf("/") + 1) }));
+      }
+      if (list.some((f) => f.path.split("/").some((seg) => seg === ".." || seg === ""))) throw new Error("The zip has unsafe file paths.");
+      uploadFiles = list;
+      commit = { sha: "upload", message: settings.label ?? "Uploaded zip", author: null };
+      sandbox = await Sandbox.create({ ...sandboxBase }).catch(authHint);
+    } else {
+      const token = await installationToken(source.installation_id);
+      commit = build.commit_sha
+        ? { sha: build.commit_sha as string, message: build.commit_message as string | null, author: build.commit_author as string | null }
+        : await getCommit(token, source.repo_full_name!, source.branch!);
+      await admin
+        .from("builds")
+        .update({ commit_sha: commit.sha, commit_message: commit.message, commit_author: commit.author })
+        .eq("id", buildId);
+      say(`$ git clone ${source.repo_full_name}@${commit.sha.slice(0, 7)} (${source.branch})`);
+      sandbox = await Sandbox.create({
+        ...sandboxBase,
+        source: {
+          type: "git",
+          url: `https://github.com/${source.repo_full_name}.git`,
+          username: "x-access-token",
+          password: token,
+          depth: 1,
+          revision: commit.sha,
+        },
+      }).catch(authHint);
+      say("Cloned.");
+    }
     await admin.from("builds").update({ sandbox_id: sandbox.name }).eq("id", buildId);
-    say("Cloned.");
 
     const home = (await (await sandbox.runCommand("pwd")).stdout()).trim();
+    if (uploadFiles.length) {
+      for (let k = 0; k < uploadFiles.length; k += 100) {
+        await sandbox.writeFiles(uploadFiles.slice(k, k + 100).map((f) => ({ path: `${home}/${f.path}`, content: f.content })));
+      }
+      say(`Wrote ${uploadFiles.length} files.`);
+    }
     const root = source.root_dir ? `${home}/${source.root_dir.replace(/^\/+|\/+$/g, "")}` : home;
 
     const sh = async (command: string, env: Record<string, string> = {}) => {
@@ -194,8 +246,11 @@ export async function runBuild(buildId: string) {
       p_bundle: bundleId,
       p_files: files.length,
       p_bytes: bytes,
-      p_summary: `Built ${commit.sha.slice(0, 7)} from ${source.branch}${commit.message ? `: ${commit.message}` : ""}`.slice(0, 300),
-      p_sha: commit.sha,
+      p_summary: (build.upload_path
+        ? `Built from ${settings.label ?? "an uploaded zip"}.`
+        : `Built ${commit.sha.slice(0, 7)} from ${source.branch}${commit.message ? `: ${commit.message}` : ""}`
+      ).slice(0, 300),
+      p_sha: build.upload_path ? null : commit.sha,
       p_message: commit.message,
       p_author: commit.author,
       p_created_by: build.requested_by,
