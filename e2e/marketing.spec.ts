@@ -67,13 +67,23 @@ test.describe("marketing site", () => {
   });
 
   test("has no detectable accessibility problems", async ({ page }) => {
+    // Check the settled page: no fade-ins mid-way (the app honours reduced motion) and
+    // web fonts loaded, so contrast is measured on what people actually see.
+    await page.emulateMedia({ reducedMotion: "reduce" });
     for (const path of ["/", "/pricing", "/login"]) {
-      await page.goto(path);
+      await page.goto(path, { waitUntil: "networkidle" });
+      await page.evaluate(() => document.fonts.ready);
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();
+      // On failure, name each element and why, so the fix is obvious from the CI log.
       expect(
-        results.violations.map((v) => `${path}: ${v.id} (${v.nodes.length})`),
+        results.violations.flatMap((v) =>
+          v.nodes.map(
+            (n) =>
+              `${path}: ${v.id} at ${n.target.join(" ")} — ${n.any[0]?.message ?? n.failureSummary ?? ""}`,
+          ),
+        ),
       ).toEqual([]);
     }
   });
