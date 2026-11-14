@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/server";
+import { AvatarEditor } from "@/components/AvatarEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function WelcomePage({
   if (!user) redirect("/");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, onboarded_at")
+    .select("display_name, onboarded_at, avatar_url")
     .maybeSingle();
   const editing = Boolean(edit) || Boolean(profile?.onboarded_at);
   const { data: quota } = await supabase.rpc("generation_quota");
@@ -74,6 +75,11 @@ export default async function WelcomePage({
           </p>
         </div>
         <input type="hidden" name="next" value={safeNext(next)} />
+        <AvatarEditor
+          url={profile?.avatar_url ?? null}
+          name={profile?.display_name ?? null}
+          email={user.email ?? ""}
+        />
         <div>
           <Label htmlFor="display_name" className="mb-1.5">
             Your name

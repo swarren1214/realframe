@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useTheme, type ThemeChoice } from "@/components/theme";
+import { Avatar } from "@/components/AvatarEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,17 +44,21 @@ function initialsFor(name: string | null, email: string) {
   return (email[0] ?? "").toUpperCase();
 }
 
-function Avatar({ initials, size }: { initials: string; size: "sm" | "lg" }) {
+function MenuAvatar({
+  url,
+  initials,
+  size,
+}: {
+  url: string | null;
+  initials: string;
+  size: "sm" | "lg";
+}) {
   return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "grid shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#c2410c_0%,#be185d_55%,#7c3aed_100%)] font-semibold text-white",
-        size === "sm" ? "size-8 text-xs" : "size-10 text-sm",
-      )}
-    >
-      {initials || <UserRound className="size-4" />}
-    </span>
+    <Avatar
+      url={url}
+      initials={initials}
+      className={size === "sm" ? "size-8 text-xs" : "size-10 text-sm"}
+    />
   );
 }
 
@@ -77,9 +82,11 @@ export function AccountMenuClient({
   email,
   plan,
   usage,
+  avatarUrl = null,
 }: {
   compact: boolean;
   name: string | null;
+  avatarUrl?: string | null;
   email: string;
   plan: "free" | "pro";
   usage: Usage | null;
@@ -99,7 +106,7 @@ export function AccountMenuClient({
             aria-label={label}
             title={label}
           >
-            <Avatar initials={initials} size="sm" />
+            <MenuAvatar url={avatarUrl} initials={initials} size="sm" />
           </Button>
         ) : (
           <Button
@@ -107,7 +114,7 @@ export function AccountMenuClient({
             className="h-10 gap-2 pl-1 pr-2.5 text-foreground data-[state=open]:bg-foreground/6 data-[state=open]:ring-[3px] data-[state=open]:ring-ring/30 [&>svg:last-child]:transition-transform data-[state=open]:[&>svg:last-child]:rotate-180"
             aria-label={label}
           >
-            <Avatar initials={initials} size="sm" />
+            <MenuAvatar url={avatarUrl} initials={initials} size="sm" />
             <span className="max-w-32 truncate">{first}</span>
             <ChevronDown className="size-3.5 text-muted-foreground" />
           </Button>
@@ -116,7 +123,7 @@ export function AccountMenuClient({
 
       <DropdownMenuContent align="end" className="w-[300px]">
         <DropdownMenuLabel className="flex items-center gap-2.5 p-2.5 font-normal">
-          <Avatar initials={initials} size="lg" />
+          <MenuAvatar url={avatarUrl} initials={initials} size="lg" />
           <span className="min-w-0">
             {name && (
               <span className="block truncate text-[13px] font-semibold">

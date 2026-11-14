@@ -55,6 +55,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Eyebrow } from "@/components/Eyebrow";
+import { Avatar, initialsFor } from "@/components/AvatarEditor";
 import { TeamBadge } from "@/components/teams/TeamSwitcherClient";
 import { AnimatePresence, listItem, motion } from "@/components/motion";
 
@@ -99,7 +100,9 @@ export function TeamSettings({
   members,
   devices,
   prototypes,
+  profiles = {},
 }: {
+  profiles?: Record<string, { name: string | null; avatar: string | null }>;
   team: Team;
   me: string;
   members: TeamMember[];
@@ -228,15 +231,17 @@ export function TeamSettings({
                     {...listItem}
                     className="flex items-center gap-3 py-2.5"
                   >
-                    <span
-                      aria-hidden="true"
-                      className="grid size-8 shrink-0 place-items-center rounded-full bg-stone-100 text-xs font-semibold text-stone-600"
-                    >
-                      {m.email[0]?.toUpperCase()}
-                    </span>
+                    <Avatar
+                      url={m.user_id ? profiles[m.user_id]?.avatar : null}
+                      initials={initialsFor(
+                        m.user_id ? profiles[m.user_id]?.name : null,
+                        m.email,
+                      )}
+                      className="size-8 text-xs"
+                    />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
-                        {m.email}
+                        {(m.user_id && profiles[m.user_id]?.name) || m.email}
                         {self && (
                           <span className="font-normal text-stone-500">
                             {" "}
@@ -244,6 +249,11 @@ export function TeamSettings({
                           </span>
                         )}
                       </span>
+                      {m.user_id && profiles[m.user_id]?.name && (
+                        <span className="block truncate text-xs text-stone-500">
+                          {m.email}
+                        </span>
+                      )}
                       {!m.user_id && (
                         <span className="text-xs text-stone-500">
                           Invited · joins when they sign in
