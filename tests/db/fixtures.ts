@@ -17,7 +17,11 @@ export async function personalTeam(db: TestDb, user: TestUser) {
 export async function project(
   db: TestDb,
   owner: TestUser,
-  opts: { teamId?: string; published?: boolean; access?: "invite" | "public" } = {},
+  opts: {
+    teamId?: string;
+    published?: boolean;
+    access?: "invite" | "public";
+  } = {},
 ) {
   const teamId = opts.teamId ?? (await personalTeam(db, owner));
   const id = randomUUID();

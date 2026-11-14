@@ -138,7 +138,9 @@ describe("single-file import", () => {
     expect(r.warnings[0]).toMatch(/1 local file/);
   });
   it("detects React components", () => {
-    expect(looksLikeReact("import x from 'react'; export default () => <div/>")).toBe(true);
+    expect(
+      looksLikeReact("import x from 'react'; export default () => <div/>"),
+    ).toBe(true);
     expect(looksLikeReact("<!doctype html><html></html>")).toBe(false);
   });
   it("refuses empty files", () => {
@@ -161,7 +163,9 @@ describe("guest cookies", () => {
     const { signGuest, verifyGuest } = await import("@/lib/guest");
     const pid = "11111111-1111-1111-1111-111111111111";
     const [a, b, , sig] = signGuest(pid, "Maya").split(".");
-    const forged = [a, b, Buffer.from("Admin").toString("base64url"), sig].join(".");
+    const forged = [a, b, Buffer.from("Admin").toString("base64url"), sig].join(
+      ".",
+    );
     expect(verifyGuest(forged, pid)).toBeNull();
     expect(verifyGuest(undefined, pid)).toBeNull();
   });

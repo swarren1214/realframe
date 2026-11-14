@@ -15,7 +15,11 @@ describe("team roles", () => {
     expect(isBuilderRole(null)).toBe(false);
   });
   it("labels members as builders in the UI", () => {
-    expect(ROLE_LABEL).toEqual({ admin: "Admin", member: "Builder", reviewer: "Reviewer" });
+    expect(ROLE_LABEL).toEqual({
+      admin: "Admin",
+      member: "Builder",
+      reviewer: "Reviewer",
+    });
     expect(roleWithArticle("admin")).toBe("an admin");
     expect(roleWithArticle("reviewer")).toBe("a reviewer");
   });
@@ -25,7 +29,9 @@ describe("team roles", () => {
     expect(isTeamRole(undefined)).toBe(false);
   });
   it("names personal workspaces after their owner", () => {
-    expect(teamLabel({ name: "Personal", personal: true }, "Steve Warren")).toBe("Steve's workspace");
+    expect(
+      teamLabel({ name: "Personal", personal: true }, "Steve Warren"),
+    ).toBe("Steve's workspace");
     expect(teamLabel({ name: "Acme", personal: false })).toBe("Acme");
   });
 });

@@ -17,9 +17,17 @@ async function claim(user: TestUser, projectId: string) {
   return db.value<string>(`select public.claim_generation($1)`, [projectId]);
 }
 
-async function finish(id: string, status: "succeeded" | "failed", cost: number) {
+async function finish(
+  id: string,
+  status: "succeeded" | "failed",
+  cost: number,
+) {
   await db.asService();
-  await db.rows(`select public.finish_generation($1, $2, 1000, 2000, $3)`, [id, status, cost]);
+  await db.rows(`select public.finish_generation($1, $2, 1000, 2000, $3)`, [
+    id,
+    status,
+    cost,
+  ]);
   await db.asAdmin();
   return db.one<{ status: string; cost_micros: number; billed_micros: number }>(
     `select status, cost_micros::int, billed_micros::int from public.generations where id = $1`,
@@ -33,7 +41,9 @@ describe("free plan", () => {
     const p = await project(db, bob);
     for (let i = 0; i < 30; i++) expect(await claim(bob, p.id)).toBeTruthy();
     await db.as(bob);
-    expect(await db.error(`select public.claim_generation($1)`, [p.id])).toMatch(/free_limit_reached/);
+    expect(
+      await db.error(`select public.claim_generation($1)`, [p.id]),
+    ).toMatch(/free_limit_reached/);
     const q = await db.one<{ plan: string; used: number; remaining: number }>(
       `select plan, used, remaining from public.generation_quota()`,
     );
@@ -42,11 +52,16 @@ describe("free plan", () => {
 
   it("respects a per-user override", async () => {
     const carol = await db.user("carol@acme.co");
-    await db.rows(`update public.profiles set build_limit_override = 1 where id = $1`, [carol.id]);
+    await db.rows(
+      `update public.profiles set build_limit_override = 1 where id = $1`,
+      [carol.id],
+    );
     const p = await project(db, carol);
     expect(await claim(carol, p.id)).toBeTruthy();
     await db.as(carol);
-    expect(await db.error(`select public.claim_generation($1)`, [p.id])).toMatch(/free_limit_reached/);
+    expect(
+      await db.error(`select public.claim_generation($1)`, [p.id]),
+    ).toMatch(/free_limit_reached/);
   });
 });
 
@@ -80,11 +95,25 @@ describe("what a build is billed", () => {
     const p = await project(db, alice);
     const id = (await claim(alice, p.id))!;
     await db.as(alice);
-    expect(await db.error(`select public.finish_generation($1, 'succeeded', 1, 1, 0)`, [id])).not.toBeNull();
-    expect(await db.error(`update public.generations set billed_micros = 0 where id = $1`, [id])).toBeNull();
+    expect(
+      await db.error(
+        `select public.finish_generation($1, 'succeeded', 1, 1, 0)`,
+        [id],
+      ),
+    ).not.toBeNull();
+    expect(
+      await db.error(
+        `update public.generations set billed_micros = 0 where id = $1`,
+        [id],
+      ),
+    ).toBeNull();
     await db.asAdmin();
     // RLS allows no updates: the row is unchanged.
-    expect(await db.value(`select status from public.generations where id = $1`, [id])).toBe("started");
+    expect(
+      await db.value(`select status from public.generations where id = $1`, [
+        id,
+      ]),
+    ).toBe("started");
   });
 });
 
@@ -96,10 +125,18 @@ describe("pro plan", () => {
       [pro.id],
     );
     await db.as(pro);
-    const q = await db.one<{ plan: string; build_limit: number; included_micros: number }>(
+    const q = await db.one<{
+      plan: string;
+      build_limit: number;
+      included_micros: number;
+    }>(
       `select plan, build_limit, included_micros::int from public.generation_quota()`,
     );
-    expect(q).toEqual({ plan: "pro", build_limit: 150, included_micros: 10_000_000 });
+    expect(q).toEqual({
+      plan: "pro",
+      build_limit: 150,
+      included_micros: 10_000_000,
+    });
   });
 });
 
@@ -109,19 +146,36 @@ describe("team plan", () => {
     const member = await db.user("member@team.co");
     const t = await team(db, admin);
     await addToTeam(db, t, member, "member");
-    await db.rows(`update public.teams set plan = 'team', seats = 2, current_period_start = now() - interval '1 day', current_period_end = now() + interval '29 days' where id = $1`, [t]);
+    await db.rows(
+      `update public.teams set plan = 'team', seats = 2, current_period_start = now() - interval '1 day', current_period_end = now() + interval '29 days' where id = $1`,
+      [t],
+    );
     const p = await project(db, admin, { teamId: t });
     await db.as(member);
-    const q = await db.one<{ plan: string; included_micros: number; team_id: string }>(
+    const q = await db.one<{
+      plan: string;
+      included_micros: number;
+      team_id: string;
+    }>(
       `select plan, included_micros::int, team_id from public.build_quota($1)`,
       [p.id],
     );
-    expect(q).toEqual({ plan: "team", included_micros: 20_000_000, team_id: t });
+    expect(q).toEqual({
+      plan: "team",
+      included_micros: 20_000_000,
+      team_id: t,
+    });
     const id = (await claim(member, p.id))!;
     await db.asAdmin();
-    expect(await db.value(`select team_id from public.generations where id = $1`, [id])).toBe(t);
+    expect(
+      await db.value(`select team_id from public.generations where id = $1`, [
+        id,
+      ]),
+    ).toBe(t);
     // Team builds don't use up the member's own free builds.
     await db.as(member);
-    expect(await db.value(`select used from public.generation_quota()`)).toBe(0);
+    expect(await db.value(`select used from public.generation_quota()`)).toBe(
+      0,
+    );
   });
 });

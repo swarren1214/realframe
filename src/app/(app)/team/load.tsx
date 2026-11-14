@@ -1,3 +1,5 @@
+import { readInterval } from "@/lib/plans";
+import { usageWindow } from "@/lib/usage-window";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -51,13 +53,24 @@ export async function renderTeamPage(view: TeamView, next: string) {
   const { data: billingRow } = await admin
     .from("teams")
     .select(
-      "plan, seats, subscription_status, current_period_start, current_period_end, cancel_at_period_end, stripe_customer_id",
+      "plan, seats, subscription_status, current_period_start, current_period_end, cancel_at_period_end, stripe_customer_id, billing_interval",
     )
     .eq("id", current.id)
     .single();
+  const interval = readInterval(billingRow?.billing_interval);
+  // Annual plans measure included usage per month, counted from the subscription start.
   const periodFrom =
-    billingRow?.current_period_start ??
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+    interval === "year" && billingRow?.current_period_start
+      ? usageWindow(
+          new Date(billingRow.current_period_start),
+          new Date(),
+        ).start.toISOString()
+      : (billingRow?.current_period_start ??
+        new Date(
+          new Date().getFullYear(),
+          new Date().getMonth(),
+          1,
+        ).toISOString());
   const { data: usageRows } =
     billingRow?.plan === "team"
       ? await admin
@@ -66,9 +79,16 @@ export async function renderTeamPage(view: TeamView, next: string) {
           .eq("team_id", current.id)
           .gte("created_at", periodFrom)
       : { data: [] as { billed_micros: number | null }[] };
-  const activeMembers = ((members ?? []) as { status: string }[]).filter(
-    (m) => m.status === "active",
-  ).length;
+  // Paid seats are active builders; reviewers are free.
+  const activeMembers = Math.max(
+    1,
+    ((members ?? []) as { status: string; role: string }[]).filter(
+      (m) => m.status === "active" && m.role !== "reviewer",
+    ).length,
+  );
+  const reviewers = (
+    (members ?? []) as { status: string; role: string }[]
+  ).filter((m) => m.status === "active" && m.role === "reviewer").length;
   const billing = {
     plan: (billingRow?.plan ?? "free") as "free" | "team",
     seats:
@@ -79,6 +99,8 @@ export async function renderTeamPage(view: TeamView, next: string) {
     periodEnd: billingRow?.current_period_end ?? null,
     cancelAtPeriodEnd: Boolean(billingRow?.cancel_at_period_end),
     hasCustomer: Boolean(billingRow?.stripe_customer_id),
+    interval,
+    reviewers,
     usageMicros: (usageRows ?? []).reduce(
       (n, r) => n + Number(r.billed_micros ?? 0),
       0,

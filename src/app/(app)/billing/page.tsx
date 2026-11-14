@@ -12,6 +12,8 @@ import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/Eyebrow";
 import { createClient } from "@/lib/supabase/server";
 import { formatUsd, type Quota } from "@/lib/billing";
+import { PLANS, priceLabel, readInterval } from "@/lib/plans";
+import { UpgradeForm } from "@/components/billing/UpgradeForm";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +40,7 @@ export default async function BillingPage({
     supabase
       .from("profiles")
       .select(
-        "plan, subscription_status, cancel_at_period_end, current_period_end, stripe_customer_id, display_name",
+        "plan, subscription_status, cancel_at_period_end, current_period_end, stripe_customer_id, display_name, billing_interval",
       )
       .eq("id", user.id)
       .single(),
@@ -46,6 +48,7 @@ export default async function BillingPage({
   ]);
   const q = (quotaRows as Quota[] | null)?.[0];
   const isPro = profile?.plan === "pro";
+  const interval = readInterval(profile?.billing_interval);
   const overage = q
     ? Math.max(Number(q.usage_micros) - Number(q.included_micros), 0)
     : 0;
@@ -88,7 +91,7 @@ export default async function BillingPage({
                 {isPro && (
                   <Badge variant="default">
                     <Sparkles />
-                    $20/month
+                    {priceLabel("pro", interval)}
                   </Badge>
                 )}
               </p>
@@ -99,7 +102,7 @@ export default async function BillingPage({
                     : profile?.current_period_end
                       ? `Renews ${fmtDate(profile.current_period_end)}`
                       : "Active"
-                  : "30 builds a month, free."}
+                  : `${PLANS.free.monthlyBuilds} builds a month, free.`}
               </p>
               {isPro && profile?.subscription_status === "past_due" && (
                 <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-amber-800">
@@ -123,15 +126,23 @@ export default async function BillingPage({
               {isPro ? (
                 <>
                   <Meter
-                    label="AI usage this period"
+                    label={
+                      interval === "year"
+                        ? "AI usage this month"
+                        : "AI usage this period"
+                    }
                     value={`${formatUsd(Number(q.usage_micros))} of ${formatUsd(Number(q.included_micros), 0)} included`}
                     pct={includedPct}
                   />
                   <p className="text-xs text-stone-500">
                     {overage > 0
                       ? `${formatUsd(overage)} beyond your included usage so far, added to your next invoice.`
-                      : "Usage beyond what's included is billed at cost plus 50% on your next invoice."}{" "}
-                    Period {fmtDate(q.period_start)} – {fmtDate(q.period_end)}.
+                      : interval === "year"
+                        ? "Your included usage resets every month. Usage beyond it is billed at cost plus 50% when the month ends."
+                        : "Usage beyond what's included is billed at cost plus 50% on your next invoice."}{" "}
+                    Failed builds are never billed.{" "}
+                    {interval === "year" ? "This month" : "Period"}{" "}
+                    {fmtDate(q.period_start)} – {fmtDate(q.period_end)}.
                   </p>
                 </>
               ) : (
@@ -171,14 +182,16 @@ export default async function BillingPage({
               <div className="flex-1">
                 <p className="flex items-center gap-2 font-display text-lg font-bold">
                   <Sparkles className="size-4" aria-hidden="true" />
-                  Realframe Pro · $20/month
+                  Realframe Pro
                 </p>
                 <ul className="mt-3 space-y-1.5 text-[13px] text-white/90">
                   {[
                     "No monthly build cap",
                     "Canvas: every screen and device side by side",
-                    "$10 of AI usage included every month",
+                    `$${PLANS.pro.includedUsdPerMonth} of AI usage included every month`,
                     "Pay as you go beyond that, at cost plus 50%",
+                    "Failed builds are never billed",
+                    "Reviewers are always free",
                   ].map((t) => (
                     <li key={t} className="flex items-center gap-2">
                       <Check className="size-3.5 shrink-0" aria-hidden="true" />
@@ -187,15 +200,21 @@ export default async function BillingPage({
                   ))}
                 </ul>
               </div>
-              <form action="/api/billing/checkout" method="post">
-                <Button
-                  size="lg"
-                  type="submit"
-                  className="border-0 bg-card text-raspberry-800 hover:bg-card/90"
-                >
-                  Upgrade to Pro
-                </Button>
-              </form>
+              <UpgradeForm
+                action="/api/billing/checkout"
+                monthlyUsd={PLANS.pro.monthlyUsd}
+                annualUsd={PLANS.pro.annualUsd}
+                tone="dark"
+                button={() => (
+                  <Button
+                    size="lg"
+                    type="submit"
+                    className="border-0 bg-card text-raspberry-800 hover:bg-card/90"
+                  >
+                    Upgrade to Pro
+                  </Button>
+                )}
+              />
             </div>
           </section>
         )}

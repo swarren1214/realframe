@@ -1,5 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
+import { PLANS, type BillingInterval } from "@/lib/plans";
 
 export function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -33,3 +34,53 @@ export const USAGE_PRODUCT_ID =
   process.env.STRIPE_USAGE_PRODUCT_ID || IDS.usage;
 
 export const ACTIVE_STATUSES = new Set(["active", "trialing", "past_due"]);
+
+// Annual prices. When these aren't set, Checkout builds the yearly price inline on the same
+// product as the monthly price, so annual billing works before any Stripe setup. Set them
+// once real prices exist, so the customer portal can switch between monthly and annual.
+export const PRO_ANNUAL_PRICE_ID =
+  process.env.STRIPE_PRO_ANNUAL_PRICE_ID || null;
+export const TEAM_ANNUAL_PRICE_ID =
+  process.env.STRIPE_TEAM_ANNUAL_PRICE_ID || null;
+
+type LineItem = Stripe.Checkout.SessionCreateParams.LineItem;
+
+/**
+ * The Checkout line item for a plan at an interval. `getProduct` looks up the monthly price's
+ * product (injected so tests don't call Stripe).
+ */
+export async function checkoutLineItem(
+  plan: "pro" | "team",
+  interval: BillingInterval,
+  quantity: number,
+  getProduct: (priceId: string) => Promise<string>,
+): Promise<LineItem> {
+  const monthly = plan === "pro" ? PRO_PRICE_ID : TEAM_PRICE_ID;
+  if (interval === "month") return { price: monthly, quantity };
+  const annual = plan === "pro" ? PRO_ANNUAL_PRICE_ID : TEAM_ANNUAL_PRICE_ID;
+  if (annual) return { price: annual, quantity };
+  const usd =
+    plan === "pro" ? PLANS.pro.annualUsd : PLANS.team.annualUsdPerBuilder;
+  return {
+    quantity,
+    price_data: {
+      currency: "usd",
+      product: await getProduct(monthly),
+      unit_amount: usd * 100,
+      recurring: { interval: "year" },
+    },
+  };
+}
+
+/** The product a price belongs to. */
+export async function productOf(priceId: string) {
+  const price = await getStripe().prices.retrieve(priceId);
+  return typeof price.product === "string" ? price.product : price.product.id;
+}
+
+/** "month" or "year", from a subscription's first item. */
+export function intervalOf(sub: Stripe.Subscription): BillingInterval {
+  return sub.items?.data?.[0]?.price?.recurring?.interval === "year"
+    ? "year"
+    : "month";
+}

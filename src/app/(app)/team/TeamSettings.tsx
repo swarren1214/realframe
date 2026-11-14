@@ -61,6 +61,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Eyebrow } from "@/components/Eyebrow";
 import { formatUsd } from "@/lib/billing";
+import { PLANS, type BillingInterval } from "@/lib/plans";
+import { UpgradeForm } from "@/components/billing/UpgradeForm";
 
 /** Team Pro: $20 a seat, with $10 of AI usage included per seat (same as Pro). */
 const SEAT_MICROS = 20_000_000;
@@ -136,6 +138,8 @@ export function TeamSettings({
     cancelAtPeriodEnd: boolean;
     hasCustomer: boolean;
     usageMicros: number;
+    interval: BillingInterval;
+    reviewers: number;
   };
   github?: {
     mine: { id: number; login: string }[];
@@ -259,12 +263,22 @@ export function TeamSettings({
                   <dt className="text-xs text-stone-500">Builder seats</dt>
                   <dd className="font-semibold">
                     {billing.seats} ·{" "}
-                    {formatUsd(billing.seats * SEAT_MICROS, 0)}/mo
+                    {billing.interval === "year"
+                      ? `${formatUsd(billing.seats * PLANS.team.annualUsdPerBuilder * 1_000_000, 0)}/yr`
+                      : `${formatUsd(billing.seats * SEAT_MICROS, 0)}/mo`}
+                    {billing.reviewers > 0 && (
+                      <span className="block text-xs font-normal text-emerald-700">
+                        + {billing.reviewers} reviewer
+                        {billing.reviewers === 1 ? "" : "s"}, free
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-stone-500">
-                    AI usage this period
+                    {billing.interval === "year"
+                      ? "AI usage this month"
+                      : "AI usage this period"}
                   </dt>
                   <dd className="font-semibold">
                     {formatUsd(billing.usageMicros)}{" "}
@@ -300,8 +314,8 @@ export function TeamSettings({
               <p className="w-full text-xs text-stone-500">
                 Seats follow the team: adding or removing a builder adjusts the
                 next invoice. Reviewers never use a seat. Usage beyond
-                what&apos;s included is billed to the team at the end of the
-                period.
+                what&apos;s included is billed to the team at the end of each
+                month. Failed builds are never billed.
               </p>
             </div>
           ) : (
@@ -319,13 +333,20 @@ export function TeamSettings({
                 </p>
               </div>
               {admin ? (
-                <form action="/api/billing/team-checkout" method="post">
+                <UpgradeForm
+                  action="/api/billing/team-checkout"
+                  monthlyUsd={PLANS.team.monthlyUsdPerBuilder}
+                  annualUsd={PLANS.team.annualUsdPerBuilder}
+                  unit=" per builder"
+                  button={() => (
+                    <Button type="submit">
+                      <Sparkles />
+                      Upgrade team
+                    </Button>
+                  )}
+                >
                   <input type="hidden" name="team_id" value={team.id} />
-                  <Button type="submit">
-                    <Sparkles />
-                    Upgrade team
-                  </Button>
-                </form>
+                </UpgradeForm>
               ) : (
                 <p className="text-xs text-stone-500">
                   Ask a team admin to upgrade.

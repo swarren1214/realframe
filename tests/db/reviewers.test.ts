@@ -29,18 +29,37 @@ describe("team reviewer role", () => {
   it("lets reviewers read versions and comment", async () => {
     const p = await project(db, admin, { teamId });
     await db.as(rev);
-    expect((await db.rows(`select id from public.versions where project_id = $1`, [p.id])).length).toBe(1);
-    expect(await thread(db, rev, p.id, p.versionId, "Approved from me")).toBeTruthy();
+    expect(
+      (
+        await db.rows(`select id from public.versions where project_id = $1`, [
+          p.id,
+        ])
+      ).length,
+    ).toBe(1);
+    expect(
+      await thread(db, rev, p.id, p.versionId, "Approved from me"),
+    ).toBeTruthy();
   });
 
   it("stops reviewers from building, saving versions or editing the prototype", async () => {
     const p = await project(db, admin, { teamId });
     await db.as(rev);
-    expect(await db.error(`select public.claim_generation($1)`, [p.id])).toMatch(/forbidden/);
-    expect(await db.error(`select public.create_version($1, '<html></html>', 'x', 'x', 'ai')`, [p.id])).toMatch(/not allowed/);
-    await db.rows(`update public.projects set name = 'Hacked' where id = $1`, [p.id]);
+    expect(
+      await db.error(`select public.claim_generation($1)`, [p.id]),
+    ).toMatch(/forbidden/);
+    expect(
+      await db.error(
+        `select public.create_version($1, '<html></html>', 'x', 'x', 'ai')`,
+        [p.id],
+      ),
+    ).toMatch(/not allowed/);
+    await db.rows(`update public.projects set name = 'Hacked' where id = $1`, [
+      p.id,
+    ]);
     await db.asAdmin();
-    expect(await db.value(`select name from public.projects where id = $1`, [p.id])).toBe("Checkout");
+    expect(
+      await db.value(`select name from public.projects where id = $1`, [p.id]),
+    ).toBe("Checkout");
   });
 
   it("stops reviewers from creating prototypes in the team", async () => {
@@ -55,8 +74,15 @@ describe("team reviewer role", () => {
   it("can't make a reviewer the owner of a prototype", async () => {
     const p = await project(db, admin, { teamId });
     await db.as(admin);
-    expect(await db.error(`select public.transfer_project($1, $2)`, [p.id, rev.id])).toMatch(/builder/);
-    expect(await db.error(`select public.transfer_project($1, $2)`, [p.id, builder.id])).toBeNull();
+    expect(
+      await db.error(`select public.transfer_project($1, $2)`, [p.id, rev.id]),
+    ).toMatch(/builder/);
+    expect(
+      await db.error(`select public.transfer_project($1, $2)`, [
+        p.id,
+        builder.id,
+      ]),
+    ).toBeNull();
   });
 
   it("still lets a project-level editor invite override a team reviewer role", async () => {
@@ -67,17 +93,24 @@ describe("team reviewer role", () => {
 
   it("counts only builders as paid seats", async () => {
     await db.as(admin);
-    expect(await db.value(`select public.team_seat_count($1)`, [teamId])).toBe(2);
+    expect(await db.value(`select public.team_seat_count($1)`, [teamId])).toBe(
+      2,
+    );
     const more = await db.user("rev2@client.com");
     await addToTeam(db, teamId, more, "reviewer");
     await db.as(admin);
-    expect(await db.value(`select public.team_seat_count($1)`, [teamId])).toBe(2);
+    expect(await db.value(`select public.team_seat_count($1)`, [teamId])).toBe(
+      2,
+    );
   });
 
   it("rejects unknown roles", async () => {
     await db.asAdmin();
     expect(
-      await db.error(`insert into public.team_members (team_id, email, role, status) values ($1, 'x@y.co', 'owner', 'active')`, [teamId]),
+      await db.error(
+        `insert into public.team_members (team_id, email, role, status) values ($1, 'x@y.co', 'owner', 'active')`,
+        [teamId],
+      ),
     ).toMatch(/check constraint/);
   });
 });

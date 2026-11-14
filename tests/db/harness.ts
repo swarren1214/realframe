@@ -83,10 +83,10 @@ export class TestDb {
   async user(email: string): Promise<TestUser> {
     const id = randomUUID();
     await this.asAdmin();
-    await this.pg.query(
-      "insert into auth.users (id, email) values ($1, $2)",
-      [id, email.toLowerCase()],
-    );
+    await this.pg.query("insert into auth.users (id, email) values ($1, $2)", [
+      id,
+      email.toLowerCase(),
+    ]);
     return { id, email: email.toLowerCase() };
   }
 
