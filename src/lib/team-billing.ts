@@ -2,13 +2,14 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
 
-/** Active members are the seats Team Pro charges for. */
+/** Active builders (admins and members) are the seats Team Pro charges for. Reviewers are free. */
 export async function activeSeats(teamId: string) {
   const { count } = await createAdminClient()
     .from("team_members")
     .select("email", { count: "exact", head: true })
     .eq("team_id", teamId)
-    .eq("status", "active");
+    .eq("status", "active")
+    .in("role", ["admin", "member"]);
   return Math.max(1, count ?? 1);
 }
 

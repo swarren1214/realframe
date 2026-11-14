@@ -33,6 +33,7 @@ import {
   type TeamDeviceRow,
   type TeamMember,
   type TeamRole,
+  ROLE_LABEL,
 } from "@/lib/team-shared";
 import type { DeviceKind } from "@/lib/devices";
 import { Badge } from "@/components/ui/badge";
@@ -213,12 +214,12 @@ export function TeamSettings({
                 {teamLabel(team, ownerName)}
               </h1>
             )}
-            <Badge>{admin ? "Admin" : "Member"}</Badge>
+            <Badge>{ROLE_LABEL[team.role]}</Badge>
           </div>
           <p className="text-sm text-stone-600">
             {team.personal
               ? "Your personal workspace is just you. Create a workspace from the workspace menu to share prototypes, devices and design systems with other people."
-              : `Everyone here can open and build on the workspace's ${prototypes} prototype${prototypes === 1 ? "" : "s"}, and use its devices and design systems. ${billing?.plan === "team" ? "Builds in team prototypes run on Team Pro." : "Builds count against each person's own plan until the workspace upgrades."}`}
+              : `Builders here can open and build on the workspace's ${prototypes} prototype${prototypes === 1 ? "" : "s"}, and use its devices and design systems. Reviewers can open, comment on and approve them for free. ${billing?.plan === "team" ? "Builds in team prototypes run on Team Pro." : "Builds count against each person's own plan until the workspace upgrades."}`}
           </p>
         </>
       ) : (
@@ -230,9 +231,9 @@ export function TeamSettings({
             {view === "members"
               ? team.personal
                 ? "Your personal workspace is just you."
-                : `People in ${teamLabel(team)} can open and build on its prototypes and use its devices and design systems.`
+                : `Builders in ${teamLabel(team)} can open and build on its prototypes. Reviewers can open, comment on and approve them, and are always free.`
               : view === "billing"
-                ? `${teamLabel(team)} is billed per seat: one seat for each active member.`
+                ? `${teamLabel(team)} is billed per seat: one seat for each active builder. Reviewers are free.`
                 : `Screen sizes everyone in ${teamLabel(team, ownerName)} can pick when previewing a prototype.`}
           </p>
         </div>
@@ -255,7 +256,7 @@ export function TeamSettings({
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
               <dl className="grid flex-1 grid-cols-3 gap-4 text-sm">
                 <div>
-                  <dt className="text-xs text-stone-500">Seats</dt>
+                  <dt className="text-xs text-stone-500">Builder seats</dt>
                   <dd className="font-semibold">
                     {billing.seats} ·{" "}
                     {formatUsd(billing.seats * SEAT_MICROS, 0)}/mo
@@ -297,16 +298,17 @@ export function TeamSettings({
                 </form>
               )}
               <p className="w-full text-xs text-stone-500">
-                Seats follow the team: adding or removing someone adjusts the
-                next invoice. Usage beyond what&apos;s included is billed to the
-                team at the end of the period.
+                Seats follow the team: adding or removing a builder adjusts the
+                next invoice. Reviewers never use a seat. Usage beyond
+                what&apos;s included is billed to the team at the end of the
+                period.
               </p>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-4">
               <div className="min-w-0 flex-1 text-[13px] text-stone-600">
                 <p className="font-semibold text-stone-900">
-                  Team Pro · $20 per member a month
+                  Team Pro · $20 per builder a month · reviewers free
                 </p>
                 <p className="mt-1">
                   Everyone gets Pro build limits on team prototypes, with{" "}
@@ -384,11 +386,12 @@ export function TeamSettings({
                 value={role}
                 onValueChange={(v) => setRole(v as TeamRole)}
               >
-                <SelectTrigger aria-label="Role" className="w-32">
+                <SelectTrigger aria-label="Role" className="w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="member">Builder</SelectItem>
+                  <SelectItem value="reviewer">Reviewer · free</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
@@ -474,12 +477,18 @@ export function TeamSettings({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="member">Member</SelectItem>
+                          <SelectItem value="member">Builder</SelectItem>
+                          <SelectItem value="reviewer">Reviewer</SelectItem>
                           <SelectItem value="admin">Admin</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge>{m.role === "admin" ? "Admin" : "Member"}</Badge>
+                      <Badge>{ROLE_LABEL[m.role]}</Badge>
+                    )}
+                    {m.role === "reviewer" && (
+                      <Badge className="bg-emerald-50 text-emerald-800">
+                        Free
+                      </Badge>
                     )}
                     {self ? (
                       <Button

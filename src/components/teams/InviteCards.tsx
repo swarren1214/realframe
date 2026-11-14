@@ -62,8 +62,9 @@ export function InviteCards({
                   : `You're invited to ${inv.team_name}`}
               </p>
               <p className="text-xs text-stone-600">
-                Join as {inv.role === "admin" ? "an admin" : "a member"} to
-                share its prototypes, devices and design systems.
+                {inv.role === "reviewer"
+                  ? "Join as a reviewer to open, comment on and approve its prototypes. Reviewers are free."
+                  : `Join as ${inv.role === "admin" ? "an admin" : "a builder"} to share its prototypes, devices and design systems.`}
               </p>
             </div>
             <div className="flex gap-2">
