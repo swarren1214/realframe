@@ -1,79 +1,312 @@
 <!doctype html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light only">
-<meta name="supported-color-schemes" content="light">
-<title>Your Realframe sign-in link</title>
-</head>
-<body style="margin:0;padding:0;background-color:#FFF7F2;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Your sign-in link for Realframe. It expires in an hour.&#8202;&#847;&#8202;&#847;&#8202;&#847;&#8202;&#847;&#8202;&#847;</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFF7F2;background-image:linear-gradient(160deg,#FFEDD5 0%,#FCE7F3 55%,#EDE9FE 100%);">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
-        <tr>
-          <td align="center" style="padding:0 0 24px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;border-radius:12px;background-color:#BE185D;background-image:linear-gradient(135deg,#EA580C 0%,#DB2777 55%,#7C3AED 100%);color:#FFFFFF;font-family:'Space Grotesk',Inter,Helvetica,Arial,sans-serif;font-size:18px;font-weight:700;line-height:36px;">R</td>
-                <td style="padding-left:10px;font-family:'Space Grotesk',Inter,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.3px;color:#1C1917;">Realframe</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="border-radius:32px;background-color:#FFFFFF;box-shadow:0 30px 60px -30px rgba(124,58,237,0.35);overflow:hidden;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td style="height:8px;line-height:8px;font-size:0;border-radius:32px 32px 0 0;background-color:#BE185D;background-image:linear-gradient(90deg,#EA580C 0%,#DB2777 50%,#7C3AED 100%);">&nbsp;</td>
-              </tr>
-              <tr>
-                <td style="padding:40px 40px 12px;font-family:Inter,Helvetica,Arial,sans-serif;">
-                  <h1 style="margin:0 0 12px;font-family:'Space Grotesk',Inter,Helvetica,Arial,sans-serif;font-size:28px;line-height:1.2;font-weight:700;letter-spacing:-0.4px;color:#1C1917;">Sign in to Realframe</h1>
-                  <p style="margin:0;font-size:16px;line-height:1.6;color:#44403C;">Click the button below to sign in. No password needed.</p>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:24px 40px 8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td align="center" style="border-radius:999px;background-color:#BE185D;background-image:linear-gradient(135deg,#C2410C 0%,#BE185D 100%);">
-                        <a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email" target="_blank" style="display:inline-block;padding:16px 32px;border-radius:999px;font-family:Inter,Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;color:#FFFFFF;text-decoration:none;">Sign in to Realframe</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:16px 40px 40px;font-family:Inter,Helvetica,Arial,sans-serif;">
-                  <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#57534E;">Using the Realframe app? Enter this code instead:</p>
-                  <p style="margin:0 0 20px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:28px;font-weight:700;letter-spacing:6px;color:#1C1917;">{{ .Token }}</p>
-                  <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#57534E;">The link and code expire in one hour and can only be used once.</p>
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="padding:16px 18px;border-radius:20px;background-color:#FDF2F8;font-size:13px;line-height:1.6;color:#57534E;">
-                        Button not working? Paste this into your browser:<br>
-                        <a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email" style="color:#BE185D;word-break:break-all;">{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding:28px 24px 0;font-family:Inter,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#78716C;">
-            You're getting this because someone entered {{ .Email }} at realframe.app.<br>
-            If that wasn't you, you can ignore this email.<br>
-            <span style="color:#A8A29E;">Realframe · a Hearth Software product</span>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Your Realframe sign-in link</title>
+  </head>
+  <body style="margin: 0; padding: 0; background-color: #fff7f2">
+    <div
+      style="
+        display: none;
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        color: transparent;
+      "
+    >
+      Your sign-in link for Realframe. It expires in an
+      hour.&#8202;&#847;&#8202;&#847;&#8202;&#847;&#8202;&#847;&#8202;&#847;
+    </div>
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      style="
+        background-color: #fff7f2;
+        background-image: linear-gradient(
+          160deg,
+          #ffedd5 0%,
+          #fce7f3 55%,
+          #ede9fe 100%
+        );
+      "
+    >
+      <tr>
+        <td align="center" style="padding: 40px 16px">
+          <table
+            role="presentation"
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="max-width: 520px"
+          >
+            <tr>
+              <td align="center" style="padding: 0 0 24px">
+                <table
+                  role="presentation"
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                >
+                  <tr>
+                    <td
+                      width="36"
+                      height="36"
+                      align="center"
+                      valign="middle"
+                      style="
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 12px;
+                        background-color: #be185d;
+                        background-image: linear-gradient(
+                          135deg,
+                          #ea580c 0%,
+                          #db2777 55%,
+                          #7c3aed 100%
+                        );
+                        color: #ffffff;
+                        font-family:
+                          &quot;Space Grotesk&quot;, Inter, Helvetica, Arial,
+                          sans-serif;
+                        font-size: 18px;
+                        font-weight: 700;
+                        line-height: 36px;
+                      "
+                    >
+                      R
+                    </td>
+                    <td
+                      style="
+                        padding-left: 10px;
+                        font-family:
+                          &quot;Space Grotesk&quot;, Inter, Helvetica, Arial,
+                          sans-serif;
+                        font-size: 20px;
+                        font-weight: 700;
+                        letter-spacing: -0.3px;
+                        color: #1c1917;
+                      "
+                    >
+                      Realframe
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td
+                style="
+                  border-radius: 32px;
+                  background-color: #ffffff;
+                  box-shadow: 0 30px 60px -30px rgba(124, 58, 237, 0.35);
+                  overflow: hidden;
+                "
+              >
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                >
+                  <tr>
+                    <td
+                      style="
+                        height: 8px;
+                        line-height: 8px;
+                        font-size: 0;
+                        border-radius: 32px 32px 0 0;
+                        background-color: #be185d;
+                        background-image: linear-gradient(
+                          90deg,
+                          #ea580c 0%,
+                          #db2777 50%,
+                          #7c3aed 100%
+                        );
+                      "
+                    >
+                      &nbsp;
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      style="
+                        padding: 40px 40px 12px;
+                        font-family: Inter, Helvetica, Arial, sans-serif;
+                      "
+                    >
+                      <h1
+                        style="
+                          margin: 0 0 12px;
+                          font-family:
+                            &quot;Space Grotesk&quot;, Inter, Helvetica, Arial,
+                            sans-serif;
+                          font-size: 28px;
+                          line-height: 1.2;
+                          font-weight: 700;
+                          letter-spacing: -0.4px;
+                          color: #1c1917;
+                        "
+                      >
+                        Sign in to Realframe
+                      </h1>
+                      <p
+                        style="
+                          margin: 0;
+                          font-size: 16px;
+                          line-height: 1.6;
+                          color: #44403c;
+                        "
+                      >
+                        Click the button below to sign in. No password needed.
+                      </p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 24px 40px 8px">
+                      <table
+                        role="presentation"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                      >
+                        <tr>
+                          <td
+                            align="center"
+                            style="
+                              border-radius: 999px;
+                              background-color: #be185d;
+                              background-image: linear-gradient(
+                                135deg,
+                                #c2410c 0%,
+                                #be185d 100%
+                              );
+                            "
+                          >
+                            <a
+                              href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
+                              target="_blank"
+                              style="
+                                display: inline-block;
+                                padding: 16px 32px;
+                                border-radius: 999px;
+                                font-family:
+                                  Inter, Helvetica, Arial, sans-serif;
+                                font-size: 16px;
+                                font-weight: 600;
+                                color: #ffffff;
+                                text-decoration: none;
+                              "
+                              >Sign in to Realframe</a
+                            >
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      style="
+                        padding: 16px 40px 40px;
+                        font-family: Inter, Helvetica, Arial, sans-serif;
+                      "
+                    >
+                      <p
+                        style="
+                          margin: 0 0 16px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                          color: #57534e;
+                        "
+                      >
+                        Using the Realframe app? Enter this code instead:
+                      </p>
+                      <p
+                        style="
+                          margin: 0 0 20px;
+                          font-family:
+                            &quot;SF Mono&quot;, Menlo, Consolas, monospace;
+                          font-size: 28px;
+                          font-weight: 700;
+                          letter-spacing: 6px;
+                          color: #1c1917;
+                        "
+                      >
+                        {{ .Token }}
+                      </p>
+                      <p
+                        style="
+                          margin: 0 0 16px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                          color: #57534e;
+                        "
+                      >
+                        The link and code expire in one hour and can only be
+                        used once.
+                      </p>
+                      <table
+                        role="presentation"
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                      >
+                        <tr>
+                          <td
+                            style="
+                              padding: 16px 18px;
+                              border-radius: 20px;
+                              background-color: #fdf2f8;
+                              font-size: 13px;
+                              line-height: 1.6;
+                              color: #57534e;
+                            "
+                          >
+                            Button not working? Paste this into your browser:<br />
+                            <a
+                              href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
+                              style="color: #be185d; word-break: break-all"
+                              >{{ .RedirectTo }}&amp;token_hash={{ .TokenHash
+                              }}&amp;type=email</a
+                            >
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td
+                align="center"
+                style="
+                  padding: 28px 24px 0;
+                  font-family: Inter, Helvetica, Arial, sans-serif;
+                  font-size: 12px;
+                  line-height: 1.6;
+                  color: #78716c;
+                "
+              >
+                You're getting this because someone entered {{ .Email }} at
+                realframe.app.<br />
+                If that wasn't you, you can ignore this email.<br />
+                <span style="color: #a8a29e"
+                  >Realframe · a Hearth Software product</span
+                >
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
 </html>

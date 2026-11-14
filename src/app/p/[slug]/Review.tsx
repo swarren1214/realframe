@@ -34,9 +34,11 @@ import {
   authorLabel,
   canComment,
   type Project,
+  type ReviewRound,
   type Role,
   type Thread,
 } from "@/lib/types";
+import { RoundBanner } from "@/components/reviews/RoundBanner";
 import { readSettings, type Device } from "@/lib/devices";
 import {
   DevicePicker,
@@ -65,7 +67,10 @@ export function Review({
   present = false,
   accountMenu,
   teamDevices: teamDevicesProp,
+  round = null,
 }: {
+  /** The prototype's open review round, if there is one. */
+  round?: ReviewRound | null;
   /** The prototype's team's own device templates. */
   teamDevices?: Device[];
   project: Project;
@@ -327,13 +332,22 @@ export function Review({
           accountMenu
         ) : (
           <Button asChild variant="ghost">
-            <a href={`/?next=/p/${project.slug}`}>
+            <a href={`/login?next=/p/${project.slug}`}>
               <LogIn />
               Sign in
             </a>
           </Button>
         )}
       </header>
+      {round && !presenting && (
+        <RoundBanner
+          round={round}
+          userEmail={userEmail}
+          slug={project.slug}
+          viewingVersionId={version.id}
+          isGuest={isGuest}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <main
@@ -502,6 +516,12 @@ export function Review({
                         <span className="text-muted-foreground">
                           earlier version
                         </span>
+                      )}
+                      {t.addressed_version_id && (
+                        <Badge className="bg-raspberry-50 text-raspberry-800">
+                          Addressed in v
+                          {versionNumbers[t.addressed_version_id] ?? "?"}
+                        </Badge>
                       )}
                       {commenter && !isGuest && (
                         <Button

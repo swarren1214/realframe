@@ -66,7 +66,30 @@ export type Thread = {
   status: "open" | "resolved";
   created_at: string;
   guest_name?: string | null;
+  /** The version built from this feedback (fix from feedback), if any. */
+  addressed_version_id?: string | null;
   comments: Comment[];
+};
+
+export type ReviewDecision = "pending" | "approved" | "changes_requested";
+
+export type ReviewRound = {
+  id: string;
+  project_id: string;
+  version_id: string;
+  version_number: number | null;
+  note: string | null;
+  due_at: string | null;
+  rule: "all" | "any";
+  status: "open" | "approved" | "changes_requested";
+  created_at: string;
+  requested_by_name: string | null;
+  requests: {
+    email: string;
+    name: string | null;
+    decision: ReviewDecision;
+    decided_at: string | null;
+  }[];
 };
 
 export function canBuild(role: Role | null) {
