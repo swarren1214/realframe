@@ -14,6 +14,7 @@ import type { Project, Role, Thread } from "@/lib/types";
 import { Review } from "./Review";
 import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
+import { loadActiveRound } from "@/lib/services/reviews";
 
 type VersionRow = {
   id: string;
@@ -67,7 +68,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 const THREAD_SELECT =
-  "id, version_id, x, y, status, created_at, guest_name, comments(id, thread_id, author_email, author_name, is_guest, body, created_at)";
+  "id, version_id, x, y, status, created_at, guest_name, addressed_version_id, comments(id, thread_id, author_email, author_name, is_guest, body, created_at)";
 
 export default async function ReviewPage({
   params,
@@ -155,6 +156,7 @@ export default async function ReviewPage({
             ]),
           )}
           teamDevices={await loadTeamDevices(admin, lp.team_id)}
+          round={await loadActiveRound(admin, lp.id)}
         />
       );
     }
@@ -277,6 +279,7 @@ export default async function ReviewPage({
       present={present}
       accountMenu={user ? <AccountMenu compact /> : null}
       teamDevices={await loadTeamDevices(createAdminClient(), p.team_id)}
+      round={role === "public" ? null : await loadActiveRound(supabase, p.id)}
     />
   );
 }
@@ -357,7 +360,7 @@ function PasswordGate({
           ? `Signed in as ${signedInAs}, which doesn't have access to this prototype.`
           : "Were you invited by email? "}
         {!signedInAs && (
-          <a href={`/?next=/p/${slug}`} className="font-semibold">
+          <a href={`/login?next=/p/${slug}`} className="font-semibold">
             Sign in instead
           </a>
         )}

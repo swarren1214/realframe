@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { TEAM_PRICE_ID, getStripe } from "@/lib/stripe";
+import { checkoutLineItem, getStripe, productOf } from "@/lib/stripe";
+import { readInterval } from "@/lib/plans";
 import { activeSeats } from "@/lib/team-billing";
 
 // POST (form submit with team_id) → Stripe Checkout for Team Pro, one seat per active member.
@@ -9,15 +10,19 @@ export async function POST(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const form = await request.formData();
   const teamId = String(form.get("team_id") ?? "");
+  const interval = readInterval(form.get("interval"));
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/?next=/team", origin), 303);
+  if (!user) return NextResponse.redirect(new URL("/login?next=/team", origin), 303);
   const { data: role } = await supabase.rpc("team_role", { t: teamId });
   if (role !== "admin")
     return NextResponse.redirect(
-      new URL("/team/billing?toast=Only%20admins%20can%20manage%20billing", origin),
+      new URL(
+        "/team/billing?toast=Only%20admins%20can%20manage%20billing",
+        origin,
+      ),
       303,
     );
 
@@ -55,10 +60,14 @@ export async function POST(request: NextRequest) {
     mode: "subscription",
     customer: customerId,
     client_reference_id: teamId,
-    line_items: [{ price: TEAM_PRICE_ID, quantity: seats }],
+    line_items: [await checkoutLineItem("team", interval, seats, productOf)],
     allow_promotion_codes: true,
     subscription_data: {
-      metadata: { realframe_team_id: teamId, app: "realframe" },
+      metadata: {
+        realframe_team_id: teamId,
+        app: "realframe",
+        billing_interval: interval,
+      },
     },
     metadata: { realframe_team_id: teamId },
     success_url: `${origin}/team/billing?toast=${encodeURIComponent("Team Pro is on")}`,

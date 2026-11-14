@@ -26,7 +26,7 @@ export default async function ProjectsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  if (!user) redirect("/login");
   const { data: profile } = await supabase
     .from("profiles")
     .select("display_name, onboarded_at, plan")
@@ -75,6 +75,8 @@ export default async function ProjectsPage() {
   const shared = (projects ?? []).filter(
     (p) => !p.team_id || !myTeams.has(p.team_id),
   );
+  // Reviewers open, comment on and approve the team's prototypes; they don't create them.
+  const reviewer = current?.role === "reviewer";
 
   return (
     <div>
@@ -89,28 +91,41 @@ export default async function ProjectsPage() {
             {current && !current.personal ? current.name : "Your prototypes"}
           </h1>
           <div className="flex-1" />
-          <ImportDialog
-            trigger={
-              <Button>
-                <Upload />
-                Import
-              </Button>
+          {!reviewer && (
+            <ImportDialog
+              trigger={
+                <Button>
+                  <Upload />
+                  Import
+                </Button>
+              }
+            />
+          )}
+        </div>
+        {reviewer ? (
+          <p
+            role="note"
+            className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900"
+          >
+            You&apos;re a reviewer on {current?.name}: open any prototype to
+            comment on it or approve it. Reviewers are free. Ask an admin to
+            make you a builder if you need to create prototypes.
+          </p>
+        ) : (
+          <NewPrototypeForm
+            controls={
+              <>
+                <BuiltForSelect />
+                {current && (
+                  <DesignSystemSelect
+                    options={dsOptions}
+                    teamName={teamLabel(current)}
+                  />
+                )}
+              </>
             }
           />
-        </div>
-        <NewPrototypeForm
-          controls={
-            <>
-              <BuiltForSelect />
-              {current && (
-                <DesignSystemSelect
-                  options={dsOptions}
-                  teamName={teamLabel(current)}
-                />
-              )}
-            </>
-          }
-        />
+        )}
 
         <ProjectList
           title={
@@ -120,7 +135,9 @@ export default async function ProjectsPage() {
           thumbs={thumbs}
           empty={
             current && !current.personal
-              ? "No team prototypes yet. Name one above to start one everyone on the team can open."
+              ? reviewer
+                ? "No team prototypes yet. You'll see them here when builders make some."
+                : "No team prototypes yet. Name one above to start one everyone on the team can open."
               : "No prototypes yet. Name one above to start."
           }
         />

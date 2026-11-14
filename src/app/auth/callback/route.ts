@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type) {
     ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
   }
-  let target = ok ? next : `/?error=link`;
+  let target = ok ? next : `/login?error=link`;
   if (ok) {
     // First sign-in: ask for a name before anything else.
     const { data: profile } = await supabase.from("profiles").select("onboarded_at").maybeSingle();

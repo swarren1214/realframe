@@ -34,6 +34,8 @@ import {
   Users,
   UserRoundCheck,
   X,
+  Send,
+  WandSparkles,
 } from "lucide-react";
 import { Mark } from "@/components/Logo";
 import { Badge, BadgeDot } from "@/components/ui/badge";
@@ -69,6 +71,7 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, listItem, motion } from "@/components/motion";
 import { copyWithToast, notify } from "@/lib/toast";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
+import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
   DropdownMenu,
@@ -98,6 +101,10 @@ import {
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
+import { RequestReviewDialog } from "@/components/reviews/RequestReviewDialog";
+import { RoundCard } from "@/components/reviews/RoundCard";
+import { MAX_FIX_THREADS } from "@/lib/feedback";
+import type { ReviewRound } from "@/lib/types";
 import {
   authorLabel,
   type Member,
@@ -219,6 +226,8 @@ export function Studio(props: {
   allDesignSystemNames?: Record<string, string>;
   /** The profile menu, rendered on the server and passed through. */
   accountMenu?: React.ReactNode;
+  /** The open review round, if any. */
+  round?: ReviewRound | null;
 }) {
   const {
     project,
@@ -459,6 +468,43 @@ export function Studio(props: {
     }
   }
 
+  // Fix from feedback: one build from the selected open comment threads.
+  const [fixPick, setFixPick] = useState<string[]>([]);
+  const [fixNote, setFixNote] = useState("");
+  async function fixFromFeedback() {
+    if (!fixPick.length || busy || isImportedApp) return;
+    setBusy(true);
+    setElapsed(0);
+    setError("");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/fix`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadIds: fixPick,
+          note: fixNote.trim() || null,
+          baseVersionId: selected?.id ?? null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.error || `Request failed (${res.status})`);
+      setSelectedId(data.versionId);
+      setFixPick([]);
+      setFixNote("");
+      notify.success(`v${data.number} is ready`, {
+        description: `Built from ${data.addressed} comment${data.addressed === 1 ? "" : "s"}${data.notified ? `; ${data.notified} reviewer${data.notified === 1 ? " was" : "s were"} told` : ""}.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      notify.error(err instanceof Error ? err.message : "That didn't work.");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /**
    * Run a server action. `key` lets the triggering button show its own loading state; `done`
    * is the success toast (with an optional Undo). Failures always show an error toast.
@@ -603,6 +649,21 @@ export function Studio(props: {
               ? `v${selected.number} is live`
               : `Publish v${selected.number}`}
           </Button>
+        )}
+        {(role === "owner" || role === "editor") && selected && (
+          <RequestReviewDialog
+            projectId={project.id}
+            version={{ id: selected.id, number: selected.number }}
+            suggested={members
+              .filter((m) => m.role !== "editor")
+              .map((m) => m.email)}
+            trigger={
+              <Button variant="outline">
+                <Send />
+                Request review
+              </Button>
+            }
+          />
         )}
         {isOwner && (
           <DropdownMenu modal={false}>
@@ -1233,6 +1294,43 @@ export function Studio(props: {
                 </TabsContent>
 
                 <TabsContent value="comments" className="space-y-1 p-3">
+                  {props.round && (
+                    <div className="mb-2">
+                      <RoundCard
+                        round={props.round}
+                        projectId={project.id}
+                        canClose={role === "owner" || role === "editor"}
+                      />
+                    </div>
+                  )}
+                  {threads.some((t) => t.status === "open") &&
+                    !isImportedApp && (
+                      <div className="flex items-center gap-2 px-1 pb-1 text-xs text-stone-600">
+                        <span className="flex-1">
+                          Pick comments to fix them in one build.
+                        </span>
+                        <button
+                          type="button"
+                          className="min-h-8 font-medium text-raspberry-700 hover:underline"
+                          onClick={() => {
+                            const open = threads
+                              .filter((t) => t.status === "open")
+                              .map((t) => t.id);
+                            setFixPick(
+                              fixPick.length === open.length
+                                ? []
+                                : open.slice(0, MAX_FIX_THREADS),
+                            );
+                          }}
+                        >
+                          {fixPick.length &&
+                          fixPick.length ===
+                            threads.filter((t) => t.status === "open").length
+                            ? "Clear"
+                            : "Select all open"}
+                        </button>
+                      </div>
+                    )}
                   {threads.length === 0 && (
                     <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
                       <span
@@ -1261,6 +1359,25 @@ export function Studio(props: {
                             className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
                           >
                             <div className="flex items-center gap-1.5 text-xs">
+                              {t.status === "open" && !isImportedApp && (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Fix comment ${threads.length - i}`}
+                                  className="size-4 accent-raspberry-700"
+                                  checked={fixPick.includes(t.id)}
+                                  disabled={
+                                    !fixPick.includes(t.id) &&
+                                    fixPick.length >= MAX_FIX_THREADS
+                                  }
+                                  onChange={(e) =>
+                                    setFixPick((p) =>
+                                      e.target.checked
+                                        ? [...p, t.id]
+                                        : p.filter((x) => x !== t.id),
+                                    )
+                                  }
+                                />
+                              )}
                               <span
                                 className={cn(
                                   "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
@@ -1272,6 +1389,20 @@ export function Studio(props: {
                                 {threads.length - i}
                               </span>
                               {v && <Badge>v{v.number}</Badge>}
+                              {t.addressed_version_id && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedId(t.addressed_version_id!)
+                                  }
+                                  className="rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-semibold text-raspberry-800 hover:bg-raspberry-100"
+                                >
+                                  Addressed in v
+                                  {versions.find(
+                                    (x) => x.id === t.addressed_version_id,
+                                  )?.number ?? "?"}
+                                </button>
+                              )}
                               <span className="text-stone-500">
                                 {t.status === "resolved" ? "Resolved" : "Open"}
                               </span>
@@ -1324,6 +1455,34 @@ export function Studio(props: {
                         );
                       })}
                   </AnimatePresence>
+                  {fixPick.length > 0 && (
+                    <div className="sticky bottom-0 space-y-2 rounded-2xl border border-raspberry-200 bg-card p-3 shadow-lg">
+                      <label htmlFor="fix-note" className="sr-only">
+                        Anything else for this build
+                      </label>
+                      <Textarea
+                        id="fix-note"
+                        rows={2}
+                        value={fixNote}
+                        onChange={(e) => setFixNote(e.target.value)}
+                        placeholder="Anything else? (optional)"
+                        className="text-[13px]"
+                      />
+                      <Button
+                        className="w-full"
+                        loading={busy}
+                        disabled={busy || outOfQuota}
+                        onClick={fixFromFeedback}
+                      >
+                        <WandSparkles />
+                        Fix {fixPick.length} comment
+                        {fixPick.length === 1 ? "" : "s"}
+                      </Button>
+                      <p className="text-center text-[11px] text-stone-500">
+                        One build. If it fails, it isn&apos;t billed.
+                      </p>
+                    </div>
+                  )}
                   {project.published && (
                     <Button asChild variant="ghost" size="sm" className="m-1">
                       <a href={reviewUrl} target="_blank" rel="noreferrer">

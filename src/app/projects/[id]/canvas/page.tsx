@@ -22,7 +22,7 @@ export default async function CanvasPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/?next=/projects/${id}/canvas`);
+  if (!user) redirect(`/login?next=/projects/${id}/canvas`);
 
   const { data: project } = await supabase
     .from("projects")

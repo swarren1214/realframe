@@ -20,7 +20,7 @@ async function saveProfile(formData: FormData) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  if (!user) redirect("/login");
   const name = String(formData.get("display_name") ?? "")
     .trim()
     .slice(0, 60);
@@ -46,7 +46,7 @@ export default async function WelcomePage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  if (!user) redirect("/login");
   const { data: profile } = await supabase
     .from("profiles")
     .select("display_name, onboarded_at, avatar_url")

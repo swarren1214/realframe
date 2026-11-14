@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.redirect(new URL("/?next=/billing", origin), 303);
+    return NextResponse.redirect(new URL("/login?next=/billing", origin), 303);
 
   const { data: profile } = await supabase
     .from("profiles")

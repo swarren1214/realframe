@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { action } from "@/lib/safe-action";
 import { createClient } from "@/lib/supabase/server";
-import { TEAM_COOKIE, type TeamRole } from "@/lib/teams";
+import { TEAM_COOKIE, isTeamRole, type TeamRole } from "@/lib/teams";
 import type { DeviceKind } from "@/lib/devices";
 
 async function requireUser() {
@@ -16,7 +16,7 @@ async function requireUser() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  if (!user) redirect("/login");
   return { supabase, user };
 }
 
@@ -109,6 +109,7 @@ async function emailInvite(
 export const inviteToTeam = action(
   async (teamId: string, email: string, role: TeamRole) => {
     const { supabase, user } = await requireUser();
+    if (!isTeamRole(role)) throw new Error("Pick a role.");
     const clean = cleanEmail(email);
     const { data: existing } = await supabase
       .from("team_members")
@@ -195,12 +196,15 @@ export const respondToInvite = action(
 export const changeTeamRole = action(
   async (teamId: string, email: string, role: TeamRole) => {
     const { supabase } = await requireUser();
+    if (!isTeamRole(role)) throw new Error("Pick a role.");
     const { error } = await supabase
       .from("team_members")
       .update({ role })
       .eq("team_id", teamId)
       .eq("email", email);
     if (error) throw new Error(error.message);
+    // Moving someone between builder and reviewer changes what Team Pro charges.
+    await syncSeats(teamId);
     revalidatePath("/team", "layout");
     revalidatePath("/devices");
   },

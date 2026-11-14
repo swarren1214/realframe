@@ -1,7 +1,27 @@
 // Team types and helpers safe to use in client components.
 import type { Device, DeviceKind } from "@/lib/devices";
 
-export type TeamRole = "admin" | "member";
+export type TeamRole = "admin" | "member" | "reviewer";
+
+export const TEAM_ROLES: TeamRole[] = ["admin", "member", "reviewer"];
+
+/** Admins and members build (and are paid seats); reviewers comment and approve for free. */
+export const isBuilderRole = (role: TeamRole | null | undefined) =>
+  role === "admin" || role === "member";
+
+export const ROLE_LABEL: Record<TeamRole, string> = {
+  admin: "Admin",
+  member: "Builder",
+  reviewer: "Reviewer",
+};
+
+/** "an admin", "a builder", "a reviewer". */
+export const roleWithArticle = (role: TeamRole) =>
+  role === "admin" ? "an admin" : `a ${ROLE_LABEL[role].toLowerCase()}`;
+
+export function isTeamRole(v: unknown): v is TeamRole {
+  return v === "admin" || v === "member" || v === "reviewer";
+}
 export type Team = {
   id: string;
   name: string;

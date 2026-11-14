@@ -1,17 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PRO_PRICE_ID, getStripe } from "@/lib/stripe";
+import { checkoutLineItem, getStripe, productOf } from "@/lib/stripe";
+import { readInterval } from "@/lib/plans";
 
 // POST (form submit) → redirect to Stripe Checkout for Realframe Pro.
 export async function POST(request: NextRequest) {
   const origin = request.nextUrl.origin;
+  const form = await request.formData().catch(() => null);
+  const interval = readInterval(form?.get("interval"));
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.redirect(new URL("/?next=/billing", origin), 303);
+    return NextResponse.redirect(new URL("/login?next=/billing", origin), 303);
 
   const admin = createAdminClient();
   const { data: profile } = await admin
@@ -44,10 +47,14 @@ export async function POST(request: NextRequest) {
     mode: "subscription",
     customer: customerId,
     client_reference_id: user.id,
-    line_items: [{ price: PRO_PRICE_ID, quantity: 1 }],
+    line_items: [await checkoutLineItem("pro", interval, 1, productOf)],
     allow_promotion_codes: true,
     subscription_data: {
-      metadata: { supabase_user_id: user.id, app: "realframe" },
+      metadata: {
+        supabase_user_id: user.id,
+        app: "realframe",
+        billing_interval: interval,
+      },
     },
     success_url: `${origin}/billing?upgraded=1`,
     cancel_url: `${origin}/billing`,

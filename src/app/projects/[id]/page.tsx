@@ -1,3 +1,4 @@
+import { loadActiveRound } from "@/lib/services/reviews";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -29,7 +30,7 @@ export default async function StudioPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/?next=/projects/${id}`);
+  if (!user) redirect(`/login?next=/projects/${id}`);
 
   const { data: project } = await supabase
     .from("projects")
@@ -73,7 +74,7 @@ export default async function StudioPage({
     supabase
       .from("comment_threads")
       .select(
-        "id, version_id, x, y, status, created_at, comments(id, thread_id, author_email, author_name, body, created_at)",
+        "id, version_id, x, y, status, created_at, addressed_version_id, comments(id, thread_id, author_email, author_name, body, created_at)",
       )
       .eq("project_id", id)
       .order("created_at"),
@@ -185,6 +186,7 @@ export default async function StudioPage({
       designSystems={designSystems}
       allDesignSystemNames={allDesignSystemNames}
       teams={role === "owner" ? teams : undefined}
+      round={await loadActiveRound(supabase, id)}
       teammates={
         role === "owner" && project.team_id
           ? ((teammates ?? []) as Teammate[])

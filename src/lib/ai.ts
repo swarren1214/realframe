@@ -78,6 +78,7 @@ export async function generatePrototype(
 ): Promise<
   GenerateResult & { usage: { input: number | null; output: number | null } }
 > {
+  if (fakeAiEnabled()) return fakePrototype(input);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
   const client = new Anthropic({ apiKey });
@@ -153,4 +154,40 @@ export async function generatePrototype(
       output: outTokens,
     });
   }
+}
+
+/**
+ * End-to-end tests set REALFRAME_FAKE_AI=1 so builds are instant, free and deterministic.
+ * Never honoured on a production deployment.
+ */
+export function fakeAiEnabled() {
+  return (
+    process.env.REALFRAME_FAKE_AI === "1" &&
+    process.env.VERCEL_ENV !== "production"
+  );
+}
+
+export function fakePrototype(
+  input: Pick<GenerateInput, "prompt" | "currentHtml">,
+) {
+  const n = input.currentHtml?.match(/data-build="(\d+)"/)?.[1] ?? "0";
+  const next = Number(n) + 1;
+  const safe = input.prompt
+    .slice(0, 200)
+    .replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const html = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Test prototype</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;padding:48px;background:#f8fafc}button{padding:12px 20px;border-radius:12px;border:0;background:#1e3a8a;color:#fff}</style></head>
+<body data-build="${next}">
+<h1>Test prototype · build ${next}</h1>
+<p id="prompt">${safe}</p>
+<button type="button">Continue</button>
+</body>
+</html>`;
+  return {
+    html,
+    summary: `Built test prototype ${next}.`,
+    usage: { input: 0, output: 0 },
+  };
 }

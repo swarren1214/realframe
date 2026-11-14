@@ -1,4 +1,5 @@
 import "server-only";
+import { roleWithArticle, type TeamRole } from "@/lib/team-shared";
 
 const FROM =
   process.env.INVITE_FROM_EMAIL || "Realframe <realframe@mail.hearthapps.com>";
@@ -38,12 +39,12 @@ export async function sendTeamInvite(opts: {
   to: string;
   teamName: string;
   inviter: string;
-  role: "admin" | "member";
+  role: TeamRole;
   url: string;
 }) {
   const team = esc(opts.teamName);
   const inviter = esc(opts.inviter);
-  const role = opts.role === "admin" ? "an admin" : "a member";
+  const role = roleWithArticle(opts.role);
   const subject = `${opts.inviter} invited you to ${opts.teamName} on Realframe`;
   const text = `${opts.inviter} invited you to join ${opts.teamName} on Realframe as ${role}.\n\nAccept or decline: ${opts.url}\n\nSign in with ${opts.to} to see the invite. If you weren't expecting it, you can ignore this email.`;
   const html = `<!doctype html><html><body style="margin:0;background:#fffbf7;font-family:Inter,-apple-system,Segoe UI,sans-serif;color:#1c1917">
@@ -52,9 +53,110 @@ export async function sendTeamInvite(opts: {
 <tr><td>
 <div style="display:inline-block;width:32px;height:32px;border-radius:11px;background:linear-gradient(135deg,#c2410c,#be185d 55%,#7c3aed)"></div>
 <h1 style="margin:20px 0 8px;font-size:20px;line-height:1.3">Join ${team} on Realframe</h1>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#57534e">${inviter} invited you as ${role}. Teammates share prototypes, devices and design systems.</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#57534e">${inviter} invited you as ${role}. ${opts.role === "reviewer" ? "Reviewers can open, comment on and approve the team's prototypes, free." : "Teammates share prototypes, devices and design systems."}</p>
 <a href="${esc(opts.url)}" style="display:inline-block;background:linear-gradient(135deg,#c2410c,#be185d);color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 22px;border-radius:999px">See the invite</a>
 <p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#78716c">Sign in with ${esc(opts.to)} to accept or decline. If you weren't expecting this, you can ignore it.</p>
 </td></tr></table></td></tr></table></body></html>`;
+  return send(opts.to, subject, html, text);
+}
+
+/** The shared card layout every Realframe email uses. */
+function card(
+  title: string,
+  body: string,
+  cta: { label: string; url: string },
+  foot: string,
+) {
+  return `<!doctype html><html><body style="margin:0;background:#fffbf7;font-family:Inter,-apple-system,Segoe UI,sans-serif;color:#1c1917">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #e7e5e4;border-radius:24px;padding:32px">
+<tr><td>
+<div style="display:inline-block;width:32px;height:32px;border-radius:11px;background:linear-gradient(135deg,#c2410c,#be185d 55%,#7c3aed)"></div>
+<h1 style="margin:20px 0 8px;font-size:20px;line-height:1.3">${title}</h1>
+<div style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#57534e">${body}</div>
+<a href="${esc(cta.url)}" style="display:inline-block;background:linear-gradient(135deg,#c2410c,#be185d);color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 22px;border-radius:999px">${esc(cta.label)}</a>
+<p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#78716c">${foot}</p>
+</td></tr></table></td></tr></table></body></html>`;
+}
+
+const fmtDue = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+
+export async function sendReviewRequest(opts: {
+  to: string;
+  requester: string;
+  prototype: string;
+  version: number;
+  note: string | null;
+  dueAt: string | null;
+  url: string;
+}) {
+  const due = opts.dueAt ? ` by ${fmtDue(opts.dueAt)}` : "";
+  const subject = `${opts.requester} asked you to review ${opts.prototype}${due}`;
+  const text = `${opts.requester} asked you to review v${opts.version} of ${opts.prototype}${due}.${opts.note ? `\n\n"${opts.note}"` : ""}\n\nOpen it, leave comments on the screens, then approve it or ask for changes: ${opts.url}\n\nSign in with ${opts.to}. Reviewing on Realframe is free.`;
+  const html = card(
+    `Review ${esc(opts.prototype)}`,
+    `${esc(opts.requester)} asked you to review <strong>v${opts.version}</strong>${esc(due)}.${
+      opts.note
+        ? `<blockquote style="margin:12px 0 0;padding:10px 14px;border-radius:12px;background:#fdf2f8;color:#44403c">${esc(opts.note)}</blockquote>`
+        : ""
+    }<p style="margin:12px 0 0">Leave comments on the screens, then approve it or ask for changes.</p>`,
+    { label: "Open the prototype", url: opts.url },
+    `Sign in with ${esc(opts.to)}. Reviewing on Realframe is free.`,
+  );
+  return send(opts.to, subject, html, text);
+}
+
+export async function sendReviewDecision(opts: {
+  to: string;
+  reviewer: string;
+  prototype: string;
+  version: number;
+  decision: "approved" | "changes_requested";
+  roundStatus: string;
+  url: string;
+}) {
+  const verb =
+    opts.decision === "approved" ? "approved" : "asked for changes on";
+  const roundLine =
+    opts.roundStatus === "approved"
+      ? "The review round is approved."
+      : opts.roundStatus === "changes_requested"
+        ? "The round needs changes."
+        : "The round is still waiting on other reviewers.";
+  const subject = `${opts.reviewer} ${verb} ${opts.prototype} v${opts.version}`;
+  const text = `${opts.reviewer} ${verb} v${opts.version} of ${opts.prototype}. ${roundLine}\n\n${opts.url}`;
+  const html = card(
+    `${esc(opts.reviewer)} ${verb} v${opts.version}`,
+    `<p style="margin:0">${esc(opts.prototype)}: ${roundLine}</p>`,
+    { label: "See the feedback", url: opts.url },
+    "You're getting this because you requested the review.",
+  );
+  return send(opts.to, subject, html, text);
+}
+
+export async function sendFeedbackAddressed(opts: {
+  to: string;
+  builder: string;
+  prototype: string;
+  version: number;
+  count: number;
+  url: string;
+}) {
+  const what =
+    opts.count === 1 ? "your comment" : `${opts.count} of your comments`;
+  const subject = `${opts.builder} addressed ${what} on ${opts.prototype}`;
+  const text = `${opts.builder} made v${opts.version} of ${opts.prototype} from ${what}. Take a look and resolve it, or reply if it isn't fixed: ${opts.url}`;
+  const html = card(
+    `${esc(opts.builder)} addressed ${what}`,
+    `<p style="margin:0">v${opts.version} of ${esc(opts.prototype)} was built from ${what}. Take a look, then resolve it or reply if it isn't fixed.</p>`,
+    { label: `Open v${opts.version}`, url: opts.url },
+    "You're getting this because you commented on this prototype.",
+  );
   return send(opts.to, subject, html, text);
 }

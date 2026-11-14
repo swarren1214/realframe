@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ACTIVE_STATUSES, USAGE_PRODUCT_ID, getStripe } from "@/lib/stripe";
+import {
+  ACTIVE_STATUSES,
+  USAGE_PRODUCT_ID,
+  getStripe,
+  intervalOf,
+} from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
@@ -28,6 +33,7 @@ async function syncTeamSubscription(sub: Stripe.Subscription, teamId: string) {
       stripe_subscription_id: active ? sub.id : null,
       subscription_status: sub.status,
       seats: item?.quantity ?? 1,
+      billing_interval: intervalOf(sub),
       current_period_start: active ? iso(item?.current_period_start) : null,
       current_period_end: active ? iso(item?.current_period_end) : null,
       cancel_at_period_end: Boolean(sub.cancel_at_period_end),
@@ -63,6 +69,7 @@ async function syncSubscription(
     stripe_customer_id: customerId,
     stripe_subscription_id: active ? sub.id : null,
     subscription_status: sub.status,
+    billing_interval: intervalOf(sub),
     current_period_start: active
       ? iso(item?.current_period_start ?? legacy.current_period_start)
       : null,
@@ -101,16 +108,18 @@ async function addUsageOverage(invoice: Stripe.Invoice) {
   const [{ data: profile }, { data: team }] = await Promise.all([
     admin
       .from("profiles")
-      .select("id")
+      .select("id, billing_interval")
       .eq("stripe_customer_id", customerId)
       .maybeSingle(),
     admin
       .from("teams")
-      .select("id, seats")
+      .select("id, seats, billing_interval")
       .eq("stripe_customer_id", customerId)
       .maybeSingle(),
   ]);
   if (!profile && !team) return;
+  // Annual plans are billed for usage every month by /api/cron/bill-usage instead.
+  if ((team ?? profile)?.billing_interval === "year") return;
   const { data: settings } = await admin.rpc("plan_settings");
   const perSeat = Number(
     (settings as { pro_included_micros: number }[] | null)?.[0]
