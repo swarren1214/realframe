@@ -155,17 +155,15 @@ export const addTeamDevice = action(
     const height = Math.round(Number(d.height));
     if (!(width >= 200 && width <= 7680 && height >= 200 && height <= 7680))
       throw new Error("Use a screen size between 200 and 7680 pixels.");
-    const { error } = await supabase
-      .from("team_devices")
-      .insert({
-        team_id: teamId,
-        name,
-        kind: d.kind,
-        width,
-        height,
-        frame: d.frame,
-        created_by: user.id,
-      });
+    const { error } = await supabase.from("team_devices").insert({
+      team_id: teamId,
+      name,
+      kind: d.kind,
+      width,
+      height,
+      frame: d.frame,
+      created_by: user.id,
+    });
     if (error)
       throw new Error(
         error.message.includes("row-level security")

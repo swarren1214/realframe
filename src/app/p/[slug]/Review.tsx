@@ -337,7 +337,7 @@ export function Review({
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <main
-          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4"
+          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setCommentMode(false);

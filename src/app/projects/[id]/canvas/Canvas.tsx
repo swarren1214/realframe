@@ -429,7 +429,7 @@ export function Canvas({
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div
           ref={board}
-          className={`relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
           style={{
             backgroundImage:
               "radial-gradient(circle, rgba(190,24,93,.22) 1.2px, transparent 1.2px)",
@@ -545,7 +545,7 @@ export function Canvas({
                             e.key === "Enter" &&
                             (e.target as HTMLInputElement).blur()
                           }
-                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-1 outline-none focus:border-raspberry-600"
+                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-card px-1 outline-none focus:border-raspberry-600"
                         />
                       ) : (
                         <button
@@ -570,7 +570,7 @@ export function Canvas({
                         type="button"
                         onClick={() => removeFrame(f.id)}
                         aria-label={`Remove ${f.label}`}
-                        className="grid shrink-0 place-items-center rounded-full p-1 text-stone-500 transition-colors hover:bg-white hover:text-red-700"
+                        className="grid shrink-0 place-items-center rounded-full p-1 text-stone-500 transition-colors hover:bg-card hover:text-red-700"
                       >
                         <X
                           style={{ width: "1em", height: "1em" }}
@@ -579,7 +579,7 @@ export function Canvas({
                       </button>
                     </div>
                     <div
-                      className={`relative overflow-hidden rounded-3xl bg-white shadow-[0_18px_36px_-22px_rgba(124,58,237,.45)] ${
+                      className={`relative overflow-hidden rounded-3xl bg-card shadow-[0_18px_36px_-22px_rgba(124,58,237,.45)] ${
                         isActive
                           ? "ring-4 ring-raspberry-600"
                           : "ring-1 ring-stone-300"
@@ -625,7 +625,7 @@ export function Canvas({
                     <div
                       role="presentation"
                       title="Drag to resize"
-                      className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white btn-glow"
+                      className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-card btn-glow"
                       style={{
                         transform: `scale(${Math.max(1, 1 / view.z / 2)})`,
                       }}
@@ -653,7 +653,7 @@ export function Canvas({
           </div>
 
           {latest && frames.length > 0 && (
-            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm">
+            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-card/90 px-3 py-1 text-[11px] text-stone-600 shadow-sm">
               Drag the background to pan · ⌘/Ctrl + scroll to zoom · click a
               frame to use it · navigate inside a frame to set its screen
             </p>

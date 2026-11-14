@@ -48,7 +48,7 @@ export function TeamBadge({
         "grid size-6 shrink-0 place-items-center rounded-lg text-[11px] font-semibold text-white",
         team.personal
           ? "bg-[linear-gradient(135deg,#c2410c_0%,#be185d_55%,#7c3aed_100%)]"
-          : "bg-stone-900",
+          : "bg-foreground text-background",
         className,
       )}
     >

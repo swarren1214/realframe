@@ -59,7 +59,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
       <Logo />
-      <div className="w-full max-w-sm rounded-[1.75rem] border border-stone-200/80 bg-white p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+      <div className="w-full max-w-sm rounded-[1.75rem] border border-stone-200/80 bg-card p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
         {children}
       </div>
     </main>

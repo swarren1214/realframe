@@ -54,7 +54,7 @@ export function Swatches({
       {colors.map((c, i) => (
         <span
           key={i}
-          className="rounded-full border-2 border-white"
+          className="rounded-full border-2 border-card"
           style={{
             width: size,
             height: size,
@@ -93,7 +93,7 @@ function Card({
     <Link
       href={`/design-systems/${ds.id}`}
       className={cn(
-        "group flex flex-col gap-3.5 rounded-3xl border bg-white p-5 no-underline shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)] transition-[transform,box-shadow,border-color] duration-(--duration-base) hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-24px_rgba(190,24,93,.4)]",
+        "group flex flex-col gap-3.5 rounded-3xl border bg-card p-5 no-underline shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)] transition-[transform,box-shadow,border-color] duration-(--duration-base) hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-24px_rgba(190,24,93,.4)]",
         ds.is_default
           ? "border-raspberry-200"
           : "border-stone-200/80 hover:border-raspberry-200",
@@ -203,7 +203,7 @@ export function Library({
       </div>
 
       {!team.personal && (
-        <div className="mt-5 flex flex-wrap items-center gap-3 rounded-full border border-stone-200 bg-white/70 py-2 pl-4 pr-2 text-xs text-stone-700">
+        <div className="mt-5 flex flex-wrap items-center gap-3 rounded-full border border-stone-200 bg-card/70 py-2 pl-4 pr-2 text-xs text-stone-700">
           <Info className="size-4 text-stone-400" aria-hidden="true" />
           <span className="min-w-0 flex-1">
             <strong className="font-semibold text-stone-900">
@@ -222,7 +222,7 @@ export function Library({
       )}
 
       {systems.length === 0 ? (
-        <div className="mt-6 flex flex-col items-center gap-3 rounded-3xl border border-dashed border-stone-300 bg-white/50 px-6 py-14 text-center">
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-3xl border border-dashed border-stone-300 bg-card/50 px-6 py-14 text-center">
           <span className="grid size-12 place-items-center rounded-2xl bg-glow-soft text-raspberry-700">
             <Layers className="size-5" aria-hidden="true" />
           </span>
@@ -271,7 +271,7 @@ export function Library({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-full min-h-56 w-full flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-stone-300 bg-white/50 p-6 text-center transition-colors hover:border-raspberry-200 hover:bg-white"
+                    className="flex h-full min-h-56 w-full flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-stone-300 bg-card/50 p-6 text-center transition-colors hover:border-raspberry-200 hover:bg-card"
                   >
                     <Boxes
                       className="size-6 text-raspberry-600"

@@ -84,7 +84,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-stone-200/80 bg-white p-5 shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)]">
+    <section className="rounded-3xl border border-stone-200/80 bg-card p-5 shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)]">
       <div className="mb-4 flex items-center gap-3">
         <Eyebrow>{title}</Eyebrow>
         <div className="flex-1" />
@@ -288,7 +288,7 @@ export function Detail({
                 else if (v !== ds.name)
                   run("rename", () => renameDesignSystem(ds.id, v), "Renamed");
               }}
-              className="min-w-0 rounded-xl bg-transparent px-1 font-display text-2xl font-bold tracking-tight outline-none [field-sizing:content] hover:bg-stone-900/[.04] focus:bg-white focus:ring-2 focus:ring-raspberry-200"
+              className="min-w-0 rounded-xl bg-transparent px-1 font-display text-2xl font-bold tracking-tight outline-none [field-sizing:content] hover:bg-stone-900/[.04] focus:bg-card focus:ring-2 focus:ring-raspberry-200"
             />
           </>
         ) : (
@@ -360,7 +360,7 @@ export function Detail({
       )}
 
       {ds.status === "importing" && (
-        <div className="mt-6 space-y-2 rounded-3xl border border-stone-200 bg-white p-5">
+        <div className="mt-6 space-y-2 rounded-3xl border border-stone-200 bg-card p-5">
           <p className="text-sm font-semibold">Importing {ds.name}</p>
           <Progress indeterminate aria-label="Import progress" />
           <p className="text-xs text-stone-600">

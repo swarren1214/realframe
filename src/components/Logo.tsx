@@ -12,7 +12,14 @@ export function Mark({ size = 28 }: { size?: number }) {
           <stop offset="1" stopColor="#7C3AED" />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="24" height="24" rx="9" fill={`url(#rf-mark-${id})`} />
+      <rect
+        x="1"
+        y="1"
+        width="24"
+        height="24"
+        rx="9"
+        fill={`url(#rf-mark-${id})`}
+      />
       <path
         d="M14 19H9a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5"
         stroke="#FFF"
@@ -28,9 +35,14 @@ export function Mark({ size = 28 }: { size?: number }) {
 
 export function Logo({ href = "/" }: { href?: string }) {
   return (
-    <Link href={href} className="flex items-center gap-2.5 text-stone-900 no-underline">
+    <Link
+      href={href}
+      className="flex items-center gap-2.5 text-stone-900 no-underline"
+    >
       <Mark />
-      <span className="font-display text-lg font-bold tracking-tight">Realframe</span>
+      <span className="font-display text-lg font-bold tracking-tight">
+        Realframe
+      </span>
     </Link>
   );
 }

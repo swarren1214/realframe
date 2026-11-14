@@ -16,8 +16,8 @@ const buttonVariants = cva(
         default: "btn-glow",
         outline:
           "border border-border bg-card text-stone-800 shadow-xs hover:border-stone-300 hover:bg-stone-50 " +
-          "aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-white",
-        secondary: "bg-foreground text-white hover:bg-stone-800",
+          "aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background",
+        secondary: "bg-foreground text-background hover:bg-foreground/85",
         ghost:
           "text-stone-600 hover:bg-foreground/5 hover:text-foreground aria-pressed:bg-foreground/8 aria-pressed:text-foreground",
         soft: "bg-glow-soft text-accent-foreground shadow-[inset_0_0_0_1px_var(--color-raspberry-200)] hover:brightness-[.98]",

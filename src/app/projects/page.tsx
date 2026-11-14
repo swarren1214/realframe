@@ -144,7 +144,7 @@ function ProjectList({
     <section className="mt-10">
       <Eyebrow>{title}</Eyebrow>
       {items.length === 0 ? (
-        <div className="mt-3 flex items-center gap-3 rounded-3xl border border-dashed border-stone-300 bg-white/50 p-6 text-[13px] text-stone-600">
+        <div className="mt-3 flex items-center gap-3 rounded-3xl border border-dashed border-stone-300 bg-card/50 p-6 text-[13px] text-stone-600">
           <FolderOpen className="size-5 text-stone-400" aria-hidden="true" />
           {empty}
         </div>
@@ -154,7 +154,7 @@ function ProjectList({
             <li key={p.id}>
               <Link
                 href={shared ? `/p/${p.slug}` : `/projects/${p.id}`}
-                className="group block rounded-3xl border border-stone-200/80 bg-white p-4 no-underline shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)] transition-[transform,box-shadow,border-color] hover:-translate-y-0.5 hover:border-raspberry-200 hover:shadow-[0_20px_40px_-24px_rgba(190,24,93,.4)]"
+                className="group block rounded-3xl border border-stone-200/80 bg-card p-4 no-underline shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)] transition-[transform,box-shadow,border-color] hover:-translate-y-0.5 hover:border-raspberry-200 hover:shadow-[0_20px_40px_-24px_rgba(190,24,93,.4)]"
               >
                 <div
                   aria-hidden="true"

@@ -82,7 +82,7 @@ function Section({
   action?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-stone-200/80 bg-white p-5 shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)]">
+    <section className="rounded-3xl border border-stone-200/80 bg-card p-5 shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)]">
       <div className="mb-4 flex items-center gap-3">
         <Eyebrow>{title}</Eyebrow>
         <div className="flex-1" />
@@ -156,7 +156,7 @@ export function TeamSettings({
                 else if (v !== team.name)
                   run("rename", () => renameTeam(team.id, v), "Team renamed");
               }}
-              className="min-w-0 flex-1 rounded-xl bg-transparent px-2 py-1 font-display text-2xl font-bold tracking-tight outline-none hover:bg-stone-900/[.04] focus:bg-white focus:ring-2 focus:ring-raspberry-200"
+              className="min-w-0 flex-1 rounded-xl bg-transparent px-2 py-1 font-display text-2xl font-bold tracking-tight outline-none hover:bg-stone-900/[.04] focus:bg-card focus:ring-2 focus:ring-raspberry-200"
             />
           </>
         ) : (

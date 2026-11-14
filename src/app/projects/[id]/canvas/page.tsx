@@ -42,10 +42,10 @@ export default async function CanvasPage({
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
         <Logo href="/projects" />
-        <div className="relative w-full max-w-md overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-white p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
+        <div className="relative w-full max-w-md overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-card p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
           <div
             aria-hidden="true"
-            className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-ember-600 via-raspberry-600 to-violet-600 text-white"
+            className="rf-light-palette mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-ember-600 via-raspberry-600 to-violet-600 text-white"
           >
             <LayoutGrid className="size-5" />
           </div>

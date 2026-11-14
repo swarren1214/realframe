@@ -227,10 +227,10 @@ export function DeviceStage({
         className={cn(
           "relative shrink-0 transition-[width,height,border-radius] duration-(--duration-slow) ease-(--ease-out)",
           framed &&
-            "bg-stone-900 shadow-[0_30px_60px_-30px_rgba(28,25,23,.55)]",
+            "bg-[#1c1917] shadow-[0_30px_60px_-30px_rgba(28,25,23,.55)] dark:shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)] dark:ring-1 dark:ring-white/10",
           !framed &&
             !presenting &&
-            "border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]",
+            "border border-stone-200 bg-card shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]",
           mode === "actual" && !presenting && "m-2",
         )}
         style={{

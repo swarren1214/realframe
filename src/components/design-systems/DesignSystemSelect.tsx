@@ -25,7 +25,7 @@ export function Dots({ colors }: { colors: string[] }) {
       {colors.slice(0, 3).map((c, i) => (
         <span
           key={i}
-          className="size-3.5 rounded-full border-[1.5px] border-white"
+          className="size-3.5 rounded-full border-[1.5px] border-card"
           style={{ background: c, marginLeft: i ? -4 : 0 }}
         />
       ))}
@@ -47,7 +47,7 @@ export function DesignSystemSelect({
     <Select name="design_system" defaultValue={def}>
       <SelectTrigger
         aria-label="Design system"
-        className="h-10 w-auto max-w-56 gap-2 rounded-full border-transparent bg-white/70 hover:bg-white"
+        className="h-10 w-auto max-w-56 gap-2 rounded-full border-transparent bg-card/70 hover:bg-card"
       >
         <SelectValue />
       </SelectTrigger>

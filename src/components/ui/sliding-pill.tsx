@@ -51,7 +51,7 @@ export function SlidingPill({ pill }: { pill: Pill }) {
     <span
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute inset-y-0.5 left-0 -z-10 rounded-full bg-card shadow-[0_1px_3px_rgba(28,25,23,.12)]",
+        "pointer-events-none absolute inset-y-0.5 left-0 -z-10 rounded-full bg-card shadow-[0_1px_3px_rgba(28,25,23,.12)] dark:bg-white/12 dark:shadow-none",
         pill.animate &&
           "transition-[transform,width] duration-(--duration-base) ease-(--ease-out)",
       )}

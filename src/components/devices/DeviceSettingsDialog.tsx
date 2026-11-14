@@ -114,7 +114,7 @@ export function DeviceSettingsDialog({
                     "grid size-5 shrink-0 place-items-center rounded-md",
                     on
                       ? "bg-[linear-gradient(135deg,#c2410c,#be185d)] text-white"
-                      : "border-[1.5px] border-stone-300 bg-white",
+                      : "border-[1.5px] border-stone-300 bg-card",
                   )}
                 >
                   {on && <Check className="size-3" strokeWidth={3} />}

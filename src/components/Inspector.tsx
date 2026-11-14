@@ -1,33 +1,69 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FrameHandle, SelectedElement } from "@/components/PrototypeFrame";
-import { AlignCenter, AlignLeft, AlignRight, Eye, EyeOff, MousePointerClick, Save } from "lucide-react";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Eye,
+  EyeOff,
+  MousePointerClick,
+  Save,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Eyebrow } from "@/components/Eyebrow";
-import { applyEdits, describeEdits, ensureIds, px, toHex, type ElementEdit } from "@/lib/editing";
+import {
+  applyEdits,
+  describeEdits,
+  ensureIds,
+  px,
+  toHex,
+  type ElementEdit,
+} from "@/lib/editing";
 
 /** State for one visual-editing session over a prototype document. */
 export function useVisualEditor(sourceHtml: string | null | undefined) {
   const frame = useRef<FrameHandle>(null);
   const [selected, setSelected] = useState<SelectedElement | null>(null);
   const [edits, setEdits] = useState<Record<string, ElementEdit>>({});
-  const editableHtml = useMemo(() => (sourceHtml ? ensureIds(sourceHtml) : null), [sourceHtml]);
+  const editableHtml = useMemo(
+    () => (sourceHtml ? ensureIds(sourceHtml) : null),
+    [sourceHtml],
+  );
 
   const change = useCallback(
     (c: { styles?: Record<string, string>; text?: string }) => {
       if (!selected) return;
-      const key = selected.rf ? `rf:${selected.rf}` : `sel:${selected.selector}`;
+      const key = selected.rf
+        ? `rf:${selected.rf}`
+        : `sel:${selected.selector}`;
       frame.current?.apply({ rf: selected.rf, selector: selected.selector }, c);
       setEdits((prev) => {
-        const cur = prev[key] ?? { key, rf: selected.rf, selector: selected.selector, styles: {}, label: selected.label || selected.tag };
+        const cur = prev[key] ?? {
+          key,
+          rf: selected.rf,
+          selector: selected.selector,
+          styles: {},
+          label: selected.label || selected.tag,
+        };
         return {
           ...prev,
-          [key]: { ...cur, styles: { ...cur.styles, ...(c.styles ?? {}) }, ...(typeof c.text === "string" ? { text: c.text } : {}) },
+          [key]: {
+            ...cur,
+            styles: { ...cur.styles, ...(c.styles ?? {}) },
+            ...(typeof c.text === "string" ? { text: c.text } : {}),
+          },
         };
       });
     },
@@ -47,7 +83,10 @@ export function useVisualEditor(sourceHtml: string | null | undefined) {
       setSelected(null);
     },
     /** The full updated document and a version summary. */
-    result: () => (editableHtml && list.length ? { html: applyEdits(editableHtml, list), summary: describeEdits(list) } : null),
+    result: () =>
+      editableHtml && list.length
+        ? { html: applyEdits(editableHtml, list), summary: describeEdits(list) }
+        : null,
   };
 }
 
@@ -77,18 +116,29 @@ export function Inspector({
 }) {
   const s = selected?.styles ?? {};
   const hidden = s.display === "none";
-  const align = s.textAlign === "start" ? "left" : s.textAlign === "end" ? "right" : s.textAlign;
+  const align =
+    s.textAlign === "start"
+      ? "left"
+      : s.textAlign === "end"
+        ? "right"
+        : s.textAlign;
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-5 overflow-y-auto p-4">
         {!selected ? (
           <div className="flex flex-col items-center gap-2 rounded-3xl bg-glow-soft p-5 text-center">
-            <span aria-hidden="true" className="grid size-10 place-items-center rounded-2xl bg-card text-raspberry-700 shadow-xs">
+            <span
+              aria-hidden="true"
+              className="grid size-10 place-items-center rounded-2xl bg-card text-raspberry-700 shadow-xs"
+            >
               <MousePointerClick className="size-5" />
             </span>
-            <p className="text-[13px] font-semibold">Click anything in the preview</p>
+            <p className="text-[13px] font-semibold">
+              Click anything in the preview
+            </p>
             <p className="text-xs text-stone-600">
-              Change its text, colors, type, spacing and corners. Edits show instantly and save into the prototype&apos;s code as a new
+              Change its text, colors, type, spacing and corners. Edits show
+              instantly and save into the prototype&apos;s code as a new
               version.
             </p>
           </div>
@@ -97,12 +147,15 @@ export function Inspector({
             <div>
               <Eyebrow>Selected</Eyebrow>
               <p className="mt-1 truncate text-[13px]">
-                <code className="rounded-md bg-secondary px-1 text-[11px]">{selected.tag}</code>{" "}
+                <code className="rounded-md bg-secondary px-1 text-[11px]">
+                  {selected.tag}
+                </code>{" "}
                 <span className="text-stone-600">{selected.label}</span>
               </p>
               <p className="text-[11px] text-muted-foreground">
                 {selected.rect.w} × {selected.rect.h}
-                {!selected.rf && " · drawn by the prototype's script, so text edits aren't available"}
+                {!selected.rf &&
+                  " · drawn by the prototype's script, so text edits aren't available"}
               </p>
             </div>
 
@@ -120,7 +173,12 @@ export function Inspector({
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <ColorField id="insp-color" label="Text color" value={s.color} onChange={(v) => onChange({ styles: { color: v } })} />
+              <ColorField
+                id="insp-color"
+                label="Text color"
+                value={s.color}
+                onChange={(v) => onChange({ styles: { color: v } })}
+              />
               <ColorField
                 id="insp-bg"
                 label="Background"
@@ -162,11 +220,19 @@ export function Inspector({
                 type="single"
                 aria-label="Text align"
                 value={align ?? ""}
-                onValueChange={(v) => v && onChange({ styles: { textAlign: v } })}
+                onValueChange={(v) =>
+                  v && onChange({ styles: { textAlign: v } })
+                }
                 className="w-full"
               >
                 {ALIGNS.map(({ value, icon: Icon }) => (
-                  <ToggleGroupItem key={value} value={value} aria-label={`Align ${value}`} title={`Align ${value}`} className="flex-1">
+                  <ToggleGroupItem
+                    key={value}
+                    value={value}
+                    aria-label={`Align ${value}`}
+                    title={`Align ${value}`}
+                    className="flex-1"
+                  >
                     <Icon />
                   </ToggleGroupItem>
                 ))}
@@ -179,14 +245,22 @@ export function Inspector({
                 id="insp-py"
                 label="Padding Y"
                 value={px(s.paddingTop)}
-                onChange={(n) => onChange({ styles: { paddingTop: `${n}px`, paddingBottom: `${n}px` } })}
+                onChange={(n) =>
+                  onChange({
+                    styles: { paddingTop: `${n}px`, paddingBottom: `${n}px` },
+                  })
+                }
               />
               <NumberField
                 selKey={selected.selector}
                 id="insp-px"
                 label="Padding X"
                 value={px(s.paddingLeft)}
-                onChange={(n) => onChange({ styles: { paddingLeft: `${n}px`, paddingRight: `${n}px` } })}
+                onChange={(n) =>
+                  onChange({
+                    styles: { paddingLeft: `${n}px`, paddingRight: `${n}px` },
+                  })
+                }
               />
               <NumberField
                 selKey={selected.selector}
@@ -200,7 +274,9 @@ export function Inspector({
                 id="insp-mb"
                 label="Space below"
                 value={px(s.marginBottom)}
-                onChange={(n) => onChange({ styles: { marginBottom: `${n}px` } })}
+                onChange={(n) =>
+                  onChange({ styles: { marginBottom: `${n}px` } })
+                }
               />
               <NumberField
                 selKey={selected.selector}
@@ -214,11 +290,19 @@ export function Inspector({
                 id="insp-radius"
                 label="Corner radius"
                 value={px(s.borderRadius)}
-                onChange={(n) => onChange({ styles: { borderRadius: `${n}px` } })}
+                onChange={(n) =>
+                  onChange({ styles: { borderRadius: `${n}px` } })
+                }
               />
             </div>
 
-            <Button className="w-full" aria-pressed={hidden} onClick={() => onChange({ styles: { display: hidden ? "" : "none" } })}>
+            <Button
+              className="w-full"
+              aria-pressed={hidden}
+              onClick={() =>
+                onChange({ styles: { display: hidden ? "" : "none" } })
+              }
+            >
               {hidden ? <Eye /> : <EyeOff />}
               {hidden ? "Show element" : "Hide element"}
             </Button>
@@ -226,11 +310,24 @@ export function Inspector({
         )}
       </div>
       <div className="space-y-1.5 border-t border-stone-100 p-3">
-        <Button variant="default" className="w-full" disabled={!editCount} loading={saving} onClick={onSave}>
+        <Button
+          variant="default"
+          className="w-full"
+          disabled={!editCount}
+          loading={saving}
+          onClick={onSave}
+        >
           <Save />
-          {editCount ? `${saveLabel} (${editCount} change${editCount === 1 ? "" : "s"})` : "No changes yet"}
+          {editCount
+            ? `${saveLabel} (${editCount} change${editCount === 1 ? "" : "s"})`
+            : "No changes yet"}
         </Button>
-        <Button variant="ghost" className="w-full" disabled={saving} onClick={onDiscard}>
+        <Button
+          variant="ghost"
+          className="w-full"
+          disabled={saving}
+          onClick={onDiscard}
+        >
           {editCount ? "Discard changes" : "Done"}
         </Button>
       </div>
@@ -238,7 +335,15 @@ export function Inspector({
   );
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <Label htmlFor={htmlFor} className="mb-1.5">
@@ -278,13 +383,25 @@ function NumberField({
           }}
           className="pr-8 tabular-nums"
         />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">px</span>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+          px
+        </span>
       </div>
     </Field>
   );
 }
 
-function ColorField({ id, label, value, onChange }: { id: string; label: string; value?: string; onChange: (v: string) => void }) {
+function ColorField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value?: string;
+  onChange: (v: string) => void;
+}) {
   const hex = toHex(value);
   return (
     <Field label={label} htmlFor={id}>
@@ -296,7 +413,9 @@ function ColorField({ id, label, value, onChange }: { id: string; label: string;
           onChange={(e) => onChange(e.target.value)}
           className="size-7 cursor-pointer rounded-full border-0 bg-transparent p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-stone-200 [&::-webkit-color-swatch-wrapper]:p-0.5"
         />
-        <span className="truncate font-mono text-[11px] text-stone-600">{hex ?? "none"}</span>
+        <span className="truncate font-mono text-[11px] text-stone-600">
+          {hex ?? "none"}
+        </span>
       </div>
     </Field>
   );

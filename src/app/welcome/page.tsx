@@ -61,7 +61,7 @@ export default async function WelcomePage({
       <Logo />
       <form
         action={saveProfile}
-        className="w-full max-w-sm space-y-4 rounded-[1.75rem] border border-stone-200/80 bg-white p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
+        className="w-full max-w-sm space-y-4 rounded-[1.75rem] border border-stone-200/80 bg-card p-6 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
       >
         <div>
           <h1 className="font-display text-xl font-bold tracking-tight">

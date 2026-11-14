@@ -667,7 +667,7 @@ export function Studio(props: {
                     key={s}
                     type="button"
                     onClick={() => setPrompt(s)}
-                    className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-white p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
+                    className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
                   >
                     <Sparkles
                       className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
@@ -737,7 +737,7 @@ export function Studio(props: {
                 ? `Describe a change to v${selected?.number ?? ""}`
                 : "Describe your prototype"}
             </label>
-            <div className="rounded-3xl border border-stone-200 bg-white p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+            <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
               <textarea
                 id="prompt"
                 rows={3}
@@ -901,7 +901,7 @@ export function Studio(props: {
             }
           />
         ) : (
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4">
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
             <div className="mb-3 flex items-center gap-2">
               {selected && (
                 <Badge>
@@ -952,7 +952,7 @@ export function Studio(props: {
               className={cn(
                 "flex min-h-0 w-full flex-1 flex-col",
                 !hasPreview &&
-                  "overflow-hidden rounded-3xl border border-stone-200 bg-white",
+                  "overflow-hidden rounded-3xl border border-stone-200 bg-card",
                 presenting && hasPreview && PRESENT_FRAME_CLASS,
               )}
             >
@@ -1414,7 +1414,7 @@ function SharePanel({
           <label htmlFor="slug" className="sr-only">
             Subdomain
           </label>
-          <div className="flex min-w-0 flex-1 items-center rounded-full border border-stone-200 bg-white pr-3 focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+          <div className="flex min-w-0 flex-1 items-center rounded-full border border-stone-200 bg-card pr-3 focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
             <input
               id="slug"
               value={address}
@@ -1674,7 +1674,7 @@ function VariantCompare({
 }) {
   const anyBusy = busyKey !== null;
   return (
-    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/40 p-4">
+    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -1707,7 +1707,7 @@ function VariantCompare({
           <section
             key={v.id}
             aria-label={`Variant ${v.position}`}
-            className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
+            className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-card shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
           >
             <div className="flex items-start gap-3 border-b border-stone-100 p-3">
               <div className="min-w-0 flex-1">

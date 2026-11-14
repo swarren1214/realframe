@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --color-ember-50: #fff7ed;
@@ -74,6 +74,193 @@
   --radius-xl: calc(var(--radius) + 6px);
 }
 
+/*
+ * Dark mode. Rather than a dark: variant on every class, the palettes the app uses flip their
+ * lightness (50 ↔ 950, 100 ↔ 900, …), so text-stone-600 stays readable and bg-stone-50 stays
+ * a quiet inset on a dark page. Brand gradients written as hex keep their colors.
+ * .rf-light-palette restores the light palette inside it, for things that look the same in
+ * both modes: the build log terminal, device bezels, controls over a prototype, brand panels.
+ */
+.dark {
+  color-scheme: dark;
+  --background: #0f0e0d;
+  --foreground: #f5f5f4;
+  --card: #1c1a18;
+  --card-foreground: #f5f5f4;
+  --popover: #221f1d;
+  --popover-foreground: #f5f5f4;
+  --primary: #db2777;
+  --primary-foreground: #ffffff;
+  --secondary: #2a2724;
+  --secondary-foreground: #e7e5e4;
+  --muted: #2a2724;
+  --muted-foreground: #a8a29e;
+  --accent: #3d1128;
+  --accent-foreground: #fbcfe8;
+  --destructive: #f87171;
+  --border: #33302d;
+  --input: #3d3935;
+  --ring: #f472b6;
+  --color-red-50: oklch(25.8% 0.092 26.042);
+  --color-red-100: oklch(39.6% 0.141 25.723);
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(70.4% 0.191 22.216);
+  --color-red-700: oklch(80.8% 0.114 19.571);
+  --color-red-800: oklch(88.5% 0.062 18.334);
+  --color-red-900: oklch(93.6% 0.032 17.717);
+  --color-red-950: oklch(97.1% 0.013 17.38);
+  --color-amber-50: oklch(27.9% 0.077 45.635);
+  --color-amber-100: oklch(41.4% 0.112 45.904);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-400: oklch(66.6% 0.179 58.318);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-600: oklch(82.8% 0.189 84.429);
+  --color-amber-700: oklch(87.9% 0.169 91.605);
+  --color-amber-800: oklch(92.4% 0.12 95.746);
+  --color-amber-900: oklch(96.2% 0.059 95.617);
+  --color-amber-950: oklch(98.7% 0.022 95.277);
+  --color-emerald-50: oklch(26.2% 0.051 172.552);
+  --color-emerald-100: oklch(37.8% 0.077 168.94);
+  --color-emerald-200: oklch(43.2% 0.095 166.913);
+  --color-emerald-300: oklch(50.8% 0.118 165.612);
+  --color-emerald-400: oklch(59.6% 0.145 163.225);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(76.5% 0.177 163.223);
+  --color-emerald-700: oklch(84.5% 0.143 164.978);
+  --color-emerald-800: oklch(90.5% 0.093 164.15);
+  --color-emerald-900: oklch(95% 0.052 163.051);
+  --color-emerald-950: oklch(97.9% 0.021 166.113);
+  --color-blue-50: oklch(28.2% 0.091 267.935);
+  --color-blue-100: oklch(37.9% 0.146 265.522);
+  --color-blue-200: oklch(42.4% 0.199 265.638);
+  --color-blue-300: oklch(48.8% 0.243 264.376);
+  --color-blue-400: oklch(54.6% 0.245 262.881);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-blue-600: oklch(70.7% 0.165 254.624);
+  --color-blue-700: oklch(80.9% 0.105 251.813);
+  --color-blue-800: oklch(88.2% 0.059 254.128);
+  --color-blue-900: oklch(93.2% 0.032 255.585);
+  --color-blue-950: oklch(97% 0.014 254.604);
+  --color-violet-50: oklch(28.3% 0.141 291.089);
+  --color-violet-100: oklch(38% 0.189 293.745);
+  --color-violet-200: oklch(43.2% 0.232 292.759);
+  --color-violet-300: oklch(49.1% 0.27 292.581);
+  --color-violet-400: oklch(54.1% 0.281 293.009);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+  --color-violet-600: oklch(70.2% 0.183 293.541);
+  --color-violet-700: oklch(81.1% 0.111 293.571);
+  --color-violet-800: oklch(89.4% 0.057 293.283);
+  --color-violet-900: oklch(94.3% 0.029 294.588);
+  --color-violet-950: oklch(96.9% 0.016 293.756);
+  --color-stone-50: oklch(14.7% 0.004 49.25);
+  --color-stone-100: oklch(21.6% 0.006 56.043);
+  --color-stone-200: oklch(26.8% 0.007 34.298);
+  --color-stone-300: oklch(37.4% 0.01 67.558);
+  --color-stone-400: oklch(44.4% 0.011 73.639);
+  --color-stone-500: oklch(70.9% 0.01 56.259);
+  --color-stone-600: oklch(70.9% 0.01 56.259);
+  --color-stone-700: oklch(86.9% 0.005 56.366);
+  --color-stone-800: oklch(92.3% 0.003 48.717);
+  --color-stone-900: oklch(97% 0.001 106.424);
+  --color-stone-950: oklch(98.5% 0.001 106.423);
+  --color-ember-50: #2b1408;
+  --color-ember-100: #3b1b0b;
+  --color-ember-200: #5c2a11;
+  --color-ember-600: #fb923c;
+  --color-ember-700: #fdba74;
+  --color-ember-800: #fed7aa;
+  --color-raspberry-50: #2a0c1b;
+  --color-raspberry-100: #3d1128;
+  --color-raspberry-200: #5e1b3f;
+  --color-raspberry-600: #f472b6;
+  --color-raspberry-700: #f9a8d4;
+  --color-raspberry-800: #fbcfe8;
+}
+.dark .rf-light-palette {
+  --color-red-50: oklch(97.1% 0.013 17.38);
+  --color-red-100: oklch(93.6% 0.032 17.717);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(57.7% 0.245 27.325);
+  --color-red-700: oklch(50.5% 0.213 27.518);
+  --color-red-800: oklch(44.4% 0.177 26.899);
+  --color-red-900: oklch(39.6% 0.141 25.723);
+  --color-red-950: oklch(25.8% 0.092 26.042);
+  --color-amber-50: oklch(98.7% 0.022 95.277);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-600: oklch(66.6% 0.179 58.318);
+  --color-amber-700: oklch(55.5% 0.163 48.998);
+  --color-amber-800: oklch(47.3% 0.137 46.201);
+  --color-amber-900: oklch(41.4% 0.112 45.904);
+  --color-amber-950: oklch(27.9% 0.077 45.635);
+  --color-emerald-50: oklch(97.9% 0.021 166.113);
+  --color-emerald-100: oklch(95% 0.052 163.051);
+  --color-emerald-200: oklch(90.5% 0.093 164.15);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(59.6% 0.145 163.225);
+  --color-emerald-700: oklch(50.8% 0.118 165.612);
+  --color-emerald-800: oklch(43.2% 0.095 166.913);
+  --color-emerald-900: oklch(37.8% 0.077 168.94);
+  --color-emerald-950: oklch(26.2% 0.051 172.552);
+  --color-blue-50: oklch(97% 0.014 254.604);
+  --color-blue-100: oklch(93.2% 0.032 255.585);
+  --color-blue-200: oklch(88.2% 0.059 254.128);
+  --color-blue-300: oklch(80.9% 0.105 251.813);
+  --color-blue-400: oklch(70.7% 0.165 254.624);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-blue-600: oklch(54.6% 0.245 262.881);
+  --color-blue-700: oklch(48.8% 0.243 264.376);
+  --color-blue-800: oklch(42.4% 0.199 265.638);
+  --color-blue-900: oklch(37.9% 0.146 265.522);
+  --color-blue-950: oklch(28.2% 0.091 267.935);
+  --color-violet-50: oklch(96.9% 0.016 293.756);
+  --color-violet-100: oklch(94.3% 0.029 294.588);
+  --color-violet-200: oklch(89.4% 0.057 293.283);
+  --color-violet-300: oklch(81.1% 0.111 293.571);
+  --color-violet-400: oklch(70.2% 0.183 293.541);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+  --color-violet-600: oklch(54.1% 0.281 293.009);
+  --color-violet-700: oklch(49.1% 0.27 292.581);
+  --color-violet-800: oklch(43.2% 0.232 292.759);
+  --color-violet-900: oklch(38% 0.189 293.745);
+  --color-violet-950: oklch(28.3% 0.141 291.089);
+  --color-stone-50: oklch(98.5% 0.001 106.423);
+  --color-stone-100: oklch(97% 0.001 106.424);
+  --color-stone-200: oklch(92.3% 0.003 48.717);
+  --color-stone-300: oklch(86.9% 0.005 56.366);
+  --color-stone-400: oklch(70.9% 0.01 56.259);
+  --color-stone-500: oklch(55.3% 0.013 58.071);
+  --color-stone-600: oklch(44.4% 0.011 73.639);
+  --color-stone-700: oklch(37.4% 0.01 67.558);
+  --color-stone-800: oklch(26.8% 0.007 34.298);
+  --color-stone-900: oklch(21.6% 0.006 56.043);
+  --color-stone-950: oklch(14.7% 0.004 49.25);
+  --color-ember-50: #fff7ed;
+  --color-ember-100: #ffedd5;
+  --color-ember-200: #fed7aa;
+  --color-ember-600: #ea580c;
+  --color-ember-700: #c2410c;
+  --color-ember-800: #9a3412;
+  --color-raspberry-50: #fdf2f8;
+  --color-raspberry-100: #fce7f3;
+  --color-raspberry-200: #fbcfe8;
+  --color-raspberry-600: #db2777;
+  --color-raspberry-700: #be185d;
+  --color-raspberry-800: #9d174d;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -89,6 +276,15 @@ body {
     radial-gradient(800px 520px at 100% 0%, #fce7f3 0%, rgb(252 231 243 / 0) 60%),
     radial-gradient(900px 600px at 60% 120%, #ede9fe 0%, rgb(237 233 254 / 0) 65%);
   background-attachment: fixed;
+}
+.dark,
+.dark body {
+  color: #f5f5f4;
+  background-color: #0f0e0d;
+  background-image:
+    radial-gradient(900px 520px at 0% -10%, rgb(194 65 12 / 0.16) 0%, rgb(194 65 12 / 0) 65%),
+    radial-gradient(800px 520px at 100% 0%, rgb(190 24 93 / 0.16) 0%, rgb(190 24 93 / 0) 60%),
+    radial-gradient(900px 600px at 60% 120%, rgb(124 58 237 / 0.14) 0%, rgb(124 58 237 / 0) 65%);
 }
 
 /* Primary action: ember → raspberry, with a colored glow. */
@@ -106,6 +302,9 @@ body {
 /* Soft gradient fill for selected states and callouts. */
 @utility bg-glow-soft {
   background-image: linear-gradient(135deg, #fff7ed 0%, #fdf2f8 60%, #f5f3ff 100%);
+  .dark & {
+    background-image: linear-gradient(135deg, rgb(194 65 12 / 0.16) 0%, rgb(190 24 93 / 0.18) 60%, rgb(124 58 237 / 0.16) 100%);
+  }
 }
 
 /* Floating translucent surface: headers, side panels. */
@@ -114,13 +313,18 @@ body {
   border: 1px solid rgb(231 229 228 / 0.9);
   box-shadow: 0 20px 48px -28px rgb(28 25 23 / 0.3);
   backdrop-filter: blur(16px);
+  .dark & {
+    background-color: rgb(28 26 24 / 0.82);
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow: 0 20px 48px -28px rgb(0 0 0 / 0.7);
+  }
 }
 
 /* Keyboard focus ring for links and buttons that don't draw their own. Text fields are left out:
    browsers treat every click into a field as focus-visible, and fields show their own soft ring. */
 @layer base {
   :where(a, button, [tabindex]:not(input, textarea, select)):focus-visible {
-    outline: 2px solid #be185d;
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
   :where(input, textarea, select):focus-visible {
@@ -174,6 +378,12 @@ body {
 html:has(.rf-present-frame) {
   overflow: hidden;
   background: #000;
+}
+
+/* Switching theme swaps colors at once instead of animating every transition. */
+.rf-theme-switching,
+.rf-theme-switching * {
+  transition: none !important;
 }
 
 /* Reduce motion: slides and scales become plain fades, loops stop. */
