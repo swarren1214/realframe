@@ -3,6 +3,7 @@ import { action } from "@/lib/safe-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import * as projects from "@/lib/services/projects";
 import { makeSlug } from "@/lib/slug";
 import { isReservedSlug } from "@/lib/hosts";
 import { readSettings, type DeviceSettings } from "@/lib/devices";
@@ -66,93 +67,40 @@ export async function createProject(formData: FormData) {
   redirect(`/projects/${data.id}`);
 }
 
-export const publishVersion = action(
-  async (projectId: string, versionId: string) => {
-    const { supabase } = await requireUser();
-    const { error } = await supabase
-      .from("projects")
-      .update({
-        published: true,
-        live_version_id: versionId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", projectId);
-    if (error) throw new Error(error.message);
-    revalidatePath(`/projects/${projectId}`);
-  },
-);
+export const publishVersion = action(async (projectId: string, versionId: string) => {
+  const { supabase } = await requireUser();
+  await projects.publishVersion(supabase, projectId, versionId);
+  revalidatePath(`/projects/${projectId}`);
+});
 
 export const unpublish = action(async (projectId: string) => {
   const { supabase } = await requireUser();
-  const { error } = await supabase
-    .from("projects")
-    .update({ published: false })
-    .eq("id", projectId);
-  if (error) throw new Error(error.message);
+  await projects.unpublish(supabase, projectId);
   revalidatePath(`/projects/${projectId}`);
 });
 
-export const setAccessMode = action(
-  async (projectId: string, mode: "invite" | "public" | "password") => {
-    const { supabase } = await requireUser();
-    if (mode === "password") {
-      const { data } = await supabase
-        .from("projects")
-        .select("has_password")
-        .eq("id", projectId)
-        .single();
-      if (!data?.has_password) throw new Error("Set a password first.");
-    }
-    const { error } = await supabase
-      .from("projects")
-      .update({ access_mode: mode })
-      .eq("id", projectId);
-    if (error) throw new Error(error.message);
-    revalidatePath(`/projects/${projectId}`);
-  },
-);
+export const setAccessMode = action(async (projectId: string, mode: "invite" | "public" | "password") => {
+  const { supabase } = await requireUser();
+  await projects.setAccessMode(supabase, projectId, mode);
+  revalidatePath(`/projects/${projectId}`);
+});
 
 export const renameProject = action(async (projectId: string, name: string) => {
   const { supabase } = await requireUser();
-  const clean = name.trim().slice(0, 80);
-  if (!clean) return;
-  const { error } = await supabase
-    .from("projects")
-    .update({ name: clean })
-    .eq("id", projectId);
-  if (error) throw new Error(error.message);
+  if (!name.trim()) return;
+  await projects.renameProject(supabase, projectId, name);
   revalidatePath(`/projects/${projectId}`);
 });
 
-export const inviteMember = action(
-  async (
-    projectId: string,
-    email: string,
-    role: "viewer" | "commenter" | "editor",
-  ) => {
-    const { supabase, user } = await requireUser();
-    const clean = email.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean))
-      throw new Error("Enter a valid email address.");
-    const { error } = await supabase
-      .from("project_members")
-      .upsert(
-        { project_id: projectId, email: clean, role, invited_by: user.id },
-        { onConflict: "project_id,email" },
-      );
-    if (error) throw new Error(error.message);
-    revalidatePath(`/projects/${projectId}`);
-  },
-);
+export const inviteMember = action(async (projectId: string, email: string, role: "viewer" | "commenter" | "editor") => {
+  const { supabase, user } = await requireUser();
+  await projects.inviteMember(supabase, user.id, projectId, email, role);
+  revalidatePath(`/projects/${projectId}`);
+});
 
 export const removeMember = action(async (projectId: string, email: string) => {
   const { supabase } = await requireUser();
-  const { error } = await supabase
-    .from("project_members")
-    .delete()
-    .eq("project_id", projectId)
-    .eq("email", email);
-  if (error) throw new Error(error.message);
+  await projects.removeMember(supabase, projectId, email);
   revalidatePath(`/projects/${projectId}`);
 });
 
