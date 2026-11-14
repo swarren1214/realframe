@@ -24,8 +24,11 @@ const RESERVED = new Set([
   "realframe",
 ]);
 
+/** Imported apps live at app-<version id>-<signature>.<root>; see src/lib/content.ts. */
+export const CONTENT_LABEL = /^app-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-([0-9a-f]{16})$/;
+
 export function isReservedSlug(slug: string) {
-  return RESERVED.has(slug);
+  return RESERVED.has(slug) || CONTENT_LABEL.test(slug);
 }
 
 /** The prototype slug when the host is a prototype subdomain, else null. */
@@ -33,7 +36,7 @@ export function subdomainSlug(host: string | null | undefined) {
   const h = (host ?? "").toLowerCase().split(":")[0];
   if (!h.endsWith(`.${ROOT_DOMAIN}`)) return null;
   const sub = h.slice(0, -(ROOT_DOMAIN.length + 1));
-  if (!sub || sub.includes(".") || RESERVED.has(sub) || !/^[a-z0-9-]{3,60}$/.test(sub)) return null;
+  if (!sub || sub.includes(".") || isReservedSlug(sub) || !/^[a-z0-9-]{3,60}$/.test(sub)) return null;
   return sub;
 }
 
@@ -50,10 +53,14 @@ export function reviewUrlFor(slug: string, currentHost: string) {
   return `${h.startsWith("localhost") ? "http" : "https"}://${currentHost}/p/${slug}`;
 }
 
-/** Imported apps are served from this separate domain (see src/lib/content.ts). */
-export const CONTENT_ROOT_DOMAIN = process.env.CONTENT_ROOT_DOMAIN || "realframeusercontent.com";
+/** The app-… label when `host` is an imported app's host (signature not yet checked), else null. */
+export function contentLabel(host: string | null | undefined) {
+  const h = (host ?? "").toLowerCase().split(":")[0];
+  if (!h.endsWith(`.${ROOT_DOMAIN}`)) return null;
+  const label = h.slice(0, -(ROOT_DOMAIN.length + 1));
+  return CONTENT_LABEL.test(label) ? label : null;
+}
 
 export function isContentHost(host: string | null | undefined) {
-  const h = (host ?? "").toLowerCase().split(":")[0];
-  return h.endsWith(`.${CONTENT_ROOT_DOMAIN}`);
+  return contentLabel(host) !== null;
 }

@@ -85,8 +85,37 @@ export const AGENT_SCRIPT = `(function(){
   if (document.readyState === 'complete') ready(); else window.addEventListener('load', ready);
 })();`;
 
+// Prototypes run with an opaque origin, where touching localStorage, sessionStorage or
+// document.cookie throws. Many apps do that on load, so swap in in-memory stand-ins first:
+// the app works, and anything it saves lasts until the page reloads.
+export const STORAGE_SHIM = `(function(){
+  function mem(){ var d = {}; return {
+    getItem: function(k){ k = String(k); return Object.prototype.hasOwnProperty.call(d, k) ? d[k] : null; },
+    setItem: function(k, v){ d[String(k)] = String(v); },
+    removeItem: function(k){ delete d[String(k)]; },
+    clear: function(){ d = {}; },
+    key: function(i){ return Object.keys(d)[i] || null; },
+    get length(){ return Object.keys(d).length; } }; }
+  ['localStorage', 'sessionStorage'].forEach(function(n){
+    try { window[n].getItem('rf'); } catch (e) {
+      try { Object.defineProperty(window, n, { value: mem(), configurable: true }); } catch (_) {} } });
+  try { void document.cookie; } catch (e) {
+    try { var jar = ''; Object.defineProperty(document, 'cookie', { configurable: true,
+      get: function(){ return jar; }, set: function(v){ var c = String(v).split(';')[0]; jar = jar ? jar + '; ' + c : c; } }); } catch (_) {} }
+})();`;
+
 export function withAgent(html: string) {
   const tag = `<script>${AGENT_SCRIPT}</script>`;
   const at = html.toLowerCase().lastIndexOf("</body>");
-  return at >= 0 ? html.slice(0, at) + tag + html.slice(at) : html + tag;
+  let out = at >= 0 ? html.slice(0, at) + tag + html.slice(at) : html + tag;
+  // The stand-in must run before the app's own scripts: first thing in <head>.
+  const shim = `<script>${STORAGE_SHIM}</script>`;
+  const head = /<head(\s[^>]*)?>/i.exec(out);
+  if (head) {
+    const end = head.index + head[0].length;
+    out = out.slice(0, end) + shim + out.slice(end);
+  } else {
+    out = shim + out;
+  }
+  return out;
 }

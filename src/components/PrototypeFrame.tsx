@@ -98,17 +98,15 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(function PrototypeF
     sync();
   }, [commentMode, pins, editMode, route]);
 
-  // Generated prototypes get an opaque origin. Imported apps run on their own content-domain
-  // origin (a different site from Realframe), so they may keep same-origin for storage and routing.
+  // Every prototype runs with an opaque origin (no allow-same-origin), so its code can't reach
+  // Realframe's cookies or storage. Imported apps load by URL from their own subdomain.
   return (
     <iframe
       ref={ref}
       title={title}
       {...(src ? { src } : { srcDoc })}
       sandbox={
-        src
-          ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
-          : "allow-scripts allow-forms allow-popups allow-modals"
+        src ? "allow-scripts allow-forms allow-popups allow-modals allow-downloads" : "allow-scripts allow-forms allow-popups allow-modals"
       }
       allow="fullscreen; clipboard-write"
       className={`h-full w-full border-0 bg-white ${className}`}

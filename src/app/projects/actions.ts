@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { makeSlug } from "@/lib/slug";
+import { isReservedSlug } from "@/lib/hosts";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -221,7 +222,7 @@ export async function updateSlug(projectId: string, raw: string) {
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
   if (slug.length < 3 || slug.length > 60) throw new Error("Use 3 to 60 letters, numbers or dashes.");
-  if (RESERVED_SLUGS.has(slug)) throw new Error("That address is reserved. Try another.");
+  if (RESERVED_SLUGS.has(slug) || isReservedSlug(slug)) throw new Error("That address is reserved. Try another.");
   const { error } = await supabase.from("projects").update({ slug }).eq("id", projectId);
   if (error) throw new Error(error.code === "23505" ? "That address is taken. Try another." : error.message);
   revalidatePath(`/projects/${projectId}`);

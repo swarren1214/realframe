@@ -40,8 +40,13 @@ const TYPES: Record<string, string> = {
 
 const ext = (p: string) => p.split("/").pop()!.split(".").slice(1).pop()?.toLowerCase() ?? "";
 
-function frameAncestors() {
-  return `frame-ancestors https://${ROOT_DOMAIN} https://*.${ROOT_DOMAIN} http://localhost:3000`;
+// `sandbox` gives every page an opaque origin, even opened directly in a tab, so the app's
+// scripts can never read Realframe's .realframe.app cookies. No allow-same-origin, ever.
+function policy() {
+  return [
+    "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads",
+    `frame-ancestors https://${ROOT_DOMAIN} https://*.${ROOT_DOMAIN} http://localhost:3000`,
+  ].join("; ");
 }
 
 function notFound(message = "Not found") {
@@ -81,14 +86,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const type = TYPES[ext(rel)] ?? "application/octet-stream";
   const headers: Record<string, string> = {
     "content-type": type,
-    "content-security-policy": frameAncestors(),
+    "content-security-policy": policy(),
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     "access-control-allow-origin": "*",
   };
 
   if (type.startsWith("text/html")) {
-    // Inject the Realframe agent (comment pins, routes, presence) into every page.
+    // Inject the Realframe agent (comment pins, routes, presence) and the storage stand-in.
     const html = withAgent(await file.text());
     return new NextResponse(html, { headers: { ...headers, "cache-control": "private, max-age=300" } });
   }
