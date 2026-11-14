@@ -13,6 +13,9 @@ Output rules:
 - The page runs in a sandboxed iframe: do not use localStorage, sessionStorage, cookies, alert() or window.top.
 - Use accessible markup (real buttons, labels, alt text), good contrast, and a responsive layout that works from 390px wide.
 - Aim for polished, modern, credible product UI. No lorem ipsum.
+- Keep the document compact so it always finishes: define mock data once in small JS arrays and render lists, cards,
+  rows and repeated screens from it with functions, rather than writing out every item by hand. Prefer a handful of
+  rich, working screens over many shallow ones, and keep comments to a minimum.
 
 When you are given an existing document, apply the requested change and return the FULL updated document,
 keeping everything that was not asked to change. Elements may carry data-rf="…" attributes and the head may contain a
@@ -31,10 +34,22 @@ export type GenerateInput = {
   /** Project-level direction appended to the system prompt: target devices, design system. */
   context?: string;
   currentHtml: string | null;
+  /** Seconds the caller can wait; continuations stop well inside it. */
+  timeBudgetSeconds?: number;
   history: { role: "user" | "assistant"; content: string }[];
 };
 
 export type GenerateResult = { html: string; summary: string };
+
+/** A failed build, with the tokens it used so the cause can be traced. */
+export class GenerationError extends Error {
+  constructor(
+    message: string,
+    readonly usage: { input: number; output: number },
+  ) {
+    super(message);
+  }
+}
 
 export function parseResponse(text: string): GenerateResult {
   const summary =
@@ -86,23 +101,56 @@ export async function generatePrototype(
     ? `${request}\n\nDesign direction for this variant: ${input.variantHint}`
     : request;
 
-  const stream = client.messages.stream({
-    model,
-    max_tokens: 32000,
-    system: input.context
-      ? `${SYSTEM_PROMPT}\n\nAbout this project:\n${input.context}`
-      : SYSTEM_PROMPT,
-    messages: [...history, { role: "user", content: directed }],
-  });
-  const message = await stream.finalMessage();
-  const text = message.content
-    .map((block) => (block.type === "text" ? block.text : ""))
-    .join("");
-  return {
-    ...parseResponse(text),
-    usage: {
-      input: message.usage?.input_tokens ?? null,
-      output: message.usage?.output_tokens ?? null,
-    },
-  };
+  const system = input.context
+    ? `${SYSTEM_PROMPT}\n\nAbout this project:\n${input.context}`
+    : SYSTEM_PROMPT;
+  const first = { role: "user" as const, content: directed };
+  const started = Date.now();
+  let text = "";
+  let inTokens = 0;
+  let outTokens = 0;
+  // A long prototype can run past the output limit. When it does, ask the
+  // model to carry on from where it stopped, while there's time left.
+  for (let round = 0; round < 3; round++) {
+    const messages =
+      round === 0
+        ? [...history, first]
+        : [
+            ...history,
+            first,
+            { role: "assistant" as const, content: text },
+            {
+              role: "user" as const,
+              content:
+                "Your reply was cut off by the length limit. Continue exactly where it stopped, starting with the very next character. Don't repeat anything or add commentary, and finish with </document>.",
+            },
+          ];
+    const message = await client.messages
+      .stream({ model, max_tokens: 32000, system, messages })
+      .finalMessage();
+    inTokens += message.usage?.input_tokens ?? 0;
+    outTokens += message.usage?.output_tokens ?? 0;
+    text += message.content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("");
+    if (message.stop_reason !== "max_tokens") break;
+    const elapsed = (Date.now() - started) / 1000;
+    if (round === 2 || elapsed > (input.timeBudgetSeconds ?? 280) * 0.55) {
+      throw new GenerationError(
+        "The prototype was too big to finish in one build. Try asking for fewer screens first, then add more in follow-up prompts.",
+        { input: inTokens, output: outTokens },
+      );
+    }
+  }
+  try {
+    return {
+      ...parseResponse(text),
+      usage: { input: inTokens, output: outTokens },
+    };
+  } catch (e) {
+    throw new GenerationError((e as Error).message, {
+      input: inTokens,
+      output: outTokens,
+    });
+  }
 }

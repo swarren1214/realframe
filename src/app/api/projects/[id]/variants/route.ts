@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype } from "@/lib/ai";
 import {
   IMPORTED_APP_MESSAGE,
   finishBuild,
@@ -123,7 +123,12 @@ export async function POST(
         created_by: user.id,
       });
     } else {
-      await finishBuild(claims[i], { ok: false });
+      const err = r.reason;
+      await finishBuild(claims[i], {
+        ok: false,
+        error: err instanceof Error ? err.message : "Generation failed.",
+        ...(err instanceof GenerationError ? err.usage : {}),
+      });
     }
   }
 

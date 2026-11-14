@@ -44,17 +44,31 @@ export function limitResponse(message: string | undefined) {
 export async function finishBuild(
   claimId: string,
   outcome:
-    { ok: true; input: number | null; output: number | null } | { ok: false },
+    | { ok: true; input: number | null; output: number | null }
+    | {
+        ok: false;
+        error?: string;
+        input?: number | null;
+        output?: number | null;
+      },
 ) {
   try {
     const { error } = await createAdminClient().rpc("finish_generation", {
       p_id: claimId,
       p_status: outcome.ok ? "succeeded" : "failed",
-      p_input_tokens: outcome.ok ? outcome.input : null,
-      p_output_tokens: outcome.ok ? outcome.output : null,
+      p_input_tokens: outcome.input ?? null,
+      p_output_tokens: outcome.output ?? null,
       p_cost_micros: outcome.ok ? costMicros(outcome.input, outcome.output) : 0,
     });
     if (error) console.error("finish_generation", error.message);
+    if (!outcome.ok) {
+      console.error("build failed", claimId, outcome.error, outcome.output);
+      if (outcome.error)
+        await createAdminClient()
+          .from("generations")
+          .update({ error: outcome.error.slice(0, 500) })
+          .eq("id", claimId);
+    }
   } catch (e) {
     console.error("finish_generation", e);
   }

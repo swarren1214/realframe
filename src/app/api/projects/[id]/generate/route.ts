@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype } from "@/lib/ai";
 import {
   IMPORTED_APP_MESSAGE,
   finishBuild,
@@ -69,6 +69,7 @@ export async function POST(
       context,
       currentHtml: current?.html ?? null,
       history,
+      timeBudgetSeconds: maxDuration,
     });
     const { data: version, error } = await supabase.rpc("create_version", {
       p_project: id,
@@ -105,7 +106,11 @@ export async function POST(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed.";
-    await finishBuild(claimId as string, { ok: false });
+    await finishBuild(claimId as string, {
+      ok: false,
+      error: message,
+      ...(err instanceof GenerationError ? err.usage : {}),
+    });
     await supabase.from("messages").insert({
       project_id: id,
       role: "assistant",
