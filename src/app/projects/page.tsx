@@ -1,5 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { after } from "next/server";
+import { requestThumbnails, thumbnailsFor } from "@/lib/thumbnails";
+import { ProjectThumb, ThumbRefresher } from "@/components/ProjectThumb";
+import { defaultDevice, readSettings } from "@/lib/devices";
 import { Clock, FolderOpen, Plus, Upload, Users } from "lucide-react";
 import { ImportDialog } from "@/components/ImportDialog";
 import { createClient } from "@/lib/supabase/server";
@@ -31,7 +36,9 @@ export default async function ProjectsPage() {
   const [{ data: projects }, { teams, current }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, slug, owner_id, team_id, published, updated_at")
+      .select(
+        "id, name, slug, owner_id, team_id, published, updated_at, devices, thumbnail_path, thumbnail_version_id, thumbnail_requested_at",
+      )
       .order("updated_at", { ascending: false }),
     loadTeams(supabase, user.id),
   ]);
@@ -50,6 +57,16 @@ export default async function ProjectsPage() {
     colors: swatches(d.tokens as Tokens, 3),
     isDefault: Boolean(d.is_default),
   }));
+
+  // Screenshots of each prototype's latest version; ones behind are refreshed after the response.
+  const thumbs = await thumbnailsFor(supabase, projects ?? []);
+  if (thumbs.stale.length) {
+    const h = await headers();
+    const host =
+      h.get("x-forwarded-host") ?? h.get("host") ?? "www.realframe.app";
+    const origin = `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+    after(() => requestThumbnails(thumbs.stale, origin));
+  }
 
   // The current team's prototypes; others' prototypes you were invited to individually.
   const myTeams = new Set(teams.map((t) => t.id));
@@ -109,6 +126,7 @@ export default async function ProjectsPage() {
             current && !current.personal ? "Team prototypes" : "Created by you"
           }
           items={inTeam}
+          thumbs={thumbs}
           empty={
             current && !current.personal
               ? "No team prototypes yet. Name one above to start one everyone on the team can open."
@@ -116,9 +134,15 @@ export default async function ProjectsPage() {
           }
         />
         {shared.length > 0 && (
-          <ProjectList title="Shared with you" items={shared} shared />
+          <ProjectList
+            title="Shared with you"
+            items={shared}
+            thumbs={thumbs}
+            shared
+          />
         )}
       </main>
+      <ThumbRefresher pending={thumbs.pending.length} />
     </div>
   );
 }
@@ -128,14 +152,17 @@ function ProjectList({
   items,
   empty,
   shared,
+  thumbs,
 }: {
   title: string;
+  thumbs: { urls: Record<string, string>; pending: string[] };
   items: {
     id: string;
     name: string;
     slug: string;
     published: boolean;
     updated_at: string;
+    devices?: unknown;
   }[];
   empty?: string;
   shared?: boolean;
@@ -156,9 +183,11 @@ function ProjectList({
                 href={shared ? `/p/${p.slug}` : `/projects/${p.id}`}
                 className="group block rounded-3xl border border-stone-200/80 bg-card p-4 no-underline shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)] transition-[transform,box-shadow,border-color] hover:-translate-y-0.5 hover:border-raspberry-200 hover:shadow-[0_20px_40px_-24px_rgba(190,24,93,.4)]"
               >
-                <div
-                  aria-hidden="true"
-                  className="mb-3 h-20 rounded-2xl bg-gradient-to-br from-ember-100 via-raspberry-100 to-violet-100"
+                <ProjectThumb
+                  src={thumbs.urls[p.id]}
+                  name={p.name}
+                  portrait={isPortrait(p.devices)}
+                  capturing={thumbs.pending.includes(p.id)}
                 />
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-semibold text-stone-900">
@@ -192,4 +221,11 @@ function ProjectList({
       )}
     </section>
   );
+}
+
+/** Phone and tablet prototypes are shot upright, so their card shows a device frame. */
+function isPortrait(devices: unknown) {
+  const settings = readSettings(devices);
+  const d = defaultDevice(settings);
+  return d.kind !== "desktop" && settings.orientation !== "landscape";
 }
