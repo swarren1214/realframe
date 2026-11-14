@@ -139,3 +139,19 @@ export async function discardVariants(projectId: string, groupId: string) {
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
 }
+
+export async function saveVisualEdit(projectId: string, html: string, summary: string) {
+  const { supabase } = await requireUser();
+  if (!/<html[\s>]/i.test(html) || html.length > 2_000_000) throw new Error("That document doesn't look right.");
+  const { data: version, error } = await supabase.rpc("create_version", {
+    p_project: projectId,
+    p_html: html,
+    p_prompt: null,
+    p_summary: summary.slice(0, 300),
+    p_source: "edit",
+  });
+  if (error || !version) throw new Error(error?.message ?? "Couldn't save the edit.");
+  revalidatePath(`/projects/${projectId}`);
+  const v = version as { id: string; number: number };
+  return { versionId: v.id, number: v.number };
+}

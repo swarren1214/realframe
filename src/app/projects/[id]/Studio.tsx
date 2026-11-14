@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
+import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type Variant, type VersionMeta } from "@/lib/types";
 import {
@@ -10,6 +11,7 @@ import {
   discardVariants,
   inviteMember,
   keepVariant,
+  saveVisualEdit,
   publishVersion,
   removeMember,
   renameProject,
@@ -56,6 +58,8 @@ export function Studio(props: {
   const [tab, setTab] = useState<Tab>("versions");
   const [prompt, setPrompt] = useState("");
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
+  const [editMode, setEditMode] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
@@ -65,6 +69,30 @@ export function Studio(props: {
   const selected = versions.find((v) => v.id === selectedId) ?? versions[0] ?? null;
   const live = versions.find((v) => v.id === project.live_version_id) ?? null;
   const html = selected ? htmlCache[selected.id] : undefined;
+  const editor = useVisualEditor(editMode ? html : null);
+
+  function exitEdit() {
+    editor.reset();
+    setEditMode(false);
+  }
+
+  async function saveEdits() {
+    const out = editor.result();
+    if (!out) return;
+    setSavingEdit(true);
+    setError("");
+    try {
+      const saved = await saveVisualEdit(project.id, out.html, out.summary);
+      setHtmlCache((c) => ({ ...c, [saved.versionId]: out.html }));
+      setSelectedId(saved.versionId);
+      exitEdit();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the edit.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
   const openThreads = threads.filter((t) => t.status === "open").length;
   const isOwner = role === "owner";
 
@@ -346,16 +374,42 @@ export function Studio(props: {
           />
         ) : (
         <main className="flex min-w-0 flex-1 flex-col bg-stone-100 p-5">
-          <div className="mb-2 flex items-center justify-between text-sm text-stone-600">
-            <span>{selected ? `Preview · v${selected.number} · interactive` : "Preview"}</span>
-            {selected?.summary && <span className="truncate pl-4 text-stone-500">{selected.summary}</span>}
+          <div className="mb-2 flex items-center gap-3 text-sm text-stone-600">
+            <span className="shrink-0">
+              {selected ? `${editMode ? "Editing" : "Preview"} · v${selected.number}${editMode ? "" : " · interactive"}` : "Preview"}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-stone-500">
+              {editMode ? "Click an element to edit it. Links and buttons are paused while editing." : selected?.summary}
+            </span>
+            {html && (
+              <button
+                type="button"
+                aria-pressed={editMode}
+                onClick={() => (editMode ? exitEdit() : setEditMode(true))}
+                className={`min-h-8 shrink-0 rounded-lg px-3 text-sm font-semibold ${
+                  editMode ? "bg-stone-900 text-white" : "border border-stone-300 bg-white text-stone-900 hover:bg-stone-50"
+                }`}
+              >
+                {editMode ? "Exit editing" : "Edit visually"}
+              </button>
+            )}
           </div>
           <div
             className="mx-auto h-full w-full overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition-[max-width]"
             style={{ maxWidth: width }}
           >
             {html ? (
-              <PrototypeFrame html={html} title={`${project.name} v${selected?.number}`} />
+              editMode && editor.editableHtml ? (
+                <PrototypeFrame
+                  ref={editor.frame}
+                  html={editor.editableHtml}
+                  title={`${project.name} v${selected?.number} (editing)`}
+                  editMode
+                  onSelectElement={editor.setSelected}
+                />
+              ) : (
+                <PrototypeFrame html={html} title={`${project.name} v${selected?.number}`} />
+              )
             ) : (
               <div className="flex h-full items-center justify-center p-10 text-center text-stone-500">
                 {selected ? "Loading…" : "Your prototype will appear here. Describe it on the left to build v1."}
@@ -365,6 +419,19 @@ export function Studio(props: {
         </main>
         )}
 
+        {editMode ? (
+          <aside aria-label="Visual editor" className="flex w-[340px] shrink-0 flex-col border-l border-stone-200 bg-white">
+            <Inspector
+              selected={editor.selected}
+              editCount={editor.edits.length}
+              onChange={editor.change}
+              onSave={saveEdits}
+              onDiscard={exitEdit}
+              saving={savingEdit}
+              saveLabel={`Save as v${(versions[0]?.number ?? 0) + 1}`}
+            />
+          </aside>
+        ) : (
         <aside aria-label="Project panel" className="flex w-[340px] shrink-0 flex-col border-l border-stone-200 bg-white">
           <div role="tablist" className="flex gap-1 border-b border-stone-100 p-2">
             {(
@@ -515,6 +582,7 @@ export function Studio(props: {
             </div>
           )}
         </aside>
+        )}
       </div>
     </div>
   );

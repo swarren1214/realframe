@@ -15,7 +15,8 @@ Output rules:
 - Aim for polished, modern, credible product UI. No lorem ipsum.
 
 When you are given an existing document, apply the requested change and return the FULL updated document,
-keeping everything that was not asked to change.
+keeping everything that was not asked to change. Elements may carry data-rf="…" attributes and the head may contain a
+<style data-rf-edits> block: these come from the visual editor, so keep them exactly as they are (give new elements no data-rf).
 
 Respond in exactly this format and nothing else:
 <summary>One or two plain sentences describing what you built or changed.</summary>
