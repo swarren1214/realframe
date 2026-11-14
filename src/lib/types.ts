@@ -18,7 +18,7 @@ export type VersionMeta = {
   number: number;
   summary: string | null;
   prompt: string | null;
-  source: "ai" | "restore";
+  source: "ai" | "restore" | "edit" | "variant";
   created_at: string;
 };
 
@@ -67,3 +67,13 @@ export function canComment(role: Role | null) {
 export function authorLabel(c: { author_name: string | null; author_email: string }) {
   return c.author_name?.trim() || c.author_email.split("@")[0];
 }
+
+export type Variant = {
+  id: string;
+  group_id: string;
+  position: number;
+  prompt: string;
+  summary: string | null;
+  html: string;
+  created_at: string;
+};

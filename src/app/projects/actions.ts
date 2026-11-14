@@ -102,3 +102,40 @@ export async function deleteProject(projectId: string) {
   if (error) throw new Error(error.message);
   redirect("/projects");
 }
+
+export async function keepVariant(projectId: string, variantId: string) {
+  const { supabase } = await requireUser();
+  const { data: variant, error } = await supabase
+    .from("variants")
+    .select("id, group_id, html, prompt, summary, position")
+    .eq("id", variantId)
+    .eq("project_id", projectId)
+    .single();
+  if (error || !variant) throw new Error(error?.message ?? "Variant not found.");
+  const { data: version, error: vErr } = await supabase.rpc("create_version", {
+    p_project: projectId,
+    p_html: variant.html,
+    p_prompt: variant.prompt,
+    p_summary: variant.summary ?? `Variant ${variant.position}`,
+    p_source: "variant",
+  });
+  if (vErr || !version) throw new Error(vErr?.message ?? "Couldn't save the variant.");
+  const v = version as { id: string; number: number };
+  await supabase.from("variants").update({ kept_version_id: v.id }).eq("id", variantId);
+  // The rest of the group is done with once one is kept.
+  await supabase.from("variants").delete().eq("group_id", variant.group_id).is("kept_version_id", null);
+  revalidatePath(`/projects/${projectId}`);
+  return { versionId: v.id, number: v.number };
+}
+
+export async function discardVariants(projectId: string, groupId: string) {
+  const { supabase } = await requireUser();
+  const { error } = await supabase
+    .from("variants")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("group_id", groupId)
+    .is("kept_version_id", null);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/projects/${projectId}`);
+}

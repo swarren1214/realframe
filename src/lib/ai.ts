@@ -25,6 +25,8 @@ Respond in exactly this format and nothing else:
 
 export type GenerateInput = {
   prompt: string;
+  /** Extra direction used to push variants apart. */
+  variantHint?: string;
   currentHtml: string | null;
   history: { role: "user" | "assistant"; content: string }[];
 };
@@ -54,16 +56,26 @@ export async function generatePrototype(
   const client = new Anthropic({ apiKey });
   const model = process.env.REALFRAME_CODEGEN_MODEL || "claude-sonnet-5-5";
 
-  const history = input.history.slice(-8).map((m) => ({ role: m.role, content: m.content }));
+  // The API needs the conversation to start with a user turn and alternate roles.
+  const history: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of input.history.slice(-8)) {
+    if (!m.content?.trim()) continue;
+    if (history.length === 0 && m.role !== "user") continue;
+    const last = history[history.length - 1];
+    if (last && last.role === m.role) last.content += `\n\n${m.content}`;
+    else history.push({ role: m.role, content: m.content });
+  }
+  if (history.length && history[history.length - 1].role === "user") history.pop();
   const request = input.currentHtml
     ? `Here is the current prototype:\n<current_document>\n${input.currentHtml}\n</current_document>\n\nRequested change: ${input.prompt}`
     : `Build this prototype: ${input.prompt}`;
+  const directed = input.variantHint ? `${request}\n\nDesign direction for this variant: ${input.variantHint}` : request;
 
   const stream = client.messages.stream({
     model,
     max_tokens: 32000,
     system: SYSTEM_PROMPT,
-    messages: [...history, { role: "user", content: request }],
+    messages: [...history, { role: "user", content: directed }],
   });
   const message = await stream.finalMessage();
   const text = message.content

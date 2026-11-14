@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generatePrototype } from "@/lib/ai";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { costMicros } from "@/lib/billing";
+import { finishBuild, limitResponse, loadBuildContext, readPrompt } from "@/lib/builds";
 
 export const maxDuration = 300;
 
@@ -20,48 +19,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const body = (await request.json().catch(() => ({}))) as { prompt?: string; baseVersionId?: string | null };
-  const prompt = String(body.prompt ?? "").trim();
-  if (!prompt) return NextResponse.json({ error: "Describe what to build or change." }, { status: 400 });
-  if (prompt.length > 4000) return NextResponse.json({ error: "Keep the prompt under 4,000 characters." }, { status: 400 });
+  const read = readPrompt(body);
+  if ("error" in read) return NextResponse.json({ error: read.error }, { status: 400 });
+  const { prompt } = read;
 
-  let base = supabase.from("versions").select("id, html").eq("project_id", id);
-  base = body.baseVersionId ? base.eq("id", body.baseVersionId) : base.order("number", { ascending: false }).limit(1);
-  const { data: baseRows } = await base;
-  const current = baseRows?.[0] ?? null;
+  const { current, history } = await loadBuildContext(supabase, id, body.baseVersionId);
 
-  const { data: history } = await supabase
-    .from("messages")
-    .select("role, content")
-    .eq("project_id", id)
-    .order("created_at", { ascending: false })
-    .limit(8);
-
-  // Reserve one generation against the caller's daily limit before spending anything.
+  // Reserve one build against the caller's plan before spending anything.
   const { data: claimId, error: claimError } = await supabase.rpc("claim_generation", { p_project: id });
-  if (claimError || !claimId) {
-    if (claimError?.message.includes("free_limit_reached")) {
-      return NextResponse.json(
-        { error: "You've used this month's free builds. Upgrade to Pro to keep building.", code: "free_limit" },
-        { status: 402 },
-      );
-    }
-    if (claimError?.message.includes("daily_limit_reached")) {
-      return NextResponse.json(
-        { error: "You've hit the daily safety limit for builds. It frees up on a rolling 24-hour basis.", code: "daily_limit" },
-        { status: 429 },
-      );
-    }
-    return NextResponse.json({ error: claimError?.message ?? "Couldn't start the build." }, { status: 500 });
-  }
+  if (claimError || !claimId) return limitResponse(claimError?.message);
 
   await supabase.from("messages").insert({ project_id: id, role: "user", content: prompt, created_by: user.id });
 
   try {
-    const result = await generatePrototype({
-      prompt,
-      currentHtml: current?.html ?? null,
-      history: (history ?? []).reverse() as { role: "user" | "assistant"; content: string }[],
-    });
+    const result = await generatePrototype({ prompt, currentHtml: current?.html ?? null, history });
     const { data: version, error } = await supabase.rpc("create_version", {
       p_project: id,
       p_html: result.html,
@@ -71,19 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     if (error || !version) throw new Error(error?.message ?? "Could not save the version.");
     const v = version as { id: string; number: number };
-    try {
-      const { error: finishError } = await createAdminClient().rpc("finish_generation", {
-        p_id: claimId,
-        p_status: "succeeded",
-        p_input_tokens: result.usage.input,
-        p_output_tokens: result.usage.output,
-        p_cost_micros: costMicros(result.usage.input, result.usage.output),
-      });
-      if (finishError) console.error("finish_generation", finishError.message);
-    } catch (e) {
-      // The build itself succeeded; don't fail the request over usage bookkeeping.
-      console.error("finish_generation", e);
-    }
+    await finishBuild(claimId as string, { ok: true, input: result.usage.input, output: result.usage.output });
     await supabase.from("messages").insert({
       project_id: id,
       role: "assistant",
@@ -94,17 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ versionId: v.id, number: v.number, summary: result.summary });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed.";
-    try {
-      await createAdminClient().rpc("finish_generation", {
-        p_id: claimId,
-        p_status: "failed",
-        p_input_tokens: null,
-        p_output_tokens: null,
-        p_cost_micros: 0,
-      });
-    } catch (e) {
-      console.error("finish_generation", e);
-    }
+    await finishBuild(claimId as string, { ok: false });
     await supabase
       .from("messages")
       .insert({ project_id: id, role: "assistant", content: `That didn't work: ${message}`, created_by: user.id });

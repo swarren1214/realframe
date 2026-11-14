@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { PrototypeFrame } from "@/components/PrototypeFrame";
 import { createClient } from "@/lib/supabase/client";
-import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type VersionMeta } from "@/lib/types";
+import { authorLabel, type Member, type Message, type Project, type Role, type Thread, type Variant, type VersionMeta } from "@/lib/types";
 import {
   deleteProject,
+  discardVariants,
   inviteMember,
+  keepVariant,
   publishVersion,
   removeMember,
   renameProject,
@@ -40,8 +42,9 @@ export function Studio(props: {
   initialHtml: string | null;
   initialVersionId: string | null;
   quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
+  variants: Variant[];
 }) {
-  const { project, role, versions, messages, members, threads, quota } = props;
+  const { project, role, versions, messages, members, threads, quota, variants } = props;
   const outOfQuota = quota !== null && quota.remaining <= 0;
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -52,6 +55,7 @@ export function Studio(props: {
   const [device, setDevice] = useState<(typeof DEVICES)[number]["id"]>("desktop");
   const [tab, setTab] = useState<Tab>("versions");
   const [prompt, setPrompt] = useState("");
+  const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
@@ -116,15 +120,16 @@ export function Studio(props: {
     setElapsed(0);
     setError("");
     try {
-      const res = await fetch(`/api/projects/${project.id}/generate`, {
+      const many = variantCount > 1;
+      const res = await fetch(`/api/projects/${project.id}/${many ? "variants" : "generate"}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: text, baseVersionId: selected?.id ?? null }),
+        body: JSON.stringify({ prompt: text, baseVersionId: selected?.id ?? null, count: variantCount }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       setPrompt("");
-      setSelectedId(data.versionId);
+      if (!many) setSelectedId(data.versionId);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -253,7 +258,8 @@ export function Studio(props: {
             })}
             {busy && (
               <div role="status" className="rounded-xl bg-ember-50 p-3 text-sm text-ember-800">
-                Building {selected ? `on v${selected.number}` : "v1"}… {elapsed}s. Larger prototypes can take a minute or two.
+                {variantCount > 1 ? `Building ${variantCount} variants` : `Building ${selected ? `on v${selected.number}` : "v1"}`}… {elapsed}s.
+                Larger prototypes can take a minute or two.
               </div>
             )}
             <div ref={chatEnd} />
@@ -279,12 +285,27 @@ export function Studio(props: {
                   ? `${quota.remaining} of ${quota.limit} free builds left this month`
                   : "⌘↵ to send"}
               </span>
+              <label htmlFor="variant-count" className="sr-only">
+                Number of variants
+              </label>
+              <select
+                id="variant-count"
+                value={variantCount}
+                onChange={(e) => setVariantCount(Number(e.target.value) as 1 | 2 | 3)}
+                disabled={busy}
+                title="Generate alternatives to compare. Each variant counts as one build."
+                className="ml-auto mr-2 min-h-10 rounded-lg border border-stone-300 bg-white px-2 text-sm"
+              >
+                <option value={1}>1 version</option>
+                <option value={2}>2 variants</option>
+                <option value={3}>3 variants</option>
+              </select>
               <button
                 type="submit"
                 disabled={busy || !prompt.trim() || outOfQuota}
                 className="min-h-10 rounded-lg bg-ember-700 px-4 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
               >
-                {busy ? "Building…" : versions.length ? "Update" : "Build"}
+                {busy ? "Building…" : variantCount > 1 ? "Compare" : versions.length ? "Update" : "Build"}
               </button>
             </div>
             {outOfQuota && quota?.plan === "free" && (
@@ -311,6 +332,19 @@ export function Studio(props: {
           </form>
         </aside>
 
+        {variants.length > 0 ? (
+          <VariantCompare
+            variants={variants}
+            pending={pending}
+            onKeep={(v) =>
+              run(async () => {
+                const kept = await keepVariant(project.id, v.id);
+                setSelectedId(kept.versionId);
+              })
+            }
+            onDiscard={() => run(() => discardVariants(project.id, variants[0].group_id))}
+          />
+        ) : (
         <main className="flex min-w-0 flex-1 flex-col bg-stone-100 p-5">
           <div className="mb-2 flex items-center justify-between text-sm text-stone-600">
             <span>{selected ? `Preview · v${selected.number} · interactive` : "Preview"}</span>
@@ -329,6 +363,7 @@ export function Studio(props: {
             )}
           </div>
         </main>
+        )}
 
         <aside aria-label="Project panel" className="flex w-[340px] shrink-0 flex-col border-l border-stone-200 bg-white">
           <div role="tablist" className="flex gap-1 border-b border-stone-100 p-2">
@@ -366,8 +401,10 @@ export function Studio(props: {
                         {v.id === project.live_version_id && project.published && (
                           <span className="rounded bg-emerald-50 px-1.5 text-[11px] font-bold text-emerald-800">LIVE</span>
                         )}
-                        {v.source === "restore" && (
-                          <span className="rounded bg-stone-100 px-1.5 text-[11px] font-semibold text-stone-600">Restore</span>
+                        {v.source !== "ai" && (
+                          <span className="rounded bg-stone-100 px-1.5 text-[11px] font-semibold text-stone-600">
+                            {{ restore: "Restore", edit: "Visual edit", variant: "Variant" }[v.source]}
+                          </span>
                         )}
                         <span className="ml-auto text-xs text-stone-500">
                           {new Date(v.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
@@ -632,5 +669,59 @@ function SharePanel({
         </ul>
       </section>
     </div>
+  );
+}
+
+function VariantCompare({
+  variants,
+  pending,
+  onKeep,
+  onDiscard,
+}: {
+  variants: Variant[];
+  pending: boolean;
+  onKeep: (v: Variant) => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <main className="flex min-w-0 flex-1 flex-col bg-stone-100 p-5">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold">Compare {variants.length} variants</h2>
+          <p className="truncate text-sm text-stone-600">“{variants[0].prompt}”. Keep one to make it the next version.</p>
+        </div>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onDiscard}
+          className="min-h-9 rounded-lg border border-stone-300 bg-white px-3 text-sm font-medium hover:bg-stone-50"
+        >
+          Discard all
+        </button>
+      </div>
+      <div className={`grid min-h-0 flex-1 gap-4 ${variants.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+        {variants.map((v) => (
+          <section key={v.id} aria-label={`Variant ${v.position}`} className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+            <div className="flex items-start gap-3 border-b border-stone-100 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">Variant {v.position}</p>
+                {v.summary && <p className="line-clamp-2 text-xs text-stone-600">{v.summary}</p>}
+              </div>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => onKeep(v)}
+                className="min-h-9 shrink-0 rounded-lg bg-ember-700 px-3 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
+              >
+                Keep this
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <PrototypeFrame html={v.html} title={`Variant ${v.position}`} />
+            </div>
+          </section>
+        ))}
+      </div>
+    </main>
   );
 }
