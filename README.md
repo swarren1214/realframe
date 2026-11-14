@@ -34,6 +34,12 @@ Canvas, visual editing, billing and variants are planned for later.
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Vercel (all envs) | Supabase → Project Settings → API keys (publishable) |
 | `ANTHROPIC_API_KEY` | Vercel (all envs), **secret** | console.anthropic.com → API keys |
 | `REALFRAME_CODEGEN_MODEL` | optional | Defaults to `claude-sonnet-5-5` |
+| `SUPABASE_SECRET_KEY` | Vercel (all envs), **secret** | Supabase → Project Settings → API keys (secret). Server-only: Stripe webhook and usage bookkeeping |
+| `STRIPE_SECRET_KEY` | Vercel, **secret** | Stripe → Developers → API keys (`sk_test_…` in the sandbox) |
+| `STRIPE_WEBHOOK_SECRET` | Vercel, **secret** | Signing secret of the `/api/stripe/webhook` endpoint |
+| `STRIPE_PRO_PRICE_ID` | optional | Defaults to the sandbox Pro price; set the live price ID when going live |
+| `STRIPE_USAGE_PRODUCT_ID` | optional | Defaults to the sandbox "Realframe AI usage" product |
+| `REALFRAME_INPUT_USD_PER_MTOK` / `REALFRAME_OUTPUT_USD_PER_MTOK` | optional | Model prices used to cost each build (default 3 / 15) |
 
 Copy `.env.example` to `.env.local` for local development.
 
@@ -50,6 +56,13 @@ In the Supabase dashboard → **Authentication → URL Configuration**:
   - `http://localhost:3000/auth/callback` (local)
 
 **Email:** Supabase's built-in email sender only delivers to members of your Supabase organization and is heavily rate-limited. Before inviting outside reviewers, set up custom SMTP (Authentication → Emails → SMTP settings), e.g. Resend (`smtp.resend.com`, port 465, user `resend`, password = Resend API key) with a verified sending domain.
+
+## Plans and billing
+
+- **Free:** 30 builds per calendar month (UTC).
+- **Pro:** $20/month through Stripe Checkout. Includes $10 of AI usage per billing period; usage beyond that is billed at cost + 50%. When Stripe drafts each renewal invoice (`invoice.created`), the webhook adds one "AI usage" line for the period that just ended. A 150-builds-per-24h safety cap applies.
+- Each build's model cost is recorded server-side in `generations.cost_micros` / `billed_micros` (micro-USD). Plan constants live in `public.plan_settings()`; per-user overrides go in `profiles.build_limit_override`.
+- Stripe webhook events: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.created`.
 
 ## Local development
 

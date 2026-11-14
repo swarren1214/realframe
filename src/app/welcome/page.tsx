@@ -40,7 +40,7 @@ export default async function WelcomePage({
   const { data: profile } = await supabase.from("profiles").select("display_name, onboarded_at").maybeSingle();
   const editing = Boolean(edit) || Boolean(profile?.onboarded_at);
   const { data: quota } = await supabase.rpc("generation_quota");
-  const q = (quota as { daily_limit: number; remaining: number }[] | null)?.[0];
+  const q = (quota as { plan: string; build_limit: number; remaining: number }[] | null)?.[0];
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-50 p-6">
@@ -78,7 +78,12 @@ export default async function WelcomePage({
         </div>
         {q && (
           <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-600">
-            Your plan includes {q.daily_limit} prototype builds a day. You have {q.remaining} left right now.
+            {q.plan === "pro"
+              ? "You're on Pro: build as much as you need, with $10 of AI usage included each month."
+              : `The free plan includes ${q.build_limit} builds a month. You have ${q.remaining} left.`}{" "}
+            <a href="/billing" className="font-semibold">
+              Plan &amp; billing
+            </a>
           </p>
         )}
         <button className="min-h-12 w-full rounded-lg bg-ember-700 text-[15px] font-semibold text-white hover:bg-ember-800">

@@ -39,7 +39,7 @@ export function Studio(props: {
   threads: Thread[];
   initialHtml: string | null;
   initialVersionId: string | null;
-  quota: { limit: number; remaining: number } | null;
+  quota: { plan: "free" | "pro"; limit: number; remaining: number } | null;
 }) {
   const { project, role, versions, messages, members, threads, quota } = props;
   const outOfQuota = quota !== null && quota.remaining <= 0;
@@ -275,7 +275,9 @@ export function Studio(props: {
             />
             <div className="mt-2 flex items-center justify-between">
               <span className="text-xs text-stone-500">
-                {quota ? `${quota.remaining} of ${quota.limit} builds left today` : "⌘↵ to send"}
+                {quota?.plan === "free"
+                  ? `${quota.remaining} of ${quota.limit} free builds left this month`
+                  : "⌘↵ to send"}
               </span>
               <button
                 type="submit"
@@ -285,9 +287,20 @@ export function Studio(props: {
                 {busy ? "Building…" : versions.length ? "Update" : "Build"}
               </button>
             </div>
-            {outOfQuota && !error && (
+            {outOfQuota && quota?.plan === "free" && (
+              <div className="mt-3 rounded-xl border border-ember-700 bg-ember-50 p-3 text-sm">
+                <p className="font-semibold">You&apos;ve used this month&apos;s free builds.</p>
+                <p className="mt-0.5 text-stone-700">Pro is $20/month with $10 of AI usage included.</p>
+                <form action="/api/billing/checkout" method="post" className="mt-2">
+                  <button className="min-h-9 rounded-lg bg-ember-700 px-3 text-sm font-semibold text-white hover:bg-ember-800">
+                    Upgrade to Pro
+                  </button>
+                </form>
+              </div>
+            )}
+            {outOfQuota && quota?.plan === "pro" && !error && (
               <p className="mt-2 text-sm text-stone-600">
-                You've used today's {quota?.limit} builds. More free up as each one passes 24 hours.
+                You&apos;ve hit the daily safety limit of {quota.limit} builds. It frees up on a rolling 24-hour basis.
               </p>
             )}
             {error && (

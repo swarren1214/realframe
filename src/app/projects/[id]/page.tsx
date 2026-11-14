@@ -36,7 +36,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
     supabase.from("versions").select("id, html").eq("project_id", id).order("number", { ascending: false }).limit(1),
     supabase.rpc("generation_quota"),
   ]);
-  const q = (quota.data as { daily_limit: number; used: number; remaining: number }[] | null)?.[0] ?? null;
+  const q = (quota.data as { plan: "free" | "pro"; build_limit: number; remaining: number }[] | null)?.[0] ?? null;
 
   return (
     <Studio
@@ -49,7 +49,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       threads={(threads.data ?? []) as Thread[]}
       initialHtml={latest.data?.[0]?.html ?? null}
       initialVersionId={latest.data?.[0]?.id ?? null}
-      quota={q ? { limit: q.daily_limit, remaining: q.remaining } : null}
+      quota={q ? { plan: q.plan, limit: q.build_limit, remaining: q.remaining } : null}
     />
   );
 }
