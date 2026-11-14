@@ -28,7 +28,7 @@ export function BuiltForSelect() {
     <Select name="built_for" defaultValue="any">
       <SelectTrigger
         aria-label="Built for"
-        className="h-10 w-auto gap-2 rounded-full border-transparent bg-card/70 hover:bg-card"
+        className="h-11 w-auto gap-2 rounded-full border-transparent bg-transparent px-4 text-sm font-medium text-stone-700 shadow-none hover:border-transparent hover:bg-stone-900/[.05] data-[state=open]:bg-stone-900/[.05]"
       >
         <SelectValue />
       </SelectTrigger>

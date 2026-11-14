@@ -47,7 +47,7 @@ export function DesignSystemSelect({
     <Select name="design_system" defaultValue={def}>
       <SelectTrigger
         aria-label="Design system"
-        className="h-10 w-auto max-w-56 gap-2 rounded-full border-transparent bg-card/70 hover:bg-card"
+        className="h-11 w-auto gap-2 rounded-full border-transparent bg-transparent px-4 text-sm font-medium text-stone-700 shadow-none hover:border-transparent hover:bg-stone-900/[.05] data-[state=open]:bg-stone-900/[.05] max-w-60 [&>span_.ds-default]:hidden"
       >
         <SelectValue />
       </SelectTrigger>
@@ -59,7 +59,9 @@ export function DesignSystemSelect({
               <Dots colors={o.colors} />
               {o.name}
               {o.isDefault && (
-                <span className="text-xs text-stone-500">· default</span>
+                <span className="ds-default text-xs text-stone-500">
+                  · default
+                </span>
               )}
             </SelectItem>
           ))}
