@@ -90,6 +90,15 @@ export function Review({
   const isGuest = role === "guest";
   const commenter =
     canComment(role) || (isGuest && project.guest_comments !== false);
+  // Opened with ?comment=1 (the studio's Add a comment): start pinning.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("comment")) return;
+    url.searchParams.delete("comment");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    if (commenter) setCommentMode(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Phones only: whether the comments drawer is open.
   const [panelOpen, setPanelOpen] = useState(false);
   useEffect(() => {
@@ -438,7 +447,7 @@ export function Review({
                 className="field-sizing-fixed resize-none"
               />
               <div className="flex items-center justify-end gap-1.5">
-                <Kbd className="mr-auto">⌘↵</Kbd>
+                <Kbd className="mr-auto max-lg:invisible">⌘↵</Kbd>
                 <Button variant="ghost" onClick={() => setDraft(null)}>
                   Cancel
                 </Button>

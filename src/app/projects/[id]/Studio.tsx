@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Layers,
   MessageSquare,
+  MessageSquarePlus,
   Monitor,
   PencilRuler,
   RotateCcw,
@@ -1474,6 +1475,14 @@ export function Studio(props: {
                   </TabsContent>
 
                   <TabsContent value="comments" className="space-y-1 p-3">
+                    {versions.length > 0 && (
+                      <Button asChild variant="outline" className="mb-2 w-full">
+                        <Link href={`/p/${project.slug}?comment=1`}>
+                          <MessageSquarePlus />
+                          Add a comment
+                        </Link>
+                      </Button>
+                    )}
                     {props.round && (
                       <div className="mb-2">
                         <RoundCard
@@ -1523,8 +1532,8 @@ export function Studio(props: {
                           No comments yet
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Reviewers pin comments on the published prototype from
-                          the review link.
+                          Tap Add a comment to pin one on the prototype.
+                          Reviewers do the same from the review link.
                         </p>
                       </div>
                     )}
