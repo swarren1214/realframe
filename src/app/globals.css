@@ -7,17 +7,53 @@
   --color-ember-600: #ea580c;
   --color-ember-700: #c2410c;
   --color-ember-800: #9a3412;
+  --color-raspberry-50: #fdf2f8;
+  --color-raspberry-100: #fce7f3;
+  --color-raspberry-200: #fbcfe8;
+  --color-raspberry-600: #db2777;
+  --color-raspberry-700: #be185d;
+  --color-raspberry-800: #9d174d;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
 body {
-  background: #fafaf9;
   color: #1c1917;
+  background-color: #fffbf7;
+  background-image:
+    radial-gradient(900px 520px at 0% -10%, #ffedd5 0%, rgb(255 237 213 / 0) 65%),
+    radial-gradient(800px 520px at 100% 0%, #fce7f3 0%, rgb(252 231 243 / 0) 60%),
+    radial-gradient(900px 600px at 60% 120%, #ede9fe 0%, rgb(237 233 254 / 0) 65%);
+  background-attachment: fixed;
+}
+
+/* Primary action: ember → raspberry, with a colored glow. */
+@utility btn-glow {
+  background-image: linear-gradient(135deg, #c2410c 0%, #be185d 100%);
+  color: #fff;
+  box-shadow: 0 10px 22px -10px rgb(190 24 93 / 0.7);
+  transition: filter 0.15s, box-shadow 0.15s;
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow: 0 12px 26px -10px rgb(190 24 93 / 0.8);
+  }
+}
+
+/* Soft gradient fill for selected states and callouts. */
+@utility bg-glow-soft {
+  background-image: linear-gradient(135deg, #fff7ed 0%, #fdf2f8 60%, #f5f3ff 100%);
+}
+
+/* Floating translucent surface: headers, side panels. */
+@utility glass {
+  background-color: rgb(255 255 255 / 0.85);
+  border: 1px solid rgb(231 229 228 / 0.9);
+  box-shadow: 0 20px 48px -28px rgb(28 25 23 / 0.3);
+  backdrop-filter: blur(16px);
 }
 
 :focus-visible {
-  outline: 2px solid #c2410c;
+  outline: 2px solid #be185d;
   outline-offset: 2px;
 }

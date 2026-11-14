@@ -188,7 +188,7 @@ export function Studio(props: {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-stone-200 bg-white px-5 py-2.5">
+      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-3 rounded-[2rem] px-4 py-2">
         <Logo href="/projects" />
         <span className="text-stone-300" aria-hidden="true">
           /
@@ -201,25 +201,25 @@ export function Studio(props: {
           defaultValue={project.name}
           readOnly={!isOwner}
           onBlur={(e) => isOwner && e.target.value !== project.name && run(() => renameProject(project.id, e.target.value))}
-          className="min-w-0 max-w-64 rounded-md border border-transparent px-1.5 py-1 font-semibold hover:border-stone-200 focus:border-stone-300 focus:outline-none"
+          className="min-w-0 max-w-64 rounded-full border border-transparent px-1.5 py-1 font-semibold hover:border-stone-200 focus:border-stone-300 focus:outline-none"
         />
         {project.published && live ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
             Live v{live.number}
           </span>
         ) : (
-          <span className="rounded-md bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-700">Not published</span>
+          <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-700">Not published</span>
         )}
         <div className="flex-1" />
-        <div role="group" aria-label="Preview size" className="flex gap-0.5 rounded-lg bg-stone-100 p-0.5">
+        <div role="group" aria-label="Preview size" className="flex gap-0.5 rounded-full bg-stone-100 p-1">
           {DEVICES.map((d) => (
             <button
               key={d.id}
               type="button"
               aria-pressed={device === d.id}
               onClick={() => setDevice(d.id)}
-              className={`min-h-8 rounded-md px-3 text-sm font-medium ${
+              className={`min-h-8 rounded-full px-3 text-sm font-medium ${
                 device === d.id ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
               }`}
             >
@@ -229,16 +229,16 @@ export function Studio(props: {
         </div>
         <a
           href={`/projects/${project.id}/canvas`}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
         >
           Canvas
-          {quota?.plan !== "pro" && <span className="rounded bg-ember-50 px-1 text-[10px] font-bold text-ember-800">PRO</span>}
+          {quota?.plan !== "pro" && <span className="rounded-full bg-ember-50 px-1 text-[10px] font-bold text-ember-800">PRO</span>}
         </a>
         {project.published && (
           <a
             href={reviewUrl}
             target="_blank"
-            className="inline-flex min-h-9 items-center rounded-lg border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
+            className="inline-flex min-h-9 items-center rounded-full border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
           >
             Open review link
           </a>
@@ -248,15 +248,15 @@ export function Studio(props: {
             type="button"
             disabled={pending || (project.published && project.live_version_id === selected.id)}
             onClick={() => run(() => publishVersion(project.id, selected.id))}
-            className="min-h-9 rounded-lg bg-ember-700 px-4 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
+            className="min-h-9 rounded-full btn-glow px-4 text-sm font-semibold disabled:opacity-50"
           >
             {project.published && project.live_version_id === selected.id ? `v${selected.number} is live` : `Publish v${selected.number}`}
           </button>
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside aria-label="Prompt" className="flex w-[380px] shrink-0 flex-col border-r border-stone-200 bg-white">
+      <div className="flex min-h-0 flex-1 gap-3 p-3">
+        <aside aria-label="Prompt" className="glass rounded-[2rem] flex w-[380px] shrink-0 flex-col overflow-hidden">
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
             {messages.length === 0 && !busy && (
               <div className="space-y-3">
@@ -266,7 +266,7 @@ export function Studio(props: {
                     key={s}
                     type="button"
                     onClick={() => setPrompt(s)}
-                    className="block w-full rounded-xl border border-stone-200 p-3 text-left text-sm hover:border-ember-700"
+                    className="block w-full rounded-3xl border border-stone-200 p-3 text-left text-sm hover:border-raspberry-600"
                   >
                     {s}
                   </button>
@@ -276,7 +276,7 @@ export function Studio(props: {
             {messages.map((m) => {
               const v = m.version_id ? versions.find((x) => x.id === m.version_id) : null;
               return m.role === "user" ? (
-                <div key={m.id} className="ml-8 rounded-2xl rounded-br-sm bg-stone-100 px-3.5 py-2.5 text-sm leading-relaxed">
+                <div key={m.id} className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-4 py-2.5 text-sm leading-relaxed">
                   {m.content}
                 </div>
               ) : (
@@ -286,7 +286,7 @@ export function Studio(props: {
                     <button
                       type="button"
                       onClick={() => setSelectedId(v.id)}
-                      className="rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-700 hover:border-ember-700"
+                      className="rounded-full border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-700 hover:border-raspberry-600"
                     >
                       v{v.number}
                       {v.id === project.live_version_id ? " · Live" : ""}
@@ -296,7 +296,7 @@ export function Studio(props: {
               );
             })}
             {busy && (
-              <div role="status" className="rounded-xl bg-ember-50 p-3 text-sm text-ember-800">
+              <div role="status" className="rounded-3xl bg-glow-soft p-3 text-sm text-raspberry-800">
                 {variantCount > 1 ? `Building ${variantCount} variants` : `Building ${selected ? `on v${selected.number}` : "v1"}`}… {elapsed}s.
                 Larger prototypes can take a minute or two.
               </div>
@@ -316,7 +316,7 @@ export function Studio(props: {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
               }}
               placeholder={versions.length ? "Make the cards denser on tablet…" : "A dispatch board for field techs…"}
-              className="w-full resize-none rounded-xl border border-stone-300 p-3 text-sm outline-none focus:border-ember-700"
+              className="w-full resize-none rounded-3xl border border-stone-300 p-3 text-sm outline-none focus:border-raspberry-600"
             />
             <div className="mt-2 flex items-center justify-between">
               <span className="text-xs text-stone-500">
@@ -333,7 +333,7 @@ export function Studio(props: {
                 onChange={(e) => setVariantCount(Number(e.target.value) as 1 | 2 | 3)}
                 disabled={busy}
                 title="Generate alternatives to compare. Each variant counts as one build."
-                className="ml-auto mr-2 min-h-10 rounded-lg border border-stone-300 bg-white px-2 text-sm"
+                className="ml-auto mr-2 min-h-10 rounded-full border border-stone-300 bg-white px-2 text-sm"
               >
                 <option value={1}>1 version</option>
                 <option value={2}>2 variants</option>
@@ -342,17 +342,17 @@ export function Studio(props: {
               <button
                 type="submit"
                 disabled={busy || !prompt.trim() || outOfQuota}
-                className="min-h-10 rounded-lg bg-ember-700 px-4 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
+                className="min-h-10 rounded-full btn-glow px-4 text-sm font-semibold disabled:opacity-50"
               >
                 {busy ? "Building…" : variantCount > 1 ? "Compare" : versions.length ? "Update" : "Build"}
               </button>
             </div>
             {outOfQuota && quota?.plan === "free" && (
-              <div className="mt-3 rounded-xl border border-ember-700 bg-ember-50 p-3 text-sm">
+              <div className="mt-3 rounded-3xl border border-raspberry-200 bg-glow-soft p-3 text-sm">
                 <p className="font-semibold">You&apos;ve used this month&apos;s free builds.</p>
                 <p className="mt-0.5 text-stone-700">Pro is $20/month with $10 of AI usage included.</p>
                 <form action="/api/billing/checkout" method="post" className="mt-2">
-                  <button className="min-h-9 rounded-lg bg-ember-700 px-3 text-sm font-semibold text-white hover:bg-ember-800">
+                  <button className="min-h-9 rounded-full btn-glow px-3 text-sm font-semibold">
                     Upgrade to Pro
                   </button>
                 </form>
@@ -384,7 +384,7 @@ export function Studio(props: {
             onDiscard={() => run(() => discardVariants(project.id, variants[0].group_id))}
           />
         ) : (
-        <main className="flex min-w-0 flex-1 flex-col bg-stone-100 p-5">
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white/40 p-5">
           <div className="mb-2 flex items-center gap-3 text-sm text-stone-600">
             <span className="shrink-0">
               {selected ? `${editMode ? "Editing" : "Preview"} · v${selected.number}${editMode ? "" : " · interactive"}` : "Preview"}
@@ -397,7 +397,7 @@ export function Studio(props: {
                 type="button"
                 aria-pressed={editMode}
                 onClick={() => (editMode ? exitEdit() : setEditMode(true))}
-                className={`min-h-8 shrink-0 rounded-lg px-3 text-sm font-semibold ${
+                className={`min-h-8 shrink-0 rounded-full px-3 text-sm font-semibold ${
                   editMode ? "bg-stone-900 text-white" : "border border-stone-300 bg-white text-stone-900 hover:bg-stone-50"
                 }`}
               >
@@ -406,7 +406,7 @@ export function Studio(props: {
             )}
           </div>
           <div
-            className="mx-auto h-full w-full overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition-[max-width]"
+            className="mx-auto h-full w-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)] transition-[max-width]"
             style={{ maxWidth: width }}
           >
             {html ? (
@@ -431,7 +431,7 @@ export function Studio(props: {
         )}
 
         {editMode ? (
-          <aside aria-label="Visual editor" className="flex w-[340px] shrink-0 flex-col border-l border-stone-200 bg-white">
+          <aside aria-label="Visual editor" className="glass rounded-[2rem] flex w-[340px] shrink-0 flex-col overflow-hidden">
             <Inspector
               selected={editor.selected}
               editCount={editor.edits.length}
@@ -443,7 +443,7 @@ export function Studio(props: {
             />
           </aside>
         ) : (
-        <aside aria-label="Project panel" className="flex w-[340px] shrink-0 flex-col border-l border-stone-200 bg-white">
+        <aside aria-label="Project panel" className="glass rounded-[2rem] flex w-[340px] shrink-0 flex-col overflow-hidden">
           <div role="tablist" className="flex gap-1 border-b border-stone-100 p-2">
             {(
               [
@@ -458,8 +458,8 @@ export function Studio(props: {
                 type="button"
                 aria-selected={tab === id}
                 onClick={() => setTab(id)}
-                className={`min-h-9 flex-1 rounded-md text-sm font-medium ${
-                  tab === id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"
+                className={`min-h-9 flex-1 rounded-full text-sm font-medium ${
+                  tab === id ? "btn-glow" : "text-stone-600 hover:bg-stone-100"
                 }`}
               >
                 {label}
@@ -472,15 +472,15 @@ export function Studio(props: {
               <ul>
                 {versions.length === 0 && <li className="p-5 text-sm text-stone-500">No versions yet.</li>}
                 {versions.map((v) => (
-                  <li key={v.id} className={`border-b border-stone-100 px-4 py-3 ${v.id === selected?.id ? "bg-ember-50" : ""}`}>
+                  <li key={v.id} className={`border-b border-stone-100 px-4 py-3 ${v.id === selected?.id ? "bg-glow-soft" : ""}`}>
                     <button type="button" onClick={() => setSelectedId(v.id)} className="w-full text-left">
                       <span className="flex items-center gap-2">
                         <strong>v{v.number}</strong>
                         {v.id === project.live_version_id && project.published && (
-                          <span className="rounded bg-emerald-50 px-1.5 text-[11px] font-bold text-emerald-800">LIVE</span>
+                          <span className="rounded-full bg-emerald-50 px-1.5 text-[11px] font-bold text-emerald-800">LIVE</span>
                         )}
                         {v.source !== "ai" && (
-                          <span className="rounded bg-stone-100 px-1.5 text-[11px] font-semibold text-stone-600">
+                          <span className="rounded-full bg-stone-100 px-1.5 text-[11px] font-semibold text-stone-600">
                             {{ restore: "Restore", edit: "Visual edit", variant: "Variant" }[v.source]}
                           </span>
                         )}
@@ -496,7 +496,7 @@ export function Studio(props: {
                         type="button"
                         disabled={pending}
                         onClick={() => run(() => restoreVersion(project.id, v.id))}
-                        className="mt-2 min-h-8 rounded-md border border-stone-200 bg-white px-2.5 text-xs font-semibold hover:bg-stone-50"
+                        className="mt-2 min-h-8 rounded-full border border-stone-200 bg-white px-2.5 text-xs font-semibold hover:bg-stone-50"
                       >
                         Restore as new version
                       </button>
@@ -534,12 +534,12 @@ export function Studio(props: {
                         <div className="flex items-center gap-2 text-xs">
                           <span
                             className={`grid h-5 w-5 place-items-center rounded-full font-bold text-white ${
-                              t.status === "open" ? "bg-ember-700" : "bg-stone-500"
+                              t.status === "open" ? "btn-glow" : "bg-stone-500"
                             }`}
                           >
                             {threads.length - i}
                           </span>
-                          {v && <span className="rounded bg-stone-100 px-1.5 font-semibold text-stone-700">v{v.number}</span>}
+                          {v && <span className="rounded-full bg-stone-100 px-1.5 font-semibold text-stone-700">v{v.number}</span>}
                           <span className="text-stone-500">{t.status === "resolved" ? "Resolved" : "Open"}</span>
                           <button
                             type="button"
@@ -553,7 +553,7 @@ export function Studio(props: {
                                 .eq("id", t.id);
                               router.refresh();
                             }}
-                            className="ml-auto rounded border border-stone-200 px-2 py-0.5 font-medium hover:bg-stone-50"
+                            className="ml-auto rounded-full border border-stone-200 px-2 py-0.5 font-medium hover:bg-stone-50"
                           >
                             {t.status === "open" ? "Resolve" : "Reopen"}
                           </button>
@@ -632,7 +632,7 @@ function SharePanel({
         {project.published ? (
           <>
             <div className="flex gap-2">
-              <input readOnly value={reviewUrl} aria-label="Review link" className="min-w-0 flex-1 rounded-lg border border-stone-300 px-2.5 text-sm" />
+              <input readOnly value={reviewUrl} aria-label="Review link" className="min-h-9 min-w-0 flex-1 rounded-full border border-stone-300 px-4 text-sm" />
               <button
                 type="button"
                 onClick={async () => {
@@ -640,7 +640,7 @@ function SharePanel({
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 }}
-                className="min-h-9 rounded-lg border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50"
+                className="min-h-9 rounded-full border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50"
               >
                 {copied ? "Copied" : "Copy"}
               </button>
@@ -684,11 +684,11 @@ function SharePanel({
             value={address}
             onChange={(e) => setAddress(e.target.value.toLowerCase())}
             maxLength={60}
-            className="min-h-9 min-w-0 flex-1 rounded-lg border border-stone-300 px-2.5 text-sm"
+            className="min-h-9 min-w-0 flex-1 rounded-full border border-stone-300 px-4 text-sm"
           />
           <span className="shrink-0 text-sm text-stone-500">.realframe.app</span>
           {address !== project.slug && (
-            <button disabled={pending} className="min-h-9 rounded-lg bg-stone-900 px-3 text-sm font-semibold text-white">
+            <button disabled={pending} className="min-h-9 rounded-full bg-stone-900 px-3 text-sm font-semibold text-white">
               Save
             </button>
           )}
@@ -713,8 +713,8 @@ function SharePanel({
         ).map(([value, title, desc]) => (
           <label
             key={value}
-            className={`flex cursor-pointer gap-3 rounded-xl border-2 p-3 ${
-              project.access_mode === value ? "border-ember-700 bg-ember-50" : "border-stone-200"
+            className={`flex cursor-pointer gap-3 rounded-3xl border-2 p-3 ${
+              project.access_mode === value ? "border-raspberry-600 bg-glow-soft" : "border-stone-200"
             }`}
           >
             <input
@@ -729,7 +729,7 @@ function SharePanel({
                 }
                 run(() => setAccessMode(project.id, value));
               }}
-              className="mt-1 accent-ember-700"
+              className="mt-1 accent-raspberry-700"
             />
             <span>
               <span className="block text-sm font-semibold">{title}</span>
@@ -737,7 +737,7 @@ function SharePanel({
             </span>
           </label>
         ))}
-        <div className={`space-y-2 rounded-xl bg-stone-50 p-3 ${project.access_mode === "password" || !project.has_password ? "" : "opacity-80"}`}>
+        <div className={`space-y-2 rounded-3xl bg-stone-50 p-3 ${project.access_mode === "password" || !project.has_password ? "" : "opacity-80"}`}>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -761,9 +761,9 @@ function SharePanel({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={project.has_password ? "Change the password" : "Set a password (6+ characters)"}
-              className="min-h-9 min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-2.5 text-sm"
+              className="min-h-9 min-w-0 flex-1 rounded-full border border-stone-300 bg-white px-4 text-sm"
             />
-            <button disabled={pending} className="min-h-9 rounded-lg bg-stone-900 px-3 text-sm font-semibold text-white">
+            <button disabled={pending} className="min-h-9 rounded-full bg-stone-900 px-3 text-sm font-semibold text-white">
               {project.has_password ? "Change" : "Set"}
             </button>
           </form>
@@ -776,7 +776,7 @@ function SharePanel({
                 const on = e.target.checked;
                 run(() => setGuestComments(project.id, on));
               }}
-              className="accent-ember-700"
+              className="accent-raspberry-700"
             />
             Password guests can comment
           </label>
@@ -807,7 +807,7 @@ function SharePanel({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="name@company.com"
-            className="min-h-9 min-w-0 flex-1 rounded-lg border border-stone-300 px-2.5 text-sm"
+            className="min-h-9 min-w-0 flex-1 rounded-full border border-stone-300 px-4 text-sm"
           />
           <label htmlFor="invrole" className="sr-only">
             Role
@@ -816,13 +816,13 @@ function SharePanel({
             id="invrole"
             value={role}
             onChange={(e) => setRole(e.target.value as typeof role)}
-            className="min-h-9 rounded-lg border border-stone-300 bg-white px-2 text-sm"
+            className="min-h-9 rounded-full border border-stone-300 bg-white px-2 text-sm"
           >
             <option value="commenter">Commenter</option>
             <option value="viewer">Viewer</option>
             <option value="editor">Editor</option>
           </select>
-          <button disabled={pending} className="min-h-9 rounded-lg bg-stone-900 px-3 text-sm font-semibold text-white">
+          <button disabled={pending} className="min-h-9 rounded-full bg-stone-900 px-3 text-sm font-semibold text-white">
             Invite
           </button>
         </form>
@@ -837,7 +837,7 @@ function SharePanel({
                 disabled={pending}
                 onClick={() => run(() => removeMember(project.id, m.email))}
                 aria-label={`Remove ${m.email}`}
-                className="rounded px-1.5 text-xs text-red-700 hover:bg-red-50"
+                className="rounded-full px-1.5 text-xs text-red-700 hover:bg-red-50"
               >
                 Remove
               </button>
@@ -861,7 +861,7 @@ function VariantCompare({
   onDiscard: () => void;
 }) {
   return (
-    <main className="flex min-w-0 flex-1 flex-col bg-stone-100 p-5">
+    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white/40 p-5">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold">Compare {variants.length} variants</h2>
@@ -871,14 +871,14 @@ function VariantCompare({
           type="button"
           disabled={pending}
           onClick={onDiscard}
-          className="min-h-9 rounded-lg border border-stone-300 bg-white px-3 text-sm font-medium hover:bg-stone-50"
+          className="min-h-9 rounded-full border border-stone-300 bg-white px-3 text-sm font-medium hover:bg-stone-50"
         >
           Discard all
         </button>
       </div>
       <div className={`grid min-h-0 flex-1 gap-4 ${variants.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
         {variants.map((v) => (
-          <section key={v.id} aria-label={`Variant ${v.position}`} className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+          <section key={v.id} aria-label={`Variant ${v.position}`} className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
             <div className="flex items-start gap-3 border-b border-stone-100 p-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">Variant {v.position}</p>
@@ -888,7 +888,7 @@ function VariantCompare({
                 type="button"
                 disabled={pending}
                 onClick={() => onKeep(v)}
-                className="min-h-9 shrink-0 rounded-lg bg-ember-700 px-3 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
+                className="min-h-9 shrink-0 rounded-full btn-glow px-3 text-sm font-semibold disabled:opacity-50"
               >
                 Keep this
               </button>

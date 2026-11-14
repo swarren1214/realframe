@@ -24,14 +24,14 @@ export default async function ProjectsPage() {
   const shared = (projects ?? []).filter((p) => p.owner_id !== user.id);
 
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center gap-4 border-b border-stone-200 bg-white px-6 py-3">
+    <div className="min-h-screen px-4">
+      <header className="glass mx-auto mt-4 flex max-w-5xl items-center gap-4 rounded-full px-5 py-2.5">
         <Logo href="/projects" />
         <div className="flex-1" />
         <Link
           href="/billing"
-          className={`rounded-md px-2 py-1 text-xs font-semibold no-underline ${
-            profile?.plan === "pro" ? "bg-ember-50 text-ember-800" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+          className={`rounded-full px-2 py-1 text-xs font-semibold no-underline ${
+            profile?.plan === "pro" ? "bg-glow-soft text-raspberry-800" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
           }`}
         >
           {profile?.plan === "pro" ? "Pro" : "Free · Upgrade"}
@@ -40,14 +40,14 @@ export default async function ProjectsPage() {
           {profile?.display_name || user.email}
         </Link>
         <form action="/auth/signout" method="post">
-          <button className="min-h-10 rounded-lg border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50">
+          <button className="min-h-10 rounded-full border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50">
             Sign out
           </button>
         </form>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-10">
         <h1 className="font-display text-3xl font-bold">Your prototypes</h1>
-        <form action={createProject} className="mt-6 flex flex-wrap gap-3 rounded-2xl border border-stone-200 bg-white p-4">
+        <form action={createProject} className="mt-6 flex flex-wrap gap-3 rounded-[2rem] border border-stone-200 bg-white p-4">
           <label htmlFor="name" className="sr-only">
             Prototype name
           </label>
@@ -57,9 +57,9 @@ export default async function ProjectsPage() {
             required
             maxLength={80}
             placeholder="Name a new prototype, e.g. Dispatch Board v2"
-            className="min-h-11 flex-1 rounded-lg border border-stone-300 px-3 outline-none focus:border-ember-700"
+            className="min-h-11 flex-1 rounded-full border border-stone-300 px-3 outline-none focus:border-raspberry-600"
           />
-          <button className="min-h-11 rounded-lg bg-ember-700 px-5 font-semibold text-white hover:bg-ember-800">
+          <button className="min-h-11 rounded-full btn-glow px-5 font-semibold">
             New prototype
           </button>
         </form>
@@ -93,12 +93,12 @@ function ProjectList({
             <li key={p.id}>
               <Link
                 href={shared ? `/p/${p.slug}` : `/projects/${p.id}`}
-                className="block rounded-xl border border-stone-200 bg-white p-4 hover:border-ember-700"
+                className="block rounded-3xl border border-stone-200 bg-white p-4 hover:border-raspberry-600"
               >
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{p.name}</span>
                   {p.published && (
-                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">Live</span>
+                    <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">Live</span>
                   )}
                 </div>
                 <p className="mt-1 text-sm text-stone-500">

@@ -151,13 +151,13 @@ export function Review({
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-stone-200 bg-white px-5 py-2.5">
+      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-3 rounded-[2rem] px-4 py-2">
         <Logo href={userEmail ? "/projects" : "/"} />
         <span className="text-stone-300" aria-hidden="true">
           /
         </span>
         <h1 className="font-semibold">{project.name}</h1>
-        <span className="rounded-md bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-700">
+        <span className="rounded-full bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-700">
           v{version.number}
           {project.live_version_id === version.id ? " · Live" : " · Draft"}
         </span>
@@ -165,7 +165,7 @@ export function Review({
         {(role === "owner" || role === "editor") && (
           <a
             href={`/projects/${project.id}`}
-            className="inline-flex min-h-9 items-center rounded-lg border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
+            className="inline-flex min-h-9 items-center rounded-full border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
           >
             Open in studio
           </a>
@@ -178,8 +178,8 @@ export function Review({
               setCommentMode((m) => !m);
               setDraft(null);
             }}
-            className={`min-h-9 rounded-lg px-4 text-sm font-semibold ${
-              commentMode ? "bg-ember-700 text-white" : "border border-stone-200 text-stone-900 hover:bg-stone-50"
+            className={`min-h-9 rounded-full px-4 text-sm font-semibold ${
+              commentMode ? "btn-glow" : "border border-stone-200 text-stone-900 hover:bg-stone-50"
             }`}
           >
             {commentMode ? "Click the prototype to pin… (Esc)" : "Add comment"}
@@ -200,9 +200,9 @@ export function Review({
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-3 p-3">
         <main
-          className="relative min-w-0 flex-1 bg-stone-100 p-4"
+          className="relative min-w-0 flex-1 overflow-hidden rounded-[2rem] border border-white/80 bg-white/40 p-4"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setCommentMode(false);
@@ -210,7 +210,7 @@ export function Review({
             }
           }}
         >
-          <div className="h-full overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+          <div className="h-full overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
             <PrototypeFrame
               html={version.html}
               title={`${project.name} v${version.number}`}
@@ -226,7 +226,7 @@ export function Review({
           {draft && (
             <form
               onSubmit={submitThread}
-              className="absolute bottom-8 left-1/2 w-[min(440px,90%)] -translate-x-1/2 space-y-2 rounded-2xl border border-stone-200 bg-white p-4 shadow-xl"
+              className="absolute bottom-8 left-1/2 w-[min(440px,90%)] -translate-x-1/2 space-y-2 rounded-[2rem] border border-stone-200 bg-white p-4 shadow-xl"
             >
               <label htmlFor="newc" className="block text-sm font-semibold">
                 New comment on v{version.number}
@@ -242,19 +242,19 @@ export function Review({
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitThread(e);
                 }}
                 placeholder="What should change here?"
-                className="w-full resize-none rounded-xl border border-stone-300 p-3 text-sm outline-none focus:border-ember-700"
+                className="w-full resize-none rounded-3xl border border-stone-300 p-3 text-sm outline-none focus:border-raspberry-600"
               />
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setDraft(null)}
-                  className="min-h-9 rounded-lg border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50"
+                  className="min-h-9 rounded-full border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50"
                 >
                   Cancel
                 </button>
                 <button
                   disabled={busy || !draftText.trim()}
-                  className="min-h-9 rounded-lg bg-ember-700 px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  className="min-h-9 rounded-full btn-glow px-4 text-sm font-semibold disabled:opacity-50"
                 >
                   Post
                 </button>
@@ -264,7 +264,7 @@ export function Review({
         </main>
 
         {role !== "public" && (
-          <aside aria-label="Comments" className="flex w-[360px] shrink-0 flex-col border-l border-stone-200 bg-white">
+          <aside aria-label="Comments" className="glass rounded-[2rem] flex w-[360px] shrink-0 flex-col overflow-hidden">
             <div className="flex items-center gap-2 border-b border-stone-100 p-3">
               <h2 className="font-semibold">Comments</h2>
               <span className="text-sm text-stone-500">{openCount} open</span>
@@ -275,7 +275,7 @@ export function Review({
                 id="filter"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value as typeof filter)}
-                className="ml-auto min-h-8 rounded-md border border-stone-200 bg-white px-2 text-sm"
+                className="ml-auto min-h-8 rounded-full border border-stone-200 bg-white px-2 text-sm"
               >
                 <option value="open">Open</option>
                 <option value="resolved">Resolved</option>
@@ -297,17 +297,17 @@ export function Review({
                 <article
                   key={t.id}
                   onClick={() => setSelected(t.id)}
-                  className={`space-y-2 border-b border-stone-100 px-4 py-3 ${t.id === selected ? "bg-ember-50" : ""}`}
+                  className={`space-y-2 border-b border-stone-100 px-4 py-3 ${t.id === selected ? "bg-glow-soft" : ""}`}
                 >
                   <div className="flex items-center gap-2 text-xs">
                     <span
                       className={`grid h-5 w-5 place-items-center rounded-full font-bold text-white ${
-                        t.status === "open" ? "bg-ember-700" : "bg-stone-500"
+                        t.status === "open" ? "btn-glow" : "bg-stone-500"
                       }`}
                     >
                       {t.n}
                     </span>
-                    <span className="rounded bg-stone-100 px-1.5 font-semibold text-stone-700">v{versionNumbers[t.version_id] ?? "?"}</span>
+                    <span className="rounded-full bg-stone-100 px-1.5 font-semibold text-stone-700">v{versionNumbers[t.version_id] ?? "?"}</span>
                     {t.version_id !== version.id && <span className="text-stone-500">earlier version</span>}
                     {commenter && !isGuest && (
                       <button
@@ -316,7 +316,7 @@ export function Review({
                           e.stopPropagation();
                           toggleResolved(t);
                         }}
-                        className="ml-auto rounded border border-stone-200 px-2 py-0.5 font-medium hover:bg-stone-50"
+                        className="ml-auto rounded-full border border-stone-200 px-2 py-0.5 font-medium hover:bg-stone-50"
                       >
                         {t.status === "open" ? "Resolve" : "Reopen"}
                       </button>
@@ -350,9 +350,9 @@ export function Review({
                         value={replies[t.id] ?? ""}
                         onChange={(e) => setReplies((r) => ({ ...r, [t.id]: e.target.value }))}
                         placeholder="Reply…"
-                        className="min-h-8 min-w-0 flex-1 rounded-lg border border-stone-200 px-2.5 text-sm"
+                        className="min-h-8 min-w-0 flex-1 rounded-full border border-stone-200 px-2.5 text-sm"
                       />
-                      <button disabled={busy} className="min-h-8 rounded-lg bg-stone-900 px-3 text-xs font-semibold text-white">
+                      <button disabled={busy} className="min-h-8 rounded-full bg-stone-900 px-3 text-xs font-semibold text-white">
                         Reply
                       </button>
                     </form>

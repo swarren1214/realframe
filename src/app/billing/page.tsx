@@ -30,8 +30,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const buildPct = q ? Math.min(100, (q.used / Math.max(q.build_limit, 1)) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="flex items-center gap-4 border-b border-stone-200 bg-white px-6 py-3">
+    <div className="min-h-screen px-4">
+      <header className="glass mx-auto mt-4 flex max-w-5xl items-center gap-4 rounded-full px-5 py-2.5">
         <Logo href="/projects" />
         <div className="flex-1" />
         <a href="/projects" className="text-sm font-medium text-stone-700">
@@ -42,14 +42,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         <h1 className="font-display text-3xl font-bold">Plan &amp; billing</h1>
 
         {upgraded && (
-          <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p role="status" className="rounded-3xl bg-emerald-50 p-4 text-sm text-emerald-900">
             {isPro
               ? "You're on Pro. Thanks for upgrading!"
               : "Payment received. Your plan will switch to Pro in a few seconds. Refresh if it hasn't yet."}
           </p>
         )}
 
-        <section className="rounded-2xl border border-stone-200 bg-white p-6">
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-6">
           <div className="flex flex-wrap items-start gap-4">
             <div className="flex-1">
               <p className="text-sm font-semibold uppercase tracking-wide text-stone-500">Current plan</p>
@@ -67,7 +67,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             </div>
             {isPro || profile?.stripe_customer_id ? (
               <form action="/api/billing/portal" method="post">
-                <button className="min-h-11 rounded-lg border border-stone-200 px-4 text-sm font-semibold hover:bg-stone-50">
+                <button className="min-h-11 rounded-full border border-stone-200 px-4 text-sm font-semibold hover:bg-stone-50">
                   Manage billing
                 </button>
               </form>
@@ -101,7 +101,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         </section>
 
         {!isPro && (
-          <section className="rounded-2xl border-2 border-ember-700 bg-white p-6">
+          <section className="rounded-[2rem] border-2 border-ember-700 bg-white p-6">
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex-1">
                 <p className="font-display text-xl font-bold">Realframe Pro · $20/month</p>
@@ -112,7 +112,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 </ul>
               </div>
               <form action="/api/billing/checkout" method="post">
-                <button className="min-h-12 rounded-lg bg-ember-700 px-6 font-semibold text-white hover:bg-ember-800">
+                <button className="min-h-12 rounded-full btn-glow px-6 font-semibold">
                   Upgrade to Pro
                 </button>
               </form>
@@ -139,7 +139,7 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div className="h-full rounded-full bg-ember-700" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full btn-glow" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

@@ -13,9 +13,9 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-50 p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
       <Logo />
-      <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">{children}</div>
+      <div className="w-full max-w-md rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">{children}</div>
     </main>
   );
 }
@@ -93,7 +93,7 @@ export default async function ReviewPage({
           invited.
         </p>
         <form action="/auth/signout" method="post" className="mt-5">
-          <button className="min-h-10 rounded-lg border border-stone-200 px-4 text-sm font-semibold hover:bg-stone-50">
+          <button className="min-h-10 rounded-full border border-stone-200 px-4 text-sm font-semibold hover:bg-stone-50">
             Sign in with a different email
           </button>
         </form>
@@ -185,7 +185,7 @@ function PasswordGate({
             maxLength={60}
             autoComplete="name"
             placeholder="Shown next to your comments"
-            className="min-h-11 w-full rounded-lg border border-stone-300 px-3"
+            className="min-h-11 w-full rounded-full border border-stone-300 px-3"
           />
         </div>
         <div>
@@ -198,7 +198,7 @@ function PasswordGate({
             type="password"
             required
             autoComplete="current-password"
-            className="min-h-11 w-full rounded-lg border border-stone-300 px-3"
+            className="min-h-11 w-full rounded-full border border-stone-300 px-3"
           />
         </div>
         {error && (
@@ -206,7 +206,7 @@ function PasswordGate({
             {error === "name" ? "Enter your name." : "That password isn't right."}
           </p>
         )}
-        <button className="min-h-11 w-full rounded-lg bg-ember-700 font-semibold text-white hover:bg-ember-800">View prototype</button>
+        <button className="min-h-11 w-full rounded-full btn-glow font-semibold">View prototype</button>
       </form>
       <p className="mt-4 text-xs text-stone-500">
         {signedInAs

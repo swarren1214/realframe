@@ -212,7 +212,7 @@ export function Canvas({
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-stone-200 bg-white px-5 py-2.5">
+      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-3 rounded-[2rem] px-4 py-2">
         <Logo href="/projects" />
         <span className="text-stone-300" aria-hidden="true">
           /
@@ -220,7 +220,7 @@ export function Canvas({
         <a href={`/projects/${project.id}`} className="font-semibold text-stone-900 no-underline hover:underline">
           {project.name}
         </a>
-        <span className="rounded-md bg-ember-50 px-2 py-1 text-xs font-semibold text-ember-800">
+        <span className="rounded-full bg-glow-soft px-2.5 py-1 text-xs font-semibold text-raspberry-800">
           Canvas{latest ? ` · v${latest.number}` : ""}
         </span>
         <div className="flex-1" />
@@ -231,21 +231,21 @@ export function Canvas({
               type="button"
               disabled={!latest}
               onClick={() => addFrames([d], activeFrame?.route ?? "")}
-              className="min-h-9 rounded-lg border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50 disabled:opacity-50"
+              className="min-h-9 rounded-full border border-stone-200 px-3 text-sm font-medium hover:bg-stone-50 disabled:opacity-50"
             >
               + {d.label}
             </button>
           ))}
         </div>
-        <div role="group" aria-label="Zoom" className="flex items-center gap-1 rounded-lg bg-stone-100 p-0.5">
-          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.25)} className="h-8 w-8 rounded-md text-lg hover:bg-white">
+        <div role="group" aria-label="Zoom" className="flex items-center gap-1 rounded-2xl bg-stone-100 p-0.5">
+          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.25)} className="h-8 w-8 rounded-full text-lg hover:bg-white">
             −
           </button>
           <span className="w-12 text-center text-xs tabular-nums text-stone-700">{Math.round(view.z * 100)}%</span>
-          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(1.25)} className="h-8 w-8 rounded-md text-lg hover:bg-white">
+          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(1.25)} className="h-8 w-8 rounded-full text-lg hover:bg-white">
             +
           </button>
-          <button type="button" onClick={() => fit()} className="h-8 rounded-md px-2 text-xs font-medium hover:bg-white">
+          <button type="button" onClick={() => fit()} className="h-8 rounded-xl px-2 text-xs font-medium hover:bg-white">
             Fit
           </button>
         </div>
@@ -260,8 +260,8 @@ export function Canvas({
             } else setEditing(true);
           }}
           title={activeFrame ? undefined : "Select a frame first"}
-          className={`min-h-9 rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${
-            editing ? "bg-stone-900 text-white" : "bg-ember-700 text-white hover:bg-ember-800"
+          className={`min-h-9 rounded-full px-3 text-sm font-semibold disabled:opacity-50 ${
+            editing ? "bg-stone-900 text-white" : "btn-glow"
           }`}
         >
           {editing ? "Exit editing" : "Edit visually"}
@@ -276,12 +276,12 @@ export function Canvas({
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div
           ref={board}
-          className={`relative min-w-0 flex-1 overflow-hidden bg-stone-200 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`relative min-w-0 flex-1 overflow-hidden rounded-[2rem] border border-white/80 bg-white/50 ${dragging && drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab"}`}
           style={{
-            backgroundImage: "radial-gradient(circle, rgba(68,64,60,.18) 1px, transparent 1px)",
+            backgroundImage: "radial-gradient(circle, rgba(190,24,93,.22) 1.2px, transparent 1.2px)",
             backgroundSize: `${24 * view.z}px ${24 * view.z}px`,
             backgroundPosition: `${view.x}px ${view.y}px`,
           }}
@@ -299,13 +299,13 @@ export function Canvas({
             <EmptyState text="Build v1 in the studio first, then lay its screens out here." href={`/projects/${project.id}`} />
           ) : frames.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm">
+              <div className="max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
                 <p className="font-semibold">Start your canvas</p>
                 <p className="mt-1 text-sm text-stone-600">Add v{latest.number} at desktop, tablet and phone sizes to compare them side by side.</p>
                 <button
                   type="button"
                   onClick={() => addFrames(DEVICES)}
-                  className="mt-4 min-h-10 rounded-lg bg-ember-700 px-4 text-sm font-semibold text-white hover:bg-ember-800"
+                  className="mt-4 min-h-10 rounded-full btn-glow px-4 text-sm font-semibold"
                 >
                   Add desktop, tablet and phone
                 </button>
@@ -353,7 +353,7 @@ export function Canvas({
                             persist(f.id, { label });
                           }}
                           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                          className="min-w-0 flex-1 rounded border border-stone-300 bg-white px-1"
+                          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-1"
                         />
                       ) : (
                         <button
@@ -375,14 +375,14 @@ export function Canvas({
                         type="button"
                         onClick={() => removeFrame(f.id)}
                         aria-label={`Remove ${f.label}`}
-                        className="shrink-0 rounded px-1 text-stone-500 hover:bg-white hover:text-red-700"
+                        className="shrink-0 rounded-lg px-1 text-stone-500 hover:bg-white hover:text-red-700"
                       >
                         ✕
                       </button>
                     </div>
                     <div
-                      className={`relative overflow-hidden rounded-lg bg-white shadow-md ${
-                        isActive ? "ring-4 ring-ember-700" : "ring-1 ring-stone-300"
+                      className={`relative overflow-hidden rounded-3xl bg-white shadow-[0_18px_36px_-22px_rgba(124,58,237,.45)] ${
+                        isActive ? "ring-4 ring-raspberry-600" : "ring-1 ring-stone-300"
                       }`}
                       style={{ height: f.height }}
                     >
@@ -420,7 +420,7 @@ export function Canvas({
                     <div
                       role="presentation"
                       title="Drag to resize"
-                      className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-ember-700"
+                      className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white btn-glow"
                       style={{ transform: `scale(${Math.max(1, 1 / view.z / 2)})` }}
                       onPointerDown={(e) => {
                         e.stopPropagation();
@@ -437,14 +437,14 @@ export function Canvas({
           </div>
 
           {latest && frames.length > 0 && (
-            <p className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-white/90 px-2 py-1 text-xs text-stone-600 shadow-sm">
+            <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/90 px-2 py-1 text-xs text-stone-600 shadow-sm">
               Drag the background to pan · ⌘/Ctrl + scroll to zoom · click a frame to use it · navigate inside a frame to set its screen
             </p>
           )}
         </div>
 
         {editing && (
-          <aside aria-label="Visual editor" className="flex w-[320px] shrink-0 flex-col border-l border-stone-200 bg-white">
+          <aside aria-label="Visual editor" className="glass rounded-[2rem] flex w-[320px] shrink-0 flex-col overflow-hidden">
             <Inspector
               selected={editor.selected}
               editCount={editor.edits.length}
@@ -467,7 +467,7 @@ export function Canvas({
 function EmptyState({ text, href }: { text: string; href: string }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center">
-      <div className="max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm">
+      <div className="max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
         <p className="text-sm text-stone-600">{text}</p>
         <a href={href} className="mt-3 inline-block text-sm font-semibold">
           Open the studio

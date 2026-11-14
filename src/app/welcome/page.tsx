@@ -43,9 +43,9 @@ export default async function WelcomePage({
   const q = (quota as { plan: string; build_limit: number; remaining: number }[] | null)?.[0];
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-50 p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
       <Logo />
-      <form action={saveProfile} className="w-full max-w-md space-y-4 rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">
+      <form action={saveProfile} className="w-full max-w-md space-y-4 rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
         <div>
           <h1 className="font-display text-2xl font-bold">{editing ? "Your account" : "Welcome to Realframe"}</h1>
           <p className="mt-1 text-sm text-stone-600">
@@ -68,7 +68,7 @@ export default async function WelcomePage({
             autoFocus
             defaultValue={profile?.display_name ?? ""}
             placeholder="Alex Rivera"
-            className="min-h-12 w-full rounded-lg border border-stone-300 px-3.5 text-[15px] outline-none focus:border-ember-700"
+            className="min-h-12 w-full rounded-full border border-stone-300 px-3.5 text-[15px] outline-none focus:border-raspberry-600"
           />
           {error && (
             <p role="alert" className="mt-2 text-sm text-red-700">
@@ -77,7 +77,7 @@ export default async function WelcomePage({
           )}
         </div>
         {q && (
-          <p className="rounded-lg bg-stone-50 p-3 text-xs text-stone-600">
+          <p className="rounded-2xl bg-stone-50 p-3 text-xs text-stone-600">
             {q.plan === "pro"
               ? "You're on Pro: build as much as you need, with $10 of AI usage included each month."
               : `The free plan includes ${q.build_limit} builds a month. You have ${q.remaining} left.`}{" "}
@@ -86,7 +86,7 @@ export default async function WelcomePage({
             </a>
           </p>
         )}
-        <button className="min-h-12 w-full rounded-lg bg-ember-700 text-[15px] font-semibold text-white hover:bg-ember-800">
+        <button className="min-h-12 w-full rounded-full btn-glow text-[15px] font-semibold">
           {editing ? "Save" : "Continue"}
         </button>
         {editing && (

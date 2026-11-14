@@ -22,9 +22,9 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
   const { data: profile } = await supabase.from("profiles").select("plan").eq("id", user.id).single();
   if (profile?.plan !== "pro") {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-stone-50 p-6">
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
         <Logo href="/projects" />
-        <div className="w-full max-w-lg rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
+        <div className="w-full max-w-lg rounded-[2rem] border border-stone-200 bg-white p-8 text-center shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]">
           <p className="text-xs font-bold uppercase tracking-wide text-ember-700">Pro feature</p>
           <h1 className="mt-1 font-display text-2xl font-bold">Lay out every screen on a canvas</h1>
           <p className="mt-2 text-stone-600">
@@ -32,7 +32,7 @@ export default async function CanvasPage({ params }: { params: Promise<{ id: str
             any of them visually.
           </p>
           <form action="/api/billing/checkout" method="post" className="mt-6">
-            <button className="min-h-12 rounded-lg bg-ember-700 px-6 font-semibold text-white hover:bg-ember-800">
+            <button className="min-h-12 rounded-full btn-glow px-6 font-semibold">
               Upgrade to Pro · $20/month
             </button>
           </form>

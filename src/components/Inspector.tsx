@@ -68,7 +68,7 @@ export function Inspector({
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-5 overflow-y-auto p-4">
         {!selected ? (
-          <div className="rounded-xl bg-stone-50 p-4 text-sm text-stone-600">
+          <div className="rounded-3xl bg-stone-50 p-4 text-sm text-stone-600">
             <p className="font-semibold text-stone-900">Click anything in the preview</p>
             <p className="mt-1">
               Change its text, colors, type, spacing and corners. Edits show instantly and are saved into the prototype&apos;s code as
@@ -80,7 +80,7 @@ export function Inspector({
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Selected</p>
               <p className="mt-0.5 truncate text-sm">
-                <code className="rounded bg-stone-100 px-1 text-xs">{selected.tag}</code>{" "}
+                <code className="rounded-lg bg-stone-100 px-1 text-xs">{selected.tag}</code>{" "}
                 <span className="text-stone-600">{selected.label}</span>
               </p>
               <p className="text-xs text-stone-500">
@@ -97,7 +97,7 @@ export function Inspector({
                   defaultValue={selected.text}
                   rows={3}
                   onChange={(e) => onChange({ text: e.target.value })}
-                  className="w-full resize-y rounded-lg border border-stone-300 p-2 text-sm"
+                  className="w-full resize-y rounded-2xl border border-stone-300 p-2 text-sm"
                 />
               </Field>
             )}
@@ -119,7 +119,7 @@ export function Inspector({
                   id="insp-fw"
                   value={WEIGHTS.includes(s.fontWeight) ? s.fontWeight : "400"}
                   onChange={(e) => onChange({ styles: { fontWeight: e.target.value } })}
-                  className="min-h-9 w-full rounded-lg border border-stone-300 bg-white px-2 text-sm"
+                  className="min-h-9 w-full rounded-full border border-stone-300 bg-white px-2 text-sm"
                 >
                   {WEIGHTS.map((w) => (
                     <option key={w} value={w}>
@@ -138,7 +138,7 @@ export function Inspector({
                     type="button"
                     aria-pressed={s.textAlign === a || (a === "left" && s.textAlign === "start")}
                     onClick={() => onChange({ styles: { textAlign: a } })}
-                    className="min-h-8 flex-1 rounded-md border border-stone-200 text-xs capitalize aria-pressed:bg-stone-900 aria-pressed:text-white"
+                    className="min-h-8 flex-1 rounded-full border border-stone-200 text-xs capitalize aria-pressed:bg-stone-900 aria-pressed:text-white"
                   >
                     {a}
                   </button>
@@ -194,7 +194,7 @@ export function Inspector({
             <button
               type="button"
               onClick={() => onChange({ styles: { display: hidden ? "" : "none" } })}
-              className="min-h-9 w-full rounded-lg border border-stone-200 text-sm font-medium hover:bg-stone-50"
+              className="min-h-9 w-full rounded-full border border-stone-200 text-sm font-medium hover:bg-stone-50"
             >
               {hidden ? "Show element" : "Hide element"}
             </button>
@@ -206,7 +206,7 @@ export function Inspector({
           type="button"
           disabled={!editCount || saving}
           onClick={onSave}
-          className="min-h-10 w-full rounded-lg bg-ember-700 text-sm font-semibold text-white hover:bg-ember-800 disabled:opacity-50"
+          className="min-h-10 w-full rounded-full btn-glow text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Saving…" : editCount ? `${saveLabel} (${editCount} change${editCount === 1 ? "" : "s"})` : "No changes yet"}
         </button>
@@ -214,7 +214,7 @@ export function Inspector({
           type="button"
           disabled={saving}
           onClick={onDiscard}
-          className="min-h-9 w-full rounded-lg text-sm text-stone-600 hover:bg-stone-50"
+          className="min-h-9 w-full rounded-full text-sm text-stone-600 hover:bg-stone-50"
         >
           {editCount ? "Discard changes" : "Done"}
         </button>
@@ -249,7 +249,7 @@ function NumberField({
 }) {
   return (
     <Field label={label} htmlFor={id}>
-      <div className="flex items-center rounded-lg border border-stone-300 pr-2">
+      <div className="flex items-center rounded-2xl border border-stone-300 pr-2">
         <input
           id={id}
           key={`${id}-${selKey}`}
@@ -261,7 +261,7 @@ function NumberField({
             const n = Number(e.target.value);
             if (Number.isFinite(n) && n >= 0) onChange(n);
           }}
-          className="min-h-9 w-full min-w-0 rounded-lg px-2 text-sm outline-none"
+          className="min-h-9 w-full min-w-0 rounded-full px-2 text-sm outline-none"
         />
         <span className="text-xs text-stone-500">px</span>
       </div>
@@ -273,13 +273,13 @@ function ColorField({ id, label, value, onChange }: { id: string; label: string;
   const hex = toHex(value);
   return (
     <Field label={label} htmlFor={id}>
-      <div className="flex items-center gap-2 rounded-lg border border-stone-300 p-1">
+      <div className="flex items-center gap-2 rounded-2xl border border-stone-300 p-1">
         <input
           id={id}
           type="color"
           value={hex ?? "#ffffff"}
           onChange={(e) => onChange(e.target.value)}
-          className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0"
+          className="h-7 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0"
         />
         <span className="truncate text-xs text-stone-600">{hex ?? "none"}</span>
       </div>

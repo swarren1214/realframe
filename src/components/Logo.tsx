@@ -1,9 +1,18 @@
 import Link from "next/link";
+import { useId } from "react";
 
-export function Mark({ size = 26 }: { size?: number }) {
+export function Mark({ size = 28 }: { size?: number }) {
+  const id = useId().replace(/:/g, "");
   return (
     <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true">
-      <rect x="1" y="1" width="24" height="24" rx="7" fill="#C2410C" />
+      <defs>
+        <linearGradient id={`rf-mark-${id}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#EA580C" />
+          <stop offset=".55" stopColor="#DB2777" />
+          <stop offset="1" stopColor="#7C3AED" />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="24" height="24" rx="9" fill={`url(#rf-mark-${id})`} />
       <path
         d="M14 19H9a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5"
         stroke="#FFF"
