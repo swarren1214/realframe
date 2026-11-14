@@ -223,6 +223,13 @@ export function Studio(props: {
             </button>
           ))}
         </div>
+        <a
+          href={`/projects/${project.id}/canvas`}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-sm font-medium text-stone-900 no-underline hover:bg-stone-50"
+        >
+          Canvas
+          {quota?.plan !== "pro" && <span className="rounded bg-ember-50 px-1 text-[10px] font-bold text-ember-800">PRO</span>}
+        </a>
         {project.published && (
           <a
             href={`/p/${project.slug}`}
