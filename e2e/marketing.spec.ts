@@ -16,7 +16,9 @@ test.describe("marketing site", () => {
       "Questions",
     ])
       await expect(page.getByRole("heading", { name })).toBeVisible();
-    await expect(page.getByText("Reviewers are free on every plan")).toBeVisible();
+    await expect(
+      page.getByText("Reviewers are free on every plan"),
+    ).toBeVisible();
   });
 
   test("toggles pricing between annual and monthly", async ({ page }) => {
@@ -40,7 +42,11 @@ test.describe("marketing site", () => {
     let sent: unknown = null;
     await page.route("**/auth/v1/otp**", async (route) => {
       sent = route.request().postDataJSON();
-      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
     });
     await page.goto("/");
     await page.getByLabel("Work email").fill("new@acme.co");
@@ -51,9 +57,13 @@ test.describe("marketing site", () => {
 
   test("has a standalone pricing page", async ({ page }) => {
     await page.goto("/pricing");
-    await expect(page.getByRole("heading", { level: 1, name: /Reviewers are free/ })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: /Reviewers are free/ }),
+    ).toBeVisible();
     await page.getByRole("link", { name: "Get Pro" }).click();
-    await expect(page).toHaveURL(/\/login\?next=%2Fbilling|\/login\?next=\/billing/);
+    await expect(page).toHaveURL(
+      /\/login\?next=%2Fbilling|\/login\?next=\/billing/,
+    );
   });
 
   test("has no detectable accessibility problems", async ({ page }) => {
@@ -62,16 +72,22 @@ test.describe("marketing site", () => {
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();
-      expect(results.violations.map((v) => `${path}: ${v.id} (${v.nodes.length})`)).toEqual([]);
+      expect(
+        results.violations.map((v) => `${path}: ${v.id} (${v.nodes.length})`),
+      ).toEqual([]);
     }
   });
 });
 
 test.describe("signing in", () => {
-  test("old /?next= links land on the sign-in page with the destination kept", async ({ page }) => {
+  test("old /?next= links land on the sign-in page with the destination kept", async ({
+    page,
+  }) => {
     await page.goto("/?next=/billing");
     await expect(page).toHaveURL(/\/login\?next=%2Fbilling/);
-    await expect(page.getByRole("heading", { name: "Sign in or create an account" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sign in or create an account" }),
+    ).toBeVisible();
   });
 
   test("an expired link explains itself", async ({ page }) => {
@@ -86,7 +102,9 @@ test.describe("signing in", () => {
     });
   }
 
-  test("publishes robots.txt and a sitemap that keep prototypes private", async ({ request }) => {
+  test("publishes robots.txt and a sitemap that keep prototypes private", async ({
+    request,
+  }) => {
     const robots = await (await request.get("/robots.txt")).text();
     expect(robots).toContain("Disallow: /p/");
     const sitemap = await (await request.get("/sitemap.xml")).text();

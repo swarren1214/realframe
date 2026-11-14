@@ -20,7 +20,11 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /marketing\.spec/ },
+    {
+      name: "mobile",
+      use: { ...devices["Pixel 7"] },
+      testMatch: /marketing\.spec/,
+    },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
