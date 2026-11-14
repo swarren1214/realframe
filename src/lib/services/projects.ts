@@ -26,34 +26,64 @@ export async function createProject(
   return data as { id: string; name: string; slug: string };
 }
 
-export async function renameProject(supabase: SupabaseClient, projectId: string, rawName: string) {
+export async function renameProject(
+  supabase: SupabaseClient,
+  projectId: string,
+  rawName: string,
+) {
   const name = rawName.trim().slice(0, 80);
   if (!name) throw new UserError("Give the prototype a name.");
-  const { error } = await supabase.from("projects").update({ name }).eq("id", projectId);
+  const { error } = await supabase
+    .from("projects")
+    .update({ name })
+    .eq("id", projectId);
   if (error) throw new UserError(error.message);
   return name;
 }
 
-export async function publishVersion(supabase: SupabaseClient, projectId: string, versionId: string) {
+export async function publishVersion(
+  supabase: SupabaseClient,
+  projectId: string,
+  versionId: string,
+) {
   const { error } = await supabase
     .from("projects")
-    .update({ published: true, live_version_id: versionId, updated_at: new Date().toISOString() })
+    .update({
+      published: true,
+      live_version_id: versionId,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", projectId);
   if (error) throw new UserError(error.message);
 }
 
 export async function unpublish(supabase: SupabaseClient, projectId: string) {
-  const { error } = await supabase.from("projects").update({ published: false }).eq("id", projectId);
+  const { error } = await supabase
+    .from("projects")
+    .update({ published: false })
+    .eq("id", projectId);
   if (error) throw new UserError(error.message);
 }
 
-export async function setAccessMode(supabase: SupabaseClient, projectId: string, mode: AccessMode) {
-  if (!["invite", "public", "password"].includes(mode)) throw new UserError("Unknown access mode.");
+export async function setAccessMode(
+  supabase: SupabaseClient,
+  projectId: string,
+  mode: AccessMode,
+) {
+  if (!["invite", "public", "password"].includes(mode))
+    throw new UserError("Unknown access mode.");
   if (mode === "password") {
-    const { data } = await supabase.from("projects").select("has_password").eq("id", projectId).single();
+    const { data } = await supabase
+      .from("projects")
+      .select("has_password")
+      .eq("id", projectId)
+      .single();
     if (!data?.has_password) throw new UserError("Set a password first.");
   }
-  const { error } = await supabase.from("projects").update({ access_mode: mode }).eq("id", projectId);
+  const { error } = await supabase
+    .from("projects")
+    .update({ access_mode: mode })
+    .eq("id", projectId);
   if (error) throw new UserError(error.message);
 }
 
@@ -65,16 +95,29 @@ export async function inviteMember(
   role: MemberRole,
 ) {
   const clean = email.trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) throw new UserError("Enter a valid email address.");
-  if (!["viewer", "commenter", "editor"].includes(role)) throw new UserError("Unknown role.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean))
+    throw new UserError("Enter a valid email address.");
+  if (!["viewer", "commenter", "editor"].includes(role))
+    throw new UserError("Unknown role.");
   const { error } = await supabase
     .from("project_members")
-    .upsert({ project_id: projectId, email: clean, role, invited_by: invitedBy }, { onConflict: "project_id,email" });
+    .upsert(
+      { project_id: projectId, email: clean, role, invited_by: invitedBy },
+      { onConflict: "project_id,email" },
+    );
   if (error) throw new UserError(error.message);
   return clean;
 }
 
-export async function removeMember(supabase: SupabaseClient, projectId: string, email: string) {
-  const { error } = await supabase.from("project_members").delete().eq("project_id", projectId).eq("email", email);
+export async function removeMember(
+  supabase: SupabaseClient,
+  projectId: string,
+  email: string,
+) {
+  const { error } = await supabase
+    .from("project_members")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("email", email);
   if (error) throw new UserError(error.message);
 }

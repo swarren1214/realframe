@@ -9,6 +9,8 @@ export function makeSlug(name: string) {
       .replace(/^-+|-+$/g, "")
       .slice(0, 40) || "prototype";
   const bytes = crypto.getRandomValues(new Uint8Array(4));
-  const suffix = Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
+  const suffix = Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join(
+    "",
+  );
   return `${base}-${suffix}`;
 }

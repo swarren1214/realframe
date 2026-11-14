@@ -1,4 +1,5 @@
 "use server";
+import { MAX_PROMPT, nameFromPrompt } from "@/lib/prompt-shared";
 import { action } from "@/lib/safe-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -33,10 +34,13 @@ function builtFor(choice: string): DeviceSettings {
 
 export async function createProject(formData: FormData) {
   const { supabase, user } = await requireUser();
-  const name =
-    String(formData.get("name") ?? "")
-      .trim()
-      .slice(0, 80) || "Untitled prototype";
+  // The box takes a description or just a name.
+  const { name, isPrompt } = nameFromPrompt(
+    String(formData.get("prompt") ?? formData.get("name") ?? "").slice(
+      0,
+      MAX_PROMPT,
+    ),
+  );
   const teamId = (await loadTeams(supabase, user.id)).current?.id ?? null;
   // A design system from the form, if it's a ready one on this team.
   const wanted = String(formData.get("design_system") ?? "");
@@ -64,14 +68,17 @@ export async function createProject(formData: FormData) {
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  redirect(`/projects/${data.id}`);
+  // A description starts the first build when the studio opens.
+  redirect(`/projects/${data.id}${isPrompt ? "?start=1" : ""}`);
 }
 
-export const publishVersion = action(async (projectId: string, versionId: string) => {
-  const { supabase } = await requireUser();
-  await projects.publishVersion(supabase, projectId, versionId);
-  revalidatePath(`/projects/${projectId}`);
-});
+export const publishVersion = action(
+  async (projectId: string, versionId: string) => {
+    const { supabase } = await requireUser();
+    await projects.publishVersion(supabase, projectId, versionId);
+    revalidatePath(`/projects/${projectId}`);
+  },
+);
 
 export const unpublish = action(async (projectId: string) => {
   const { supabase } = await requireUser();
@@ -79,11 +86,13 @@ export const unpublish = action(async (projectId: string) => {
   revalidatePath(`/projects/${projectId}`);
 });
 
-export const setAccessMode = action(async (projectId: string, mode: "invite" | "public" | "password") => {
-  const { supabase } = await requireUser();
-  await projects.setAccessMode(supabase, projectId, mode);
-  revalidatePath(`/projects/${projectId}`);
-});
+export const setAccessMode = action(
+  async (projectId: string, mode: "invite" | "public" | "password") => {
+    const { supabase } = await requireUser();
+    await projects.setAccessMode(supabase, projectId, mode);
+    revalidatePath(`/projects/${projectId}`);
+  },
+);
 
 export const renameProject = action(async (projectId: string, name: string) => {
   const { supabase } = await requireUser();
@@ -92,11 +101,17 @@ export const renameProject = action(async (projectId: string, name: string) => {
   revalidatePath(`/projects/${projectId}`);
 });
 
-export const inviteMember = action(async (projectId: string, email: string, role: "viewer" | "commenter" | "editor") => {
-  const { supabase, user } = await requireUser();
-  await projects.inviteMember(supabase, user.id, projectId, email, role);
-  revalidatePath(`/projects/${projectId}`);
-});
+export const inviteMember = action(
+  async (
+    projectId: string,
+    email: string,
+    role: "viewer" | "commenter" | "editor",
+  ) => {
+    const { supabase, user } = await requireUser();
+    await projects.inviteMember(supabase, user.id, projectId, email, role);
+    revalidatePath(`/projects/${projectId}`);
+  },
+);
 
 export const removeMember = action(async (projectId: string, email: string) => {
   const { supabase } = await requireUser();

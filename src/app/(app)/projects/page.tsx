@@ -12,7 +12,7 @@ import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eyebrow } from "@/components/Eyebrow";
-import { createProject } from "@/app/projects/actions";
+import { NewPrototypeForm } from "@/components/NewPrototypeForm";
 import { loadInvites, loadTeams, teamLabel } from "@/lib/teams";
 import { InviteCards } from "@/components/teams/InviteCards";
 import { DesignSystemSelect } from "@/components/design-systems/DesignSystemSelect";
@@ -98,33 +98,19 @@ export default async function ProjectsPage() {
             }
           />
         </div>
-        <form
-          action={createProject}
-          className="glass mt-5 flex flex-wrap items-center gap-2 rounded-full p-1.5 pl-2"
-        >
-          <label htmlFor="name" className="sr-only">
-            Prototype name
-          </label>
-          <Input
-            id="name"
-            name="name"
-            required
-            maxLength={80}
-            placeholder="Name a new prototype, e.g. Dispatch Board v2"
-            className="h-10 min-w-0 flex-1 border-transparent bg-transparent hover:border-transparent focus:ring-0"
-          />
-          <BuiltForSelect />
-          {current && (
-            <DesignSystemSelect
-              options={dsOptions}
-              teamName={teamLabel(current)}
-            />
-          )}
-          <Button variant="default" size="lg" type="submit">
-            <Plus />
-            New prototype
-          </Button>
-        </form>
+        <NewPrototypeForm
+          controls={
+            <>
+              <BuiltForSelect />
+              {current && (
+                <DesignSystemSelect
+                  options={dsOptions}
+                  teamName={teamLabel(current)}
+                />
+              )}
+            </>
+          }
+        />
 
         <ProjectList
           title={

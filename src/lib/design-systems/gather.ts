@@ -94,12 +94,10 @@ async function fromGitHub(
   const files: Material["files"] = [];
   for (let i = 0; i < chosen.length && budget.left > 0; i += 8) {
     const batch = await Promise.all(
-      chosen
-        .slice(i, i + 8)
-        .map(async (p) => ({
-          p,
-          t: await readRepoFile(token, src.repo, p, commit.sha),
-        })),
+      chosen.slice(i, i + 8).map(async (p) => ({
+        p,
+        t: await readRepoFile(token, src.repo, p, commit.sha),
+      })),
     );
     for (const { p, t } of batch) {
       const text = t && within(budget, t);

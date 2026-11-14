@@ -54,16 +54,14 @@ export async function processImport(id: string) {
       .eq("design_system_id", id)
       .eq("origin", "docs");
     if (result.rules.length) {
-      await admin
-        .from("design_system_rules")
-        .insert(
-          result.rules.map((body) => ({
-            design_system_id: id,
-            body,
-            origin: "docs",
-            status: "active",
-          })),
-        );
+      await admin.from("design_system_rules").insert(
+        result.rules.map((body) => ({
+          design_system_id: id,
+          body,
+          origin: "docs",
+          status: "active",
+        })),
+      );
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "The import failed.";

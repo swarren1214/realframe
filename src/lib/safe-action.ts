@@ -6,8 +6,15 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
 function isFrameworkSignal(err: unknown) {
   // redirect() and notFound() work by throwing; let those through.
-  const digest = typeof err === "object" && err !== null && "digest" in err ? String((err as { digest: unknown }).digest) : "";
-  return digest.startsWith("NEXT_REDIRECT") || digest.startsWith("NEXT_HTTP_ERROR_FALLBACK") || digest === "NEXT_NOT_FOUND";
+  const digest =
+    typeof err === "object" && err !== null && "digest" in err
+      ? String((err as { digest: unknown }).digest)
+      : "";
+  return (
+    digest.startsWith("NEXT_REDIRECT") ||
+    digest.startsWith("NEXT_HTTP_ERROR_FALLBACK") ||
+    digest === "NEXT_NOT_FOUND"
+  );
 }
 
 export function action<A extends unknown[], T>(fn: (...args: A) => Promise<T>) {
@@ -17,7 +24,13 @@ export function action<A extends unknown[], T>(fn: (...args: A) => Promise<T>) {
     } catch (err) {
       if (isFrameworkSignal(err)) throw err;
       console.error(err);
-      return { ok: false, error: err instanceof Error && err.message ? err.message : "Something went wrong." };
+      return {
+        ok: false,
+        error:
+          err instanceof Error && err.message
+            ? err.message
+            : "Something went wrong.",
+      };
     }
   };
 }
@@ -28,6 +41,8 @@ export function unwrap<T>(result: Result<T>): T {
 }
 
 /** Wraps a Result-returning server action so callers get the value or a thrown, readable Error. */
-export function unwrapped<A extends unknown[], T>(fn: (...args: A) => Promise<Result<T>>) {
+export function unwrapped<A extends unknown[], T>(
+  fn: (...args: A) => Promise<Result<T>>,
+) {
   return async (...args: A): Promise<T> => unwrap(await fn(...args));
 }

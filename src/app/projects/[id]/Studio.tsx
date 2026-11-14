@@ -1,4 +1,5 @@
 "use client";
+import { MAX_PROMPT, START_PROMPT_KEY } from "@/lib/prompt-shared";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -395,9 +396,29 @@ export function Studio(props: {
     };
   }, [supabase, project.id, router]);
 
-  async function generate(e?: React.FormEvent) {
+  // A prototype created from a description builds it straight away.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    if (!new URLSearchParams(window.location.search).has("start")) return;
+    started.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    let stash: { prompt?: string; at?: number } | null = null;
+    try {
+      stash = JSON.parse(sessionStorage.getItem(START_PROMPT_KEY) ?? "null");
+      sessionStorage.removeItem(START_PROMPT_KEY);
+    } catch {}
+    const text = stash?.prompt?.trim();
+    if (!text || Date.now() - (stash?.at ?? 0) > 5 * 60_000) return;
+    if (versions.length > 0 || messages.length > 0) return;
+    setPrompt(text);
+    void generate(undefined, text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function generate(e?: React.FormEvent, override?: string) {
     e?.preventDefault();
-    const text = prompt.trim();
+    const text = (override ?? prompt).trim();
     if (!text || busy || isImportedApp) return;
     setBusy(true);
     setElapsed(0);
@@ -958,6 +979,7 @@ export function Studio(props: {
                   <textarea
                     id="prompt"
                     rows={3}
+                    maxLength={MAX_PROMPT}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={(e) => {

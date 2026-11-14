@@ -11,10 +11,16 @@ export type Detected = {
   folders: string[];
 };
 
-const join = (dir: string, file: string) => (dir ? `${dir.replace(/\/+$/, "")}/${file}` : file);
+const join = (dir: string, file: string) =>
+  dir ? `${dir.replace(/\/+$/, "")}/${file}` : file;
 
 /** Guesses how to build a folder of a repository, reading files through the API (no clone). */
-export async function detectBuild(token: string, repo: string, ref: string, rootDir: string): Promise<Detected> {
+export async function detectBuild(
+  token: string,
+  repo: string,
+  ref: string,
+  rootDir: string,
+): Promise<Detected> {
   const tree = await listRepoTree(token, repo, ref).catch(() => [] as string[]);
   const folders = tree
     .filter((p) => p.endsWith("package.json") && !p.includes("node_modules/"))
@@ -22,15 +28,23 @@ export async function detectBuild(token: string, repo: string, ref: string, root
     .sort((a, b) => a.length - b.length || a.localeCompare(b))
     .slice(0, 50);
 
-  const has = (file: string) => tree.includes(join(rootDir, file)) || tree.includes(file);
-  const pkgText = await readRepoFile(token, repo, join(rootDir, "package.json"), ref);
+  const has = (file: string) =>
+    tree.includes(join(rootDir, file)) || tree.includes(file);
+  const pkgText = await readRepoFile(
+    token,
+    repo,
+    join(rootDir, "package.json"),
+    ref,
+  );
 
   if (!pkgText) {
     const hasIndex = tree.includes(join(rootDir, "index.html"));
     return {
       framework: "Static HTML",
       hostable: hasIndex,
-      reason: hasIndex ? undefined : "There's no package.json or index.html in this folder.",
+      reason: hasIndex
+        ? undefined
+        : "There's no package.json or index.html in this folder.",
       installCommand: null,
       buildCommand: null,
       outputDir: rootDir || ".",
@@ -38,7 +52,11 @@ export async function detectBuild(token: string, repo: string, ref: string, root
     };
   }
 
-  let pkg: { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> } = {};
+  let pkg: {
+    scripts?: Record<string, string>;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  } = {};
   try {
     pkg = JSON.parse(pkgText);
   } catch {
@@ -66,19 +84,28 @@ export async function detectBuild(token: string, repo: string, ref: string, root
           ? "npm ci"
           : "npm install";
   const run = installCommand.split(" ")[0];
-  const buildCommand = scripts.build ? `${run === "npm" ? "npm run" : run} build` : null;
+  const buildCommand = scripts.build
+    ? `${run === "npm" ? "npm run" : run} build`
+    : null;
 
   let framework = "Node";
   let outputDir = "dist";
   let hostable = Boolean(buildCommand);
-  let reason: string | undefined = buildCommand ? undefined : "package.json has no build script.";
+  let reason: string | undefined = buildCommand
+    ? undefined
+    : "package.json has no build script.";
 
   if (deps.next) {
     framework = "Next.js";
     outputDir = "out";
     const configText =
       (await readRepoFile(token, repo, join(rootDir, "next.config.js"), ref)) ??
-      (await readRepoFile(token, repo, join(rootDir, "next.config.mjs"), ref)) ??
+      (await readRepoFile(
+        token,
+        repo,
+        join(rootDir, "next.config.mjs"),
+        ref,
+      )) ??
       (await readRepoFile(token, repo, join(rootDir, "next.config.ts"), ref)) ??
       "";
     if (!/output\s*:\s*["']export["']/.test(configText)) {
@@ -94,7 +121,8 @@ export async function detectBuild(token: string, repo: string, ref: string, root
     outputDir = "build";
     if (!deps["@sveltejs/adapter-static"]) {
       hostable = false;
-      reason = "This SvelteKit app needs a server. Use @sveltejs/adapter-static to build it statically.";
+      reason =
+        "This SvelteKit app needs a server. Use @sveltejs/adapter-static to build it statically.";
     }
   } else if (deps.astro) {
     framework = "Astro";
@@ -102,11 +130,25 @@ export async function detectBuild(token: string, repo: string, ref: string, root
     framework = "Create React App";
     outputDir = "build";
   } else if (deps.vite) {
-    framework = deps.react ? "Vite + React" : deps.vue ? "Vite + Vue" : deps.svelte ? "Vite + Svelte" : "Vite";
+    framework = deps.react
+      ? "Vite + React"
+      : deps.vue
+        ? "Vite + Vue"
+        : deps.svelte
+          ? "Vite + Svelte"
+          : "Vite";
   } else if (deps["@angular/core"]) {
     framework = "Angular";
     outputDir = "dist";
   }
 
-  return { framework, hostable, reason, installCommand, buildCommand, outputDir, folders };
+  return {
+    framework,
+    hostable,
+    reason,
+    installCommand,
+    buildCommand,
+    outputDir,
+    folders,
+  };
 }

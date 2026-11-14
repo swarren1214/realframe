@@ -10,13 +10,17 @@ import { CONTENT_LABEL, ROOT_DOMAIN, contentLabel } from "@/lib/hosts";
 // The signature makes the hostname a capability that only the server can mint.
 
 function secret() {
-  const s = process.env.CONTENT_SIGNING_SECRET || process.env.SUPABASE_SECRET_KEY;
+  const s =
+    process.env.CONTENT_SIGNING_SECRET || process.env.SUPABASE_SECRET_KEY;
   if (!s) throw new Error("No signing secret for imported apps.");
   return s;
 }
 
 function sign(versionId: string) {
-  return createHmac("sha256", secret()).update(`content:${versionId}`).digest("hex").slice(0, 16);
+  return createHmac("sha256", secret())
+    .update(`content:${versionId}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 export function contentUrlFor(versionId: string) {
@@ -30,5 +34,7 @@ export function versionFromContentHost(host: string | null | undefined) {
   if (!m) return null;
   const expected = Buffer.from(sign(m[1]));
   const given = Buffer.from(m[2]);
-  return expected.length === given.length && timingSafeEqual(expected, given) ? m[1] : null;
+  return expected.length === given.length && timingSafeEqual(expected, given)
+    ? m[1]
+    : null;
 }

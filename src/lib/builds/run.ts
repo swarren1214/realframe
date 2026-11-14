@@ -39,21 +39,33 @@ export function runnerKey(buildId: string) {
 export async function startRunner(buildId: string, origin: string) {
   const res = await fetch(`${origin}/api/builds/run`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-realframe-key": runnerKey(buildId) },
+    headers: {
+      "content-type": "application/json",
+      "x-realframe-key": runnerKey(buildId),
+    },
     body: JSON.stringify({ buildId }),
   });
   if (!res.ok) throw new Error(`Couldn't start the build (${res.status}).`);
 }
 
-const ERROR_LINE = /(error|failed|cannot find|could not resolve|not found|ERR!)/i;
+const ERROR_LINE =
+  /(error|failed|cannot find|could not resolve|not found|ERR!)/i;
 
 export async function runBuild(buildId: string) {
   const admin = createAdminClient();
-  const { data: build } = await admin.from("builds").select("*").eq("id", buildId).maybeSingle();
+  const { data: build } = await admin
+    .from("builds")
+    .select("*")
+    .eq("id", buildId)
+    .maybeSingle();
   if (!build || build.status !== "queued") return;
   const { data: repoSource } = build.upload_path
     ? { data: null }
-    : await admin.from("project_sources").select("*").eq("project_id", build.project_id).maybeSingle();
+    : await admin
+        .from("project_sources")
+        .select("*")
+        .eq("project_id", build.project_id)
+        .maybeSingle();
   // An uploaded source zip carries its own build settings.
   const settings = (build.settings ?? {}) as {
     installCommand?: string | null;
@@ -79,10 +91,12 @@ export async function runBuild(buildId: string) {
   let lastErrorLine: string | null = null;
   const append = (text: string) => {
     for (const line of text.replace(/\r/g, "").split("\n")) {
-      if (line && ERROR_LINE.test(line) && !lastErrorLine) lastErrorLine = line.trim().slice(0, 300);
+      if (line && ERROR_LINE.test(line) && !lastErrorLine)
+        lastErrorLine = line.trim().slice(0, 300);
     }
     log += text;
-    if (log.length > MAX_LOG) log = "…earlier output trimmed…\n" + log.slice(-MAX_LOG);
+    if (log.length > MAX_LOG)
+      log = "…earlier output trimmed…\n" + log.slice(-MAX_LOG);
     dirty = true;
   };
   const say = (line: string) => append(`${line}\n`);
@@ -102,7 +116,10 @@ export async function runBuild(buildId: string) {
   };
 
   if (!source) {
-    await finish({ status: "failed", error_summary: "This prototype isn't connected to a repository any more." });
+    await finish({
+      status: "failed",
+      error_summary: "This prototype isn't connected to a repository any more.",
+    });
     return;
   }
 
@@ -141,29 +158,67 @@ export async function runBuild(buildId: string) {
     if (build.upload_path) {
       // Uploaded source zip: unzip it here, then write the files into an empty sandbox.
       say(`Unpacking ${settings.label ?? "the uploaded zip"}…`);
-      const { data: blob, error: dlErr } = await admin.storage.from("bundles").download(build.upload_path);
+      const { data: blob, error: dlErr } = await admin.storage
+        .from("bundles")
+        .download(build.upload_path);
       if (dlErr || !blob) throw new Error("The uploaded zip is missing.");
-      const entries = Object.entries(unzipSync(new Uint8Array(await blob.arrayBuffer())))
-        .filter(([p]) => !p.endsWith("/") && !IGNORE.test(p) && !/(^|\/)(dist|build|out|\.next)\//.test(p))
-        .map(([path, content]) => ({ path: path.replace(/^\.?\//, ""), content }));
+      const entries = Object.entries(
+        unzipSync(new Uint8Array(await blob.arrayBuffer())),
+      )
+        .filter(
+          ([p]) =>
+            !p.endsWith("/") &&
+            !IGNORE.test(p) &&
+            !/(^|\/)(dist|build|out|\.next)\//.test(p),
+        )
+        .map(([path, content]) => ({
+          path: path.replace(/^\.?\//, ""),
+          content,
+        }));
       let list = entries;
-      while (list.length && list.every((f) => f.path.includes("/")) && new Set(list.map((f) => f.path.split("/")[0])).size === 1) {
-        list = list.map((f) => ({ ...f, path: f.path.slice(f.path.indexOf("/") + 1) }));
+      while (
+        list.length &&
+        list.every((f) => f.path.includes("/")) &&
+        new Set(list.map((f) => f.path.split("/")[0])).size === 1
+      ) {
+        list = list.map((f) => ({
+          ...f,
+          path: f.path.slice(f.path.indexOf("/") + 1),
+        }));
       }
-      if (list.some((f) => f.path.split("/").some((seg) => seg === ".." || seg === ""))) throw new Error("The zip has unsafe file paths.");
+      if (
+        list.some((f) =>
+          f.path.split("/").some((seg) => seg === ".." || seg === ""),
+        )
+      )
+        throw new Error("The zip has unsafe file paths.");
       uploadFiles = list;
-      commit = { sha: "upload", message: settings.label ?? "Uploaded zip", author: null };
+      commit = {
+        sha: "upload",
+        message: settings.label ?? "Uploaded zip",
+        author: null,
+      };
       sandbox = await Sandbox.create({ ...sandboxBase }).catch(authHint);
     } else {
       const token = await installationToken(source.installation_id);
       commit = build.commit_sha
-        ? { sha: build.commit_sha as string, message: build.commit_message as string | null, author: build.commit_author as string | null }
+        ? {
+            sha: build.commit_sha as string,
+            message: build.commit_message as string | null,
+            author: build.commit_author as string | null,
+          }
         : await getCommit(token, source.repo_full_name!, source.branch!);
       await admin
         .from("builds")
-        .update({ commit_sha: commit.sha, commit_message: commit.message, commit_author: commit.author })
+        .update({
+          commit_sha: commit.sha,
+          commit_message: commit.message,
+          commit_author: commit.author,
+        })
         .eq("id", buildId);
-      say(`$ git clone ${source.repo_full_name}@${commit.sha.slice(0, 7)} (${source.branch})`);
+      say(
+        `$ git clone ${source.repo_full_name}@${commit.sha.slice(0, 7)} (${source.branch})`,
+      );
       sandbox = await Sandbox.create({
         ...sandboxBase,
         source: {
@@ -177,7 +232,10 @@ export async function runBuild(buildId: string) {
       }).catch(authHint);
       say("Cloned.");
     }
-    await admin.from("builds").update({ sandbox_id: sandbox.name }).eq("id", buildId);
+    await admin
+      .from("builds")
+      .update({ sandbox_id: sandbox.name })
+      .eq("id", buildId);
 
     // The repository (or the uploaded files) live in the sandbox's working directory.
     // Uploaded files are written to /vercel/sandbox. For clones, find the checkout rather than
@@ -193,37 +251,60 @@ export async function runBuild(buildId: string) {
         ],
       });
       const found = (await probe.stdout()).trim().split("\n")[0];
-      if (!found) throw new Error("Couldn't find the cloned repository in the sandbox.");
+      if (!found)
+        throw new Error("Couldn't find the cloned repository in the sandbox.");
       home = found.replace(/\/+$/, "");
     }
     say(`Working in ${home}${source.root_dir ? `/${source.root_dir}` : ""}`);
     if (uploadFiles.length) {
       for (let k = 0; k < uploadFiles.length; k += 100) {
-        await sandbox.writeFiles(uploadFiles.slice(k, k + 100).map((f) => ({ path: `${home}/${f.path}`, content: f.content })));
+        await sandbox.writeFiles(
+          uploadFiles
+            .slice(k, k + 100)
+            .map((f) => ({ path: `${home}/${f.path}`, content: f.content })),
+        );
       }
       say(`Wrote ${uploadFiles.length} files.`);
     }
-    const root = source.root_dir ? `${home}/${source.root_dir.replace(/^\/+|\/+$/g, "")}` : home;
+    const root = source.root_dir
+      ? `${home}/${source.root_dir.replace(/^\/+|\/+$/g, "")}`
+      : home;
 
     const sh = async (command: string, env: Record<string, string> = {}) => {
       say(`$ ${command}`);
-      const cmd = await sandbox!.runCommand({ cmd: "bash", args: ["-lc", command], cwd: root, env, detached: true });
+      const cmd = await sandbox!.runCommand({
+        cmd: "bash",
+        args: ["-lc", command],
+        cwd: root,
+        env,
+        detached: true,
+      });
       for await (const line of cmd.logs()) append(line.data);
       const done = await cmd.wait();
-      if (done.exitCode !== 0) throw new Error(`\`${command}\` exited with code ${done.exitCode}.`);
+      if (done.exitCode !== 0)
+        throw new Error(`\`${command}\` exited with code ${done.exitCode}.`);
     };
 
     if (/^(pnpm|yarn)\b/.test(source.install_command ?? "")) {
-      await sandbox.runCommand({ cmd: "corepack", args: ["enable"], sudo: true });
+      await sandbox.runCommand({
+        cmd: "corepack",
+        args: ["enable"],
+        sudo: true,
+      });
     }
     if (/^bun\b/.test(source.install_command ?? "")) {
       await sh("npm install -g bun --silent");
     }
     if (source.install_command) await sh(source.install_command, { CI: "1" });
-    if (source.build_command) await sh(source.build_command, { CI: "1", NODE_ENV: "production" });
+    if (source.build_command)
+      await sh(source.build_command, { CI: "1", NODE_ENV: "production" });
 
     // Collect the output.
-    const outDir = `${root}/${(source.output_dir || ".").replace(/^\.\/?|\/+$/g, "")}`.replace(/\/$/, "");
+    const outDir =
+      `${root}/${(source.output_dir || ".").replace(/^\.\/?|\/+$/g, "")}`.replace(
+        /\/$/,
+        "",
+      );
     const listing = await sandbox.runCommand({
       cmd: "bash",
       args: [
@@ -231,7 +312,10 @@ export async function runBuild(buildId: string) {
         `cd "${outDir}" && find . -type f -not -path './node_modules/*' -not -path './.git/*' -printf '%s\\t%P\\n' | head -n ${MAX_FILES + 1}`,
       ],
     });
-    if (listing.exitCode !== 0) throw new Error(`The output folder ${source.output_dir} wasn't created by the build.`);
+    if (listing.exitCode !== 0)
+      throw new Error(
+        `The output folder ${source.output_dir} wasn't created by the build.`,
+      );
     const files = (await listing.stdout())
       .split("\n")
       .filter(Boolean)
@@ -239,10 +323,15 @@ export async function runBuild(buildId: string) {
         const [size, path] = l.split("\t");
         return { size: Number(size), path };
       });
-    if (!files.some((f) => f.path === "index.html")) throw new Error(`There's no index.html in ${source.output_dir}.`);
-    if (files.length > MAX_FILES) throw new Error(`The build made more than ${MAX_FILES} files.`);
+    if (!files.some((f) => f.path === "index.html"))
+      throw new Error(`There's no index.html in ${source.output_dir}.`);
+    if (files.length > MAX_FILES)
+      throw new Error(`The build made more than ${MAX_FILES} files.`);
     const bytes = files.reduce((n, f) => n + f.size, 0);
-    if (bytes > MAX_BYTES) throw new Error(`The build output is ${(bytes / 1048576).toFixed(1)} MB; the limit is 25 MB.`);
+    if (bytes > MAX_BYTES)
+      throw new Error(
+        `The build output is ${(bytes / 1048576).toFixed(1)} MB; the limit is 25 MB.`,
+      );
 
     say(`Uploading ${files.length} files (${(bytes / 1024).toFixed(0)} KB)…`);
     const bundleId = crypto.randomUUID();
@@ -250,10 +339,18 @@ export async function runBuild(buildId: string) {
     const queue = [...files];
     const worker = async () => {
       for (let f = queue.shift(); f; f = queue.shift()) {
-        const buf = await sandbox!.readFileToBuffer({ path: `${outDir}/${f.path}` });
+        const buf = await sandbox!.readFileToBuffer({
+          path: `${outDir}/${f.path}`,
+        });
         if (!buf) throw new Error(`Couldn't read ${f.path}.`);
-        const { error } = await admin.storage.from("bundles").upload(base + f.path, buf, { contentType: mimeFor(f.path), upsert: false });
-        if (error) throw new Error(`Couldn't upload ${f.path}: ${error.message}`);
+        const { error } = await admin.storage
+          .from("bundles")
+          .upload(base + f.path, buf, {
+            contentType: mimeFor(f.path),
+            upsert: false,
+          });
+        if (error)
+          throw new Error(`Couldn't upload ${f.path}: ${error.message}`);
       }
     };
     await Promise.all(Array.from({ length: 8 }, worker));
@@ -272,11 +369,15 @@ export async function runBuild(buildId: string) {
       p_author: commit.author,
       p_created_by: build.requested_by,
     });
-    if (error || !version) throw new Error(error?.message ?? "Couldn't save the version.");
+    if (error || !version)
+      throw new Error(error?.message ?? "Couldn't save the version.");
     const v = version as { id: string; number: number };
 
     if (build.trigger === "push" && source.publish_on_push) {
-      await admin.from("projects").update({ live_version_id: v.id, published: true }).eq("id", build.project_id);
+      await admin
+        .from("projects")
+        .update({ live_version_id: v.id, published: true })
+        .eq("id", build.project_id);
       say(`Published v${v.number}.`);
     }
     say(`Done: v${v.number}.`);
@@ -284,7 +385,10 @@ export async function runBuild(buildId: string) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     say(`\n${message}`);
-    await finish({ status: "failed", error_summary: (lastErrorLine ?? message).slice(0, 300) });
+    await finish({
+      status: "failed",
+      error_summary: (lastErrorLine ?? message).slice(0, 300),
+    });
   } finally {
     clearInterval(ticker);
     await sandbox?.stop().catch(() => {});

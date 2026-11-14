@@ -19,7 +19,13 @@ let cached: AppConfig | null = null;
 export async function getAppConfig(): Promise<AppConfig | null> {
   if (cached) return cached;
   const env = process.env;
-  if (env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY && env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET && env.GITHUB_APP_SLUG) {
+  if (
+    env.GITHUB_APP_ID &&
+    env.GITHUB_APP_PRIVATE_KEY &&
+    env.GITHUB_CLIENT_ID &&
+    env.GITHUB_CLIENT_SECRET &&
+    env.GITHUB_APP_SLUG
+  ) {
     cached = {
       id: Number(env.GITHUB_APP_ID),
       slug: env.GITHUB_APP_SLUG,
@@ -30,7 +36,11 @@ export async function getAppConfig(): Promise<AppConfig | null> {
     };
     return cached;
   }
-  const { data } = await createAdminClient().from("app_secrets").select("value").eq("key", "github_app").maybeSingle();
+  const { data } = await createAdminClient()
+    .from("app_secrets")
+    .select("value")
+    .eq("key", "github_app")
+    .maybeSingle();
   if (!data) return null;
   cached = JSON.parse(data.value) as AppConfig;
   return cached;
@@ -45,7 +55,11 @@ export async function requireAppConfig() {
 export async function saveAppConfig(config: AppConfig) {
   const { error } = await createAdminClient()
     .from("app_secrets")
-    .upsert({ key: "github_app", value: JSON.stringify(config), updated_at: new Date().toISOString() });
+    .upsert({
+      key: "github_app",
+      value: JSON.stringify(config),
+      updated_at: new Date().toISOString(),
+    });
   if (error) throw new Error(error.message);
   cached = config;
 }
@@ -59,19 +73,32 @@ function stateKey() {
 }
 
 export function signState(payload: Record<string, unknown>) {
-  const body = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + 30 * 60_000 })).toString("base64url");
-  const sig = createHmac("sha256", stateKey()).update(`gh-state:${body}`).digest("base64url");
+  const body = Buffer.from(
+    JSON.stringify({ ...payload, exp: Date.now() + 30 * 60_000 }),
+  ).toString("base64url");
+  const sig = createHmac("sha256", stateKey())
+    .update(`gh-state:${body}`)
+    .digest("base64url");
   return `${body}.${sig}`;
 }
 
-export function readState<T extends Record<string, unknown>>(state: string | null): T | null {
+export function readState<T extends Record<string, unknown>>(
+  state: string | null,
+): T | null {
   if (!state) return null;
   const [body, sig] = state.split(".");
   if (!body || !sig) return null;
-  const expected = Buffer.from(createHmac("sha256", stateKey()).update(`gh-state:${body}`).digest("base64url"));
+  const expected = Buffer.from(
+    createHmac("sha256", stateKey())
+      .update(`gh-state:${body}`)
+      .digest("base64url"),
+  );
   const given = Buffer.from(sig);
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
-  const data = JSON.parse(Buffer.from(body, "base64url").toString()) as T & { exp: number };
+  if (expected.length !== given.length || !timingSafeEqual(expected, given))
+    return null;
+  const data = JSON.parse(Buffer.from(body, "base64url").toString()) as T & {
+    exp: number;
+  };
   return data.exp > Date.now() ? data : null;
 }
 
@@ -79,7 +106,10 @@ export function readState<T extends Record<string, unknown>>(state: string | nul
 
 const API = "https://api.github.com";
 
-async function gh<T>(path: string, init: RequestInit & { token: string; tokenType?: "Bearer" | "token" }): Promise<T> {
+async function gh<T>(
+  path: string,
+  init: RequestInit & { token: string; tokenType?: "Bearer" | "token" },
+): Promise<T> {
   const res = await fetch(path.startsWith("http") ? path : API + path, {
     ...init,
     headers: {
@@ -94,7 +124,9 @@ async function gh<T>(path: string, init: RequestInit & { token: string; tokenTyp
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const err = new Error(`GitHub ${res.status}: ${text.slice(0, 200)}`) as Error & { status: number };
+    const err = new Error(
+      `GitHub ${res.status}: ${text.slice(0, 200)}`,
+    ) as Error & { status: number };
     err.status = res.status;
     throw err;
   }
@@ -105,26 +137,34 @@ async function gh<T>(path: string, init: RequestInit & { token: string; tokenTyp
 export async function appJwt() {
   const c = await requireAppConfig();
   const now = Math.floor(Date.now() / 1000);
-  const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const enc = (o: object) =>
+    Buffer.from(JSON.stringify(o)).toString("base64url");
   const unsigned = `${enc({ alg: "RS256", typ: "JWT" })}.${enc({ iat: now - 60, exp: now + 9 * 60, iss: String(c.id) })}`;
-  const sig = createSign("RSA-SHA256").update(unsigned).sign(c.privateKey).toString("base64url");
+  const sig = createSign("RSA-SHA256")
+    .update(unsigned)
+    .sign(c.privateKey)
+    .toString("base64url");
   return `${unsigned}.${sig}`;
 }
 
 /** An installation token (valid for an hour). Never stored. */
 export async function installationToken(installationId: number) {
-  const res = await gh<{ token: string }>(`/app/installations/${installationId}/access_tokens`, {
-    method: "POST",
-    token: await appJwt(),
-  });
+  const res = await gh<{ token: string }>(
+    `/app/installations/${installationId}/access_tokens`,
+    {
+      method: "POST",
+      token: await appJwt(),
+    },
+  );
   return res.token;
 }
 
 export async function getInstallation(installationId: number) {
-  return gh<{ id: number; account: { login: string; type: string } | null; suspended_at: string | null }>(
-    `/app/installations/${installationId}`,
-    { token: await appJwt() },
-  );
+  return gh<{
+    id: number;
+    account: { login: string; type: string } | null;
+    suspended_at: string | null;
+  }>(`/app/installations/${installationId}`, { token: await appJwt() });
 }
 
 export type Repo = {
@@ -142,7 +182,10 @@ export async function listInstallationRepos(installationId: number) {
   const token = await installationToken(installationId);
   const repos: Repo[] = [];
   for (let page = 1; page <= 5; page++) {
-    const res = await gh<{ repositories: Repo[]; total_count: number }>(`/installation/repositories?per_page=100&page=${page}`, { token });
+    const res = await gh<{ repositories: Repo[]; total_count: number }>(
+      `/installation/repositories?per_page=100&page=${page}`,
+      { token },
+    );
     repos.push(...res.repositories);
     if (repos.length >= res.total_count || res.repositories.length < 100) break;
   }
@@ -154,19 +197,30 @@ export async function getRepo(token: string, fullName: string) {
 }
 
 export async function listBranches(token: string, fullName: string) {
-  const res = await gh<{ name: string }[]>(`/repos/${fullName}/branches?per_page=100`, { token });
+  const res = await gh<{ name: string }[]>(
+    `/repos/${fullName}/branches?per_page=100`,
+    { token },
+  );
   return res.map((b) => b.name);
 }
 
 /** A file's text at a ref, or null when it doesn't exist. */
-export async function readRepoFile(token: string, fullName: string, path: string, ref: string) {
+export async function readRepoFile(
+  token: string,
+  fullName: string,
+  path: string,
+  ref: string,
+) {
   try {
     const res = await gh<{ content?: string; encoding?: string; type: string }>(
       `/repos/${fullName}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`,
       { token },
     );
     if (res.type !== "file" || !res.content) return null;
-    return Buffer.from(res.content, (res.encoding as BufferEncoding) ?? "base64").toString("utf8");
+    return Buffer.from(
+      res.content,
+      (res.encoding as BufferEncoding) ?? "base64",
+    ).toString("utf8");
   } catch (err) {
     if ((err as { status?: number }).status === 404) return null;
     throw err;
@@ -174,20 +228,31 @@ export async function readRepoFile(token: string, fullName: string, path: string
 }
 
 /** Every path in the repo at a ref (for finding package.json folders in monorepos). */
-export async function listRepoTree(token: string, fullName: string, ref: string) {
-  const res = await gh<{ tree: { path: string; type: string }[]; truncated: boolean }>(
-    `/repos/${fullName}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
-    { token },
-  );
+export async function listRepoTree(
+  token: string,
+  fullName: string,
+  ref: string,
+) {
+  const res = await gh<{
+    tree: { path: string; type: string }[];
+    truncated: boolean;
+  }>(`/repos/${fullName}/git/trees/${encodeURIComponent(ref)}?recursive=1`, {
+    token,
+  });
   return res.tree.filter((t) => t.type === "blob").map((t) => t.path);
 }
 
 export async function getCommit(token: string, fullName: string, ref: string) {
-  const c = await gh<{ sha: string; commit: { message: string; author: { name: string } | null }; author: { login: string } | null }>(
-    `/repos/${fullName}/commits/${encodeURIComponent(ref)}`,
-    { token },
-  );
-  return { sha: c.sha, message: c.commit.message.split("\n")[0].slice(0, 200), author: c.author?.login ?? c.commit.author?.name ?? null };
+  const c = await gh<{
+    sha: string;
+    commit: { message: string; author: { name: string } | null };
+    author: { login: string } | null;
+  }>(`/repos/${fullName}/commits/${encodeURIComponent(ref)}`, { token });
+  return {
+    sha: c.sha,
+    message: c.commit.message.split("\n")[0].slice(0, 200),
+    author: c.author?.login ?? c.commit.author?.name ?? null,
+  };
 }
 
 // ---- User authorisation (proving an installation belongs to the signed-in person) --------
@@ -197,28 +262,50 @@ export async function exchangeUserCode(code: string) {
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify({ client_id: c.clientId, client_secret: c.clientSecret, code }),
+    body: JSON.stringify({
+      client_id: c.clientId,
+      client_secret: c.clientSecret,
+      code,
+    }),
   });
-  const data = (await res.json()) as { access_token?: string; error_description?: string };
-  if (!data.access_token) throw new Error(data.error_description ?? "GitHub didn't authorize Realframe.");
+  const data = (await res.json()) as {
+    access_token?: string;
+    error_description?: string;
+  };
+  if (!data.access_token)
+    throw new Error(
+      data.error_description ?? "GitHub didn't authorize Realframe.",
+    );
   return data.access_token;
 }
 
 export async function userInstallations(userToken: string) {
-  const res = await gh<{ installations: { id: number; account: { login: string; type: string }; suspended_at: string | null }[] }>(
-    "/user/installations?per_page=100",
-    { token: userToken },
-  );
+  const res = await gh<{
+    installations: {
+      id: number;
+      account: { login: string; type: string };
+      suspended_at: string | null;
+    }[];
+  }>("/user/installations?per_page=100", { token: userToken });
   return res.installations;
 }
 
 /** Finishes the manifest flow: GitHub returns the new app's credentials once. */
 export async function convertManifest(code: string) {
-  const res = await fetch(`${API}/app-manifests/${encodeURIComponent(code)}/conversions`, {
-    method: "POST",
-    headers: { accept: "application/vnd.github+json", "user-agent": "Realframe" },
-  });
-  if (!res.ok) throw new Error(`GitHub ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const res = await fetch(
+    `${API}/app-manifests/${encodeURIComponent(code)}/conversions`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": "Realframe",
+      },
+    },
+  );
+  if (!res.ok)
+    throw new Error(
+      `GitHub ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
   const d = (await res.json()) as {
     id: number;
     slug: string;

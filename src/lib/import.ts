@@ -4,28 +4,58 @@
 //    Tailwind and compiles the component in the browser. The original source stays readable
 //    inside the page, so AI changes still work on it.
 
-export const SINGLE_FILE_TYPES = [".html", ".htm", ".jsx", ".tsx", ".js", ".ts"];
+export const SINGLE_FILE_TYPES = [
+  ".html",
+  ".htm",
+  ".jsx",
+  ".tsx",
+  ".js",
+  ".ts",
+];
 export const MAX_SINGLE_FILE = 2_000_000;
 
-export type ImportResult = { html: string; summary: string; warnings: string[] };
+export type ImportResult = {
+  html: string;
+  summary: string;
+  warnings: string[];
+};
 
 const REACT_VERSION = "19.1.0";
-const SHARED = new Set(["react", "react-dom", "react-dom/client", "react/jsx-runtime", "react/jsx-dev-runtime"]);
+const SHARED = new Set([
+  "react",
+  "react-dom",
+  "react-dom/client",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+]);
 
 function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export function looksLikeReact(code: string) {
-  return /from\s+["']react["']|<\w[\w.]*[\s/>]|export\s+default/.test(code) && !/^\s*<(!doctype|html)/i.test(code);
+  return (
+    /from\s+["']react["']|<\w[\w.]*[\s/>]|export\s+default/.test(code) &&
+    !/^\s*<(!doctype|html)/i.test(code)
+  );
 }
 
 export function importSingleFile(filename: string, raw: string): ImportResult {
   const name = filename.toLowerCase();
   const code = raw.replace(/^﻿/, "");
   if (!code.trim()) throw new Error("That file is empty.");
-  if (code.length > MAX_SINGLE_FILE) throw new Error("That file is over 2 MB. Upload a zip of the built app instead.");
-  const isHtml = name.endsWith(".html") || name.endsWith(".htm") || (!/\.(jsx|tsx|js|ts)$/.test(name) && !looksLikeReact(code));
+  if (code.length > MAX_SINGLE_FILE)
+    throw new Error(
+      "That file is over 2 MB. Upload a zip of the built app instead.",
+    );
+  const isHtml =
+    name.endsWith(".html") ||
+    name.endsWith(".htm") ||
+    (!/\.(jsx|tsx|js|ts)$/.test(name) && !looksLikeReact(code));
   return isHtml ? fromHtml(code, filename) : fromReact(code, filename);
 }
 
@@ -56,52 +86,76 @@ function fromReact(code: string, filename: string): ImportResult {
 
   // Local imports can't be resolved from a single file.
   const localImports: string[] = [];
-  src = src.replace(/^\s*import\s+(?:[^'"\n]*?\s+from\s+)?["'](\.{1,2}\/[^"']+)["'];?\s*$/gm, (_m, path: string) => {
-    localImports.push(path);
-    return "";
-  });
-  const missingCode = localImports.filter((p) => !/\.(css|scss|sass|less|svg|png|jpe?g|gif|webp)$/i.test(p));
+  src = src.replace(
+    /^\s*import\s+(?:[^'"\n]*?\s+from\s+)?["'](\.{1,2}\/[^"']+)["'];?\s*$/gm,
+    (_m, path: string) => {
+      localImports.push(path);
+      return "";
+    },
+  );
+  const missingCode = localImports.filter(
+    (p) => !/\.(css|scss|sass|less|svg|png|jpe?g|gif|webp)$/i.test(p),
+  );
   if (missingCode.length) {
     throw new Error(
       `This file imports ${missingCode[0]}, which isn't included. Paste everything into one file, or upload the built app as a zip.`,
     );
   }
   if (localImports.length)
-    warnings.push(`Skipped ${localImports.length} local stylesheet or image import${localImports.length === 1 ? "" : "s"}.`);
+    warnings.push(
+      `Skipped ${localImports.length} local stylesheet or image import${localImports.length === 1 ? "" : "s"}.`,
+    );
 
   // Packages load from esm.sh; React itself comes from the import map so there's one copy.
-  src = src.replace(/(\bfrom\s+|\bimport\s+|\bimport\s*\(\s*)(["'])([^"'.\/][^"']*)\2/g, (m, lead: string, q: string, spec: string) => {
-    if (SHARED.has(spec) || spec.startsWith("https://")) return m;
-    return `${lead}${q}https://esm.sh/${spec}?external=react,react-dom${q}`;
-  });
+  src = src.replace(
+    /(\bfrom\s+|\bimport\s+|\bimport\s*\(\s*)(["'])([^"'.\/][^"']*)\2/g,
+    (m, lead: string, q: string, spec: string) => {
+      if (SHARED.has(spec) || spec.startsWith("https://")) return m;
+      return `${lead}${q}https://esm.sh/${spec}?external=react,react-dom${q}`;
+    },
+  );
 
   // Find the component to render.
   let component: string | null = null;
-  src = src.replace(/export\s+default\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)/, (_m, a = "", n: string) => {
-    component = n;
-    return `${a}function ${n}`;
-  });
-  if (!component) {
-    src = src.replace(/export\s+default\s+class\s+([A-Za-z_$][\w$]*)/, (_m, n: string) => {
+  src = src.replace(
+    /export\s+default\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)/,
+    (_m, a = "", n: string) => {
       component = n;
-      return `class ${n}`;
-    });
+      return `${a}function ${n}`;
+    },
+  );
+  if (!component) {
+    src = src.replace(
+      /export\s+default\s+class\s+([A-Za-z_$][\w$]*)/,
+      (_m, n: string) => {
+        component = n;
+        return `class ${n}`;
+      },
+    );
   }
   if (!component) {
-    src = src.replace(/export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*$/m, (_m, n: string) => {
-      component = n;
-      return "";
-    });
+    src = src.replace(
+      /export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*$/m,
+      (_m, n: string) => {
+        component = n;
+        return "";
+      },
+    );
   }
   if (!component && /export\s+default\s+/.test(src)) {
     src = src.replace(/export\s+default\s+/, "const __RealframeRoot = ");
     component = "__RealframeRoot";
   }
   if (!component) {
-    const named = src.match(/(?:function|const|let|class)\s+(App|Prototype|Main|Page|Home)\b/);
+    const named = src.match(
+      /(?:function|const|let|class)\s+(App|Prototype|Main|Page|Home)\b/,
+    );
     if (named) component = named[1];
   }
-  if (!component) throw new Error("Couldn't find the component to show. Add `export default` to your main component.");
+  if (!component)
+    throw new Error(
+      "Couldn't find the component to show. Add `export default` to your main component.",
+    );
 
   src += `\n\n// Added by Realframe: render the component.\nimport { createRoot as __rfCreateRoot } from "react-dom/client";\n__rfCreateRoot(document.getElementById("root")).render(<${component} />);\n`;
 

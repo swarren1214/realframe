@@ -17,14 +17,24 @@ export type ElementEdit = {
   label: string;
 };
 
-const SKIP = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "LINK", "META", "HEAD", "TITLE"]);
+const SKIP = new Set([
+  "SCRIPT",
+  "STYLE",
+  "TEMPLATE",
+  "NOSCRIPT",
+  "LINK",
+  "META",
+  "HEAD",
+  "TITLE",
+]);
 
 function parse(html: string) {
   return new DOMParser().parseFromString(html, "text/html");
 }
 
 function serialize(doc: Document, original: string) {
-  const doctype = /^\s*<!doctype[^>]*>/i.exec(original)?.[0] ?? "<!doctype html>";
+  const doctype =
+    /^\s*<!doctype[^>]*>/i.exec(original)?.[0] ?? "<!doctype html>";
   return `${doctype}\n${doc.documentElement.outerHTML}`;
 }
 
@@ -40,10 +50,16 @@ function newId(used: Set<string>) {
 export function ensureIds(html: string) {
   const doc = parse(html);
   const used = new Set<string>();
-  doc.querySelectorAll("[data-rf]").forEach((el) => used.add(el.getAttribute("data-rf")!));
+  doc
+    .querySelectorAll("[data-rf]")
+    .forEach((el) => used.add(el.getAttribute("data-rf")!));
   let added = 0;
   doc.body?.querySelectorAll("*").forEach((el) => {
-    if (SKIP.has(el.tagName) || el.closest("svg") !== null && el.tagName.toLowerCase() !== "svg") return;
+    if (
+      SKIP.has(el.tagName) ||
+      (el.closest("svg") !== null && el.tagName.toLowerCase() !== "svg")
+    )
+      return;
     if (!el.hasAttribute("data-rf")) {
       el.setAttribute("data-rf", newId(used));
       added++;
@@ -52,16 +68,20 @@ export function ensureIds(html: string) {
   return added ? serialize(doc, html) : html;
 }
 
-const toKebab = (prop: string) => prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+const toKebab = (prop: string) =>
+  prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 /** Write edits into the (id-tagged) source HTML. */
 export function applyEdits(html: string, edits: ElementEdit[]) {
   const doc = parse(html);
   const rules: string[] = [];
   for (const edit of edits) {
-    const el = edit.rf ? doc.querySelector(`[data-rf="${CSS.escape(edit.rf)}"]`) : null;
+    const el = edit.rf
+      ? doc.querySelector(`[data-rf="${CSS.escape(edit.rf)}"]`)
+      : null;
     if (el instanceof HTMLElement) {
-      for (const [prop, value] of Object.entries(edit.styles)) el.style.setProperty(toKebab(prop), value);
+      for (const [prop, value] of Object.entries(edit.styles))
+        el.style.setProperty(toKebab(prop), value);
       if (typeof edit.text === "string") el.textContent = edit.text;
     } else if (Object.keys(edit.styles).length) {
       const body = Object.entries(edit.styles)
@@ -77,7 +97,8 @@ export function applyEdits(html: string, edits: ElementEdit[]) {
       block.setAttribute("data-rf-edits", "");
       doc.head.appendChild(block);
     }
-    block.textContent = `${block.textContent ?? ""}\n${rules.join("\n")}`.trim();
+    block.textContent =
+      `${block.textContent ?? ""}\n${rules.join("\n")}`.trim();
   }
   return serialize(doc, html);
 }
@@ -96,13 +117,18 @@ export function describeEdits(edits: ElementEdit[]) {
     }
   }
   const list = [...kinds];
-  const what = list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}` : list[0] ?? "styles";
+  const what =
+    list.length > 1
+      ? `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`
+      : (list[0] ?? "styles");
   return `Visual edit: changed ${what} on ${edits.length} element${edits.length === 1 ? "" : "s"}.`;
 }
 
 /** rgb()/rgba() → #rrggbb for <input type="color">. Transparent → null. */
 export function toHex(color: string | undefined) {
-  const m = color?.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/i);
+  const m = color?.match(
+    /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/i,
+  );
   if (!m) return null;
   if (m[4] !== undefined && Number(m[4]) === 0) return null;
   return `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, "0")).join("")}`;

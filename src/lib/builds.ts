@@ -1,4 +1,5 @@
 import { deviceBrief, readSettings } from "@/lib/devices";
+import { MAX_PROMPT } from "@/lib/prompt-shared";
 import { designSystemBrief } from "@/lib/design-systems/brief";
 import {
   DS_COLUMNS,
@@ -131,8 +132,10 @@ export async function loadBuildContext(
 export function readPrompt(body: { prompt?: unknown }) {
   const prompt = String(body.prompt ?? "").trim();
   if (!prompt) return { error: "Describe what to build or change." };
-  if (prompt.length > 4000)
-    return { error: "Keep the prompt under 4,000 characters." };
+  if (prompt.length > MAX_PROMPT)
+    return {
+      error: `Keep the prompt under ${MAX_PROMPT.toLocaleString("en-US")} characters.`,
+    };
   return { prompt };
 }
 
