@@ -87,3 +87,19 @@ describe("formatting", () => {
     );
   });
 });
+
+describe("canInspect", () => {
+  it("always lets people with a role on the prototype inspect", async () => {
+    const { canInspect } = await import("@/lib/types");
+    for (const role of ["owner", "editor", "commenter", "viewer"] as const)
+      expect(canInspect(role, { guest_inspect: false })).toBe(true);
+  });
+  it("lets guests and public visitors inspect only when allowed", async () => {
+    const { canInspect } = await import("@/lib/types");
+    expect(canInspect("guest", { guest_inspect: false })).toBe(false);
+    expect(canInspect("public", {})).toBe(false);
+    expect(canInspect("guest", { guest_inspect: true })).toBe(true);
+    expect(canInspect("public", { guest_inspect: true })).toBe(true);
+    expect(canInspect(null, { guest_inspect: true })).toBe(false);
+  });
+});

@@ -184,7 +184,8 @@ export const deleteProjectQuietly = action(async (projectId: string) => {
     .eq("id", projectId)
     .select("id");
   if (error) throw new Error(error.message);
-  if (!data?.length) throw new Error("Only the prototype's owner can delete it.");
+  if (!data?.length)
+    throw new Error("Only the prototype's owner can delete it.");
   revalidatePath("/projects");
 });
 
@@ -315,6 +316,18 @@ export const setGuestComments = action(
     const { error } = await supabase
       .from("projects")
       .update({ guest_comments: on })
+      .eq("id", projectId);
+    if (error) throw new Error(error.message);
+    revalidatePath(`/projects/${projectId}`);
+  },
+);
+
+export const setGuestInspect = action(
+  async (projectId: string, on: boolean) => {
+    const { supabase } = await requireUser();
+    const { error } = await supabase
+      .from("projects")
+      .update({ guest_inspect: on })
       .eq("id", projectId);
     if (error) throw new Error(error.message);
     revalidatePath(`/projects/${projectId}`);

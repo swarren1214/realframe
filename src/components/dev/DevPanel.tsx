@@ -59,7 +59,8 @@ export function DevPanel(props: {
   versionId: string;
   loadHtml: (id: string) => Promise<string>;
   onCompare: (before: string) => void;
-  onExportPart: (el: Inspected) => void;
+  /** Absent on the review page, where reviewers can't export. */
+  onExportPart?: (el: Inspected) => void;
 }) {
   const { frame, selected } = props;
   const [tab, setTab] = useState<Tab>("elements");
@@ -112,7 +113,11 @@ export function DevPanel(props: {
             selected={selected}
             span={span}
             onLine={() => setTab("code")}
-            onExport={() => selected && props.onExportPart(selected)}
+            onExport={
+              props.onExportPart
+                ? () => selected && props.onExportPart?.(selected)
+                : undefined
+            }
             frame={frame}
           />
         </div>
@@ -121,8 +126,7 @@ export function DevPanel(props: {
         (props.source === null ? (
           <p className="p-4 text-[13px] text-stone-600">
             Imported apps are built from many files, so there&apos;s no single
-            source to show. Elements, Styles and Tokens still work, and Export
-            gives you the original files.
+            source to show. Elements, Styles and Tokens still work.
           </p>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -383,7 +387,7 @@ function Styles({
   selected: Inspected | null;
   span: SourceSpan | null;
   onLine: () => void;
-  onExport: () => void;
+  onExport?: () => void;
   frame: RefObject<FrameHandle | null>;
 }) {
   if (!selected)
@@ -482,10 +486,12 @@ function Styles({
           <Copy />
           Copy HTML
         </Button>
-        <Button size="sm" variant="secondary" onClick={onExport}>
-          <FileDown />
-          Export part
-        </Button>
+        {onExport && (
+          <Button size="sm" variant="secondary" onClick={onExport}>
+            <FileDown />
+            Export part
+          </Button>
+        )}
       </div>
     </div>
   );

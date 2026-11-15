@@ -13,6 +13,8 @@ export type Project = {
   archived_at?: string | null;
   has_password?: boolean;
   guest_comments?: boolean;
+  /** Password guests and public visitors can open dev mode on the review page. */
+  guest_inspect?: boolean;
   devices?: unknown;
   team_id?: string | null;
   design_system_id?: string | null;
@@ -96,6 +98,17 @@ export type ReviewRound = {
 
 export function canBuild(role: Role | null) {
   return role === "owner" || role === "editor";
+}
+
+/** Dev mode on the review page: anyone with a role on the prototype, guests only when allowed. */
+export function canInspect(
+  role: Role | null,
+  project: Pick<Project, "guest_inspect">,
+) {
+  if (!role) return false;
+  if (role === "guest" || role === "public")
+    return project.guest_inspect === true;
+  return true;
 }
 
 export function canComment(role: Role | null) {
