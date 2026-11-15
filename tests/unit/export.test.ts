@@ -137,3 +137,40 @@ describe("estimate", () => {
     expect(big).toBeGreaterThan(small * 10);
   });
 });
+
+describe("GitHub push names", () => {
+  it("keeps paths, folders and branches safe", async () => {
+    const { safePath, safeFolder, safeBranch, exportBranch } =
+      await import("@/lib/export");
+    expect(safePath("src/App.tsx")).toBe("src/App.tsx");
+    expect(safePath("./index.html")).toBe("index.html");
+    for (const bad of [
+      "../x",
+      "/abs",
+      "a\\b",
+      "a//b",
+      ".git/config",
+      "x/.git/y",
+    ])
+      expect(safePath(bad)).toBeNull();
+    expect(safeFolder("/web/export/")).toBe("web/export");
+    expect(safeFolder("")).toBe("");
+    expect(safeFolder("../up")).toBeNull();
+    expect(safeBranch("realframe/trip-v3")).toBe("realframe/trip-v3");
+    for (const bad of [
+      "",
+      "a..b",
+      "x.lock",
+      "-x",
+      "a/",
+      "a//b",
+      "a/.b",
+      "has space",
+    ])
+      expect(safeBranch(bad)).toBeNull();
+    expect(exportBranch("Trip Planner", 3)).toBe("realframe/trip-planner-v3");
+    expect(exportBranch("Trip Planner", 3, "Pricing card")).toBe(
+      "realframe/trip-planner-v3-pricing-card",
+    );
+  });
+});

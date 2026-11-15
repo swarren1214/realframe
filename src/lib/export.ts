@@ -211,23 +211,66 @@ ${html}
  * Reads the files an export model wrote, as <file path="…">…</file> blocks. Paths must be
  * relative, inside the project, and plain (no "..", no absolute paths, no backslashes).
  */
+/** A plain relative path: no "..", no absolute paths, no backslashes. Null when unsafe. */
+export function safePath(raw: string, max = 200) {
+  const path = raw.trim().replace(/^\.\//, "");
+  if (
+    !path ||
+    path.length > max ||
+    path.startsWith("/") ||
+    path.includes("\\") ||
+    path.split("/").some((s) => s === ".." || s === "." || !s) ||
+    !/^[\w.\-/@ ]+$/.test(path) ||
+    /(^|\/)\.git(\/|$)/.test(path)
+  )
+    return null;
+  return path;
+}
+
+/** A folder in a repo ("" for the root), cleaned of leading and trailing slashes. Null when unsafe. */
+export function safeFolder(raw: string) {
+  const folder = raw.trim().replace(/^\/+|\/+$/g, "");
+  return folder === "" ? "" : safePath(folder, 120);
+}
+
+/** Git's branch-name rules, simplified to what Realframe needs. Null when invalid. */
+export function safeBranch(raw: string) {
+  const b = raw.trim();
+  if (
+    !b ||
+    b.length > 100 ||
+    !/^[A-Za-z0-9._\/-]+$/.test(b) ||
+    b.startsWith("/") ||
+    b.endsWith("/") ||
+    b.startsWith("-") ||
+    b.endsWith(".") ||
+    b.endsWith(".lock") ||
+    b.includes("..") ||
+    b.includes("//") ||
+    b.split("/").some((s) => s.startsWith("."))
+  )
+    return null;
+  return b;
+}
+
+/** The suggested branch for an export: realframe/<prototype>-v<n>, or -<part> for a selection. */
+export function exportBranch(
+  projectName: string,
+  version: number,
+  part?: string,
+) {
+  const base = `realframe/${slugify(projectName)}-v${version}`;
+  return part ? `${base}-${slugify(part, "part").slice(0, 30)}` : base;
+}
+
 export function parseFiles(text: string): ExportFile[] {
   const files: ExportFile[] = [];
   const seen = new Set<string>();
   const re = /<file\s+path="([^"]+)">\n?([\s\S]*?)\n?<\/file>/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
-    const path = m[1].trim().replace(/^\.\//, "");
-    if (
-      !path ||
-      path.length > 200 ||
-      path.startsWith("/") ||
-      path.includes("\\") ||
-      path.split("/").some((s) => s === ".." || s === "." || !s) ||
-      !/^[\w.\-/@ ]+$/.test(path) ||
-      seen.has(path)
-    )
-      continue;
+    const path = safePath(m[1]);
+    if (!path || seen.has(path)) continue;
     seen.add(path);
     // Models sometimes fence the file body; the fence isn't part of the file.
     const body = m[2].replace(/^```[\w-]*\n([\s\S]*?)\n```$/, "$1");

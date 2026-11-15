@@ -323,3 +323,131 @@ export async function convertManifest(code: string) {
     webhookSecret: d.webhook_secret,
   };
 }
+
+// ---- Pushing exports -------------------------------------------------------------------
+
+export type PushFile = { path: string; content: string };
+
+/** The settings page where an account approves the app's new permissions. */
+export function installationSettingsUrl(
+  installationId: number,
+  account: { login: string; type: string } | null,
+) {
+  return account?.type === "Organization"
+    ? `https://github.com/organizations/${account.login}/settings/installations/${installationId}`
+    : `https://github.com/settings/installations/${installationId}`;
+}
+
+async function headSha(token: string, fullName: string, branch: string) {
+  try {
+    const ref = await gh<{ object: { sha: string } }>(
+      `/repos/${fullName}/git/ref/heads/${branch.split("/").map(encodeURIComponent).join("/")}`,
+      { token },
+    );
+    return ref.object.sha;
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Commits files to a branch in one commit. A new branch starts from the repo's default
+ * branch; an existing one gets the commit on top. Files outside `files` are left as they are.
+ */
+export async function pushFiles(
+  token: string,
+  fullName: string,
+  opts: { branch: string; message: string; files: PushFile[] },
+) {
+  const repo = await getRepo(token, fullName);
+  const existing = await headSha(token, fullName, opts.branch);
+  const parent =
+    existing ?? (await headSha(token, fullName, repo.default_branch));
+  if (!parent)
+    throw Object.assign(new Error("That repository is empty."), {
+      status: 409,
+    });
+  const parentCommit = await gh<{ tree: { sha: string } }>(
+    `/repos/${fullName}/git/commits/${parent}`,
+    { token },
+  );
+  const tree = await gh<{ sha: string }>(`/repos/${fullName}/git/trees`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      base_tree: parentCommit.tree.sha,
+      tree: opts.files.map((f) => ({
+        path: f.path,
+        mode: "100644",
+        type: "blob",
+        content: f.content,
+      })),
+    }),
+  });
+  const commit = await gh<{ sha: string; html_url: string }>(
+    `/repos/${fullName}/git/commits`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        message: opts.message,
+        tree: tree.sha,
+        parents: [parent],
+      }),
+    },
+  );
+  if (existing)
+    await gh(
+      `/repos/${fullName}/git/refs/heads/${opts.branch.split("/").map(encodeURIComponent).join("/")}`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ sha: commit.sha, force: false }),
+      },
+    );
+  else
+    await gh(`/repos/${fullName}/git/refs`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        ref: `refs/heads/${opts.branch}`,
+        sha: commit.sha,
+      }),
+    });
+  return {
+    sha: commit.sha,
+    commitUrl: commit.html_url,
+    created: !existing,
+    defaultBranch: repo.default_branch,
+  };
+}
+
+/** The open pull request from a branch, or a new one into the default branch. */
+export async function ensurePullRequest(
+  token: string,
+  fullName: string,
+  opts: { branch: string; base: string; title: string; body: string },
+) {
+  const owner = fullName.split("/")[0];
+  const open = await gh<{ html_url: string; number: number }[]>(
+    `/repos/${fullName}/pulls?state=open&head=${encodeURIComponent(`${owner}:${opts.branch}`)}`,
+    { token },
+  );
+  if (open[0])
+    return { url: open[0].html_url, number: open[0].number, created: false };
+  const pr = await gh<{ html_url: string; number: number }>(
+    `/repos/${fullName}/pulls`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        title: opts.title,
+        head: opts.branch,
+        base: opts.base,
+        body: opts.body,
+      }),
+    },
+  );
+  return { url: pr.html_url, number: pr.number, created: true };
+}
