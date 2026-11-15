@@ -203,12 +203,57 @@ private struct Composer: View {
     @Binding var text: String
     let busy: Bool
     let send: () -> Void
+    @State private var dictation = Dictation()
 
     var body: some View {
+        VStack(spacing: 6) {
+            if dictation.listening {
+                HStack(spacing: 8) {
+                    Circle().fill(Theme.raspberry).frame(width: 8, height: 8)
+                    Text(dictation.partial.isEmpty ? "Listening…" : dictation.partial)
+                        .font(.subheadline)
+                        .foregroundStyle(dictation.partial.isEmpty ? .secondary : .primary)
+                        .lineLimit(3)
+                    Spacer(minLength: 0)
+                    Text(dictation.onDevice ? "On device" : "Apple speech")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 18)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.updatesFrequently)
+            } else if let error = dictation.error {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 18)
+            }
+            row
+        }
+    }
+
+    private var row: some View {
         HStack(spacing: 8) {
             TextField("Describe a change…", text: $text, axis: .vertical)
                 .lineLimit(1...5)
                 .padding(.leading, 6)
+            Button {
+                Task {
+                    await dictation.toggle { spoken in
+                        if Spoken.isSend(spoken) {
+                            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { send() }
+                        } else {
+                            text = Spoken.append(text, spoken)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: dictation.listening ? "stop.fill" : "mic.fill")
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .disabled(busy && !dictation.listening)
+            .accessibilityLabel(dictation.listening ? "Stop listening" : "Talk instead of typing")
             Button(action: send) {
                 Image(systemName: "arrow.up").fontWeight(.bold)
             }

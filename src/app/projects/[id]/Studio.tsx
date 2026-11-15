@@ -116,6 +116,7 @@ import {
 } from "@/components/PrototypeFrame";
 import { ExportDialog } from "@/components/export/ExportDialog";
 import { DevPanel, selectorForPath } from "@/components/dev/DevPanel";
+import { useVoiceInput } from "@/components/voice/useVoiceInput";
 import { annotateSource, type Inspected } from "@/lib/inspect";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
@@ -448,6 +449,25 @@ export function Studio(props: {
     [inspecting, html],
   );
   useEffect(() => setInspected(null), [selected?.id, inspecting]);
+  // Voice: dictated words land in the chat box; "send" or Auto-send starts the build.
+  const voice = useVoiceInput({
+    value: prompt,
+    onChange: setPrompt,
+    onSubmit: () => void generate(),
+    onCommand: (cmd) => {
+      if (cmd.kind === "inspect") startInspecting();
+      if (cmd.kind === "version") {
+        const v = versions.find((x) => x.number === cmd.number);
+        if (v) setSelectedId(v.id);
+        else notify.info(`There's no v${cmd.number}`);
+      }
+    },
+    disabled: busy || isImportedApp || outOfQuota,
+    hotkey: !editMode,
+    context: targets.length
+      ? targets.map((t) => pointedName(t)).join(" and ")
+      : null,
+  });
   const editor = useVisualEditor(editMode ? html : null);
 
   /** Opens Compare: `after` against `before`, or the version just before it. */
@@ -1860,6 +1880,7 @@ export function Studio(props: {
                       )}
                     </div>
                   )}
+                  {voice.bar}
                   <label htmlFor="prompt" className="sr-only">
                     {versions.length
                       ? `Describe a change to v${selected?.number ?? ""}`
@@ -1893,6 +1914,7 @@ export function Studio(props: {
                         disabled={busy || isImportedApp}
                         className="size-8"
                       />
+                      {voice.button}
                       {(props.designSystems?.length ?? 0) > 0 && (
                         <Select
                           value={dsId ?? "none"}
