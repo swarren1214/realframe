@@ -7,6 +7,13 @@ import { costMicros } from "@/lib/billing";
 import { loadBuildContext } from "@/lib/builds";
 import { stepPrompt, type PlanStep } from "@/lib/plan";
 import {
+  fixPrompt,
+  needsFix,
+  qaSummary,
+  runQaChecks,
+  type QaReport,
+} from "@/lib/qa";
+import {
   failRun,
   finalizeRun,
   updateRun,
@@ -121,6 +128,11 @@ export async function runStep(runId: string, origin: string, deadline: number) {
     run.base_version_id,
   );
   const currentHtml = run.working_html ?? current?.html ?? null;
+
+  if (steps[index].kind === "qa") {
+    await runQaStep({ run, index, steps, html: currentHtml, deadline, designSystemId, context, history });
+    return;
+  }
 
   // Stop: a flag on the run, checked every 2 seconds.
   const stop = new AbortController();
@@ -269,4 +281,121 @@ export async function settleStopped(
     usage,
   });
   return null;
+}
+
+/** Time the fix pass needs after the check, so the check's budget leaves room for it. */
+const FIX_RESERVE_MS = 170_000;
+
+/**
+ * The build's last step: check the result in a real browser (lib/qa) and, if anything's
+ * broken, have the model fix it once. The build is never lost here: if the checks can't run
+ * or the fix doesn't work, the version is saved as built, with a note.
+ */
+async function runQaStep(opts: {
+  run: BuildRun;
+  index: number;
+  steps: PlanStep[];
+  html: string | null;
+  deadline: number;
+  designSystemId: string | null;
+  context: string;
+  history: { role: "user" | "assistant"; content: string }[];
+}) {
+  const { run, index, steps, deadline, designSystemId } = opts;
+  const admin = createAdminClient();
+  const built = opts.html;
+  if (!built) {
+    await failRun(run, {
+      steps,
+      userId: run.user_id,
+      status: "failed",
+      message: "That didn't work: there was nothing to check.",
+    });
+    return;
+  }
+
+  const stop = new AbortController();
+  const watch = setInterval(async () => {
+    const { data } = await admin
+      .from("build_runs")
+      .select("cancel_requested_at")
+      .eq("id", run.id)
+      .maybeSingle();
+    if (data?.cancel_requested_at) stop.abort();
+  }, CANCEL_POLL_MS);
+
+  let html = built;
+  let totals = {
+    input_tokens: run.input_tokens,
+    output_tokens: run.output_tokens,
+    cost_micros: run.cost_micros,
+  };
+  let summary: string;
+  try {
+    let report: QaReport | null = null;
+    try {
+      const budgetMs = Math.max(
+        30_000,
+        Math.min(75_000, deadline - Date.now() - FIX_RESERVE_MS - 45_000),
+      );
+      report = await runQaChecks(built, { budgetMs, signal: stop.signal });
+      if (!report.ok) throw new Error(report.error ?? "The check stopped early.");
+    } catch (err) {
+      if (stop.signal.aborted) throw new StoppedError("Stopped.", { input: 0, output: 0 });
+      console.error("qa checks", err);
+      summary = "Couldn't run the automated check this time, so the prototype is saved as built.";
+      report = null;
+    }
+
+    if (report && needsFix(report)) {
+      try {
+        const result = await generatePrototype({
+          prompt: fixPrompt(run.prompt, report),
+          references: [],
+          context: opts.context,
+          currentHtml: built,
+          history: opts.history,
+          deadline,
+          signal: stop.signal,
+          onProgress: () => {},
+        });
+        html = result.html;
+        totals = {
+          input_tokens: totals.input_tokens + (result.usage.input ?? 0),
+          output_tokens: totals.output_tokens + (result.usage.output ?? 0),
+          cost_micros:
+            totals.cost_micros + costMicros(result.usage.input, result.usage.output),
+        };
+        summary = qaSummary(report, true);
+      } catch (err) {
+        if (err instanceof StoppedError) throw err;
+        console.error("qa fix", err);
+        summary = `${qaSummary(report, false)} Couldn't fix them automatically this time; ask in the chat and I'll take another pass.`;
+      }
+    } else if (report) {
+      summary = qaSummary(report, false);
+    }
+  } catch (err) {
+    clearInterval(watch);
+    if (err instanceof StoppedError) {
+      // Stopped during the check: keep the build as it was.
+      await settleStopped({ ...run, working_html: built }, index, err.usage);
+      return;
+    }
+    throw err;
+  } finally {
+    clearInterval(watch);
+  }
+
+  steps[index] = { ...steps[index], status: "done", summary: summary! };
+  await finalizeRun(
+    { ...run, ...totals },
+    {
+      html,
+      steps,
+      userId: run.user_id,
+      designSystemId,
+      status: "succeeded",
+    },
+  );
 }

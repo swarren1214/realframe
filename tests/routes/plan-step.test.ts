@@ -16,7 +16,28 @@ const state: {
   generated: number;
   handoffs: string[];
   after: (() => unknown)[];
+  qa: "clean" | "issues" | "broken";
+  prompts: string[];
 } = {} as never;
+
+vi.mock("@/lib/qa", async (orig) => {
+  const real = await orig<typeof import("@/lib/qa")>();
+  return {
+    ...real,
+    runQaChecks: async () => {
+      if (state.qa === "broken") throw new Error("sandbox unavailable");
+      return {
+        ok: true,
+        screens: ["(start)", "#/library"],
+        tested: 7,
+        issues:
+          state.qa === "issues"
+            ? [{ severity: "major", kind: "blank", where: "#/library", detail: "This screen is blank." }]
+            : [],
+      };
+    },
+  };
+});
 
 vi.mock("next/server", async (orig) => {
   const real = await orig<typeof import("next/server")>();
@@ -58,10 +79,12 @@ vi.mock("@/lib/ai", async (orig) => {
   return {
     ...real,
     generatePrototype: async (input: {
+      prompt: string;
       signal: AbortSignal;
       onProgress?: (n: number) => void;
     }) => {
       state.generated++;
+      state.prompts.push(input.prompt);
       if (state.cancel === "never") {
         input.onProgress?.(2048);
         return {
@@ -98,6 +121,8 @@ beforeEach(() => {
   state.generated = 0;
   state.handoffs = [];
   state.after = [];
+  state.qa = "clean";
+  state.prompts = [];
   state.run = {
     id: RUN_ID,
     project_id: "p1",
@@ -290,5 +315,50 @@ describe("watching page", () => {
     const out = await (await DELETE(req("DELETE"), ctx))!.json();
     expect(out).toMatchObject({ stopped: true, versionId: "v9" });
     expect(state.finalized[0]).toMatchObject({ status: "cancelled" });
+  });
+});
+
+describe("check step", () => {
+  const withCheck = () => {
+    state.run = {
+      ...state.run,
+      steps: [
+        { title: "Layout", status: "done" },
+        { title: "Checkout", status: "done" },
+        { title: "Check and fix", status: "pending", kind: "qa", summary: null },
+      ],
+      next_step: 2,
+    };
+  };
+
+  it("saves the build as it is when the check finds nothing", async () => {
+    withCheck();
+    const { runStep } = await import("@/lib/plan-runner");
+    await runStep(RUN_ID, origin, later());
+    expect(state.generated).toBe(0);
+    expect(state.finalized[0]).toMatchObject({ status: "succeeded", html: "<html>step1</html>" });
+    const steps = state.finalized[0].steps as { summary: string }[];
+    expect(steps[2].summary).toBe("Checked 2 screens and 7 taps: no problems found.");
+  });
+
+  it("fixes what the check found, then saves the fixed version", async () => {
+    withCheck();
+    state.qa = "issues";
+    const { runStep } = await import("@/lib/plan-runner");
+    await runStep(RUN_ID, origin, later());
+    expect(state.prompts[0]).toContain("#/library: This screen is blank.");
+    expect(state.finalized[0]).toMatchObject({ status: "succeeded", html: "<html>done</html>" });
+    const steps = state.finalized[0].steps as { summary: string }[];
+    expect(steps[2].summary).toContain("found 1 problem and fixed it");
+  });
+
+  it("keeps the build when the check can't run", async () => {
+    withCheck();
+    state.qa = "broken";
+    const { runStep } = await import("@/lib/plan-runner");
+    await runStep(RUN_ID, origin, later());
+    expect(state.finalized[0]).toMatchObject({ status: "succeeded", html: "<html>step1</html>" });
+    const steps = state.finalized[0].steps as { summary: string }[];
+    expect(steps[2].summary).toMatch(/Couldn't run the automated check/);
   });
 });

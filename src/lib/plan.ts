@@ -11,7 +11,20 @@ export type PlanStep = {
   detail: string;
   status: "pending" | "done" | "failed";
   summary: string | null;
+  /** "qa": the automated check-and-fix pass at the end of a build (see lib/qa). */
+  kind?: "qa";
 };
+
+/** The last step of every planned build: check the result in a browser and fix what breaks. */
+export function qaStep(): PlanStep {
+  return {
+    title: "Check and fix",
+    detail: "Open the prototype in a browser, tap through every screen and fix what breaks.",
+    status: "pending",
+    summary: null,
+    kind: "qa",
+  };
+}
 
 export const MAX_STEPS = 6;
 
@@ -42,12 +55,52 @@ How to plan:
 
 Submit the plan with the submit_plan tool.`;
 
+const CHAT_PROMPT = `You are Realframe's assistant inside a prototype's chat. Realframe builds interactive, front-end-only
+HTML prototypes. Each message the person sends either asks for a change to the prototype, or doesn't.
+
+First decide which:
+- They want the prototype built or changed (new screens, fixes, restyles, "make it…", "add…", "fix…", "yes, do that"
+  after you offered a change): plan the build with submit_plan.
+- Anything else (a question about the prototype or how something works, asking for ideas or feedback, discussing
+  options, thanks, small talk): answer with reply. Don't build.
+When it's unclear, prefer reply and ask a short question, unless they clearly asked for a change.
+
+Replying:
+- Be brief and concrete: a few sentences, or a short list when they asked for ideas or options. Plain text, no
+  markdown headings.
+- Answer from the current prototype's code when the question is about it. If you spot the cause of a problem,
+  say what it is and offer to fix it ("Want me to fix that?"). Don't claim you changed anything: replies change nothing.
+- Never paste code or full documents into a reply.
+
+Planning (submit_plan):
+- request: what to build, restated so it stands on its own without the chat (for example "Fix the Library tab so it
+  shows the content list" when they said "yes, do that"). Keep their wording when it already stands on its own.
+- steps: as below.
+
+${PLANNER_PROMPT}`;
+
+const REPLY_TOOL: Anthropic.Tool = {
+  name: "reply",
+  description:
+    "Answer the person in the chat without changing the prototype. Use for questions, ideas, feedback and discussion.",
+  input_schema: {
+    type: "object",
+    properties: { text: { type: "string" } },
+    required: ["text"],
+  },
+};
+
 const PLAN_TOOL: Anthropic.Tool = {
   name: "submit_plan",
   description: "Submit the ordered build steps.",
   input_schema: {
     type: "object",
     properties: {
+      request: {
+        type: "string",
+        description:
+          "What to build, restated so it stands on its own without the chat.",
+      },
       steps: {
         type: "array",
         minItems: 1,
@@ -65,6 +118,34 @@ const PLAN_TOOL: Anthropic.Tool = {
     required: ["steps"],
   },
 };
+
+/** The planner's steps, trimmed and checked. A one-step plan carries the request through. */
+function cleanSteps(
+  raw: { title?: unknown; detail?: unknown }[] | undefined,
+  prompt: string,
+  hasCurrent: boolean,
+): PlanStep[] {
+  const steps = (raw ?? [])
+    .map((s) => ({
+      title: String(s.title ?? "")
+        .trim()
+        .slice(0, 80),
+      detail: String(s.detail ?? "")
+        .trim()
+        .slice(0, 1200),
+    }))
+    .filter((s) => s.title && s.detail)
+    .slice(0, MAX_STEPS)
+    .map((s) => ({ ...s, status: "pending" as const, summary: null }));
+  if (steps.length === 0)
+    return singleStep(
+      prompt,
+      hasCurrent ? "Apply the change" : "Build the prototype",
+    );
+  // A one-step plan should still carry the user's full wording to the builder.
+  if (steps.length === 1) steps[0].detail = prompt;
+  return steps;
+}
 
 /** A one-step plan that just carries the request through unchanged. */
 function singleStep(prompt: string, title = "Apply the change"): PlanStep[] {
@@ -149,28 +230,7 @@ export async function planBuild(input: {
     const raw = (call?.type === "tool_use" ? call.input : null) as {
       steps?: { title?: unknown; detail?: unknown }[];
     } | null;
-    const steps = (raw?.steps ?? [])
-      .map((s) => ({
-        title: String(s.title ?? "")
-          .trim()
-          .slice(0, 80),
-        detail: String(s.detail ?? "")
-          .trim()
-          .slice(0, 1200),
-      }))
-      .filter((s) => s.title && s.detail)
-      .slice(0, MAX_STEPS)
-      .map((s) => ({ ...s, status: "pending" as const, summary: null }));
-    if (steps.length === 0)
-      return {
-        steps: singleStep(
-          input.prompt,
-          input.currentHtml ? "Apply the change" : "Build the prototype",
-        ),
-        usage,
-      };
-    // A one-step plan should still carry the user's full wording to the builder.
-    if (steps.length === 1) steps[0].detail = input.prompt;
+    const steps = cleanSteps(raw?.steps, input.prompt, Boolean(input.currentHtml));
     return { steps, usage };
   } catch (err) {
     // Planning is an optimisation: if it fails, build the request in one pass as before.
@@ -186,7 +246,9 @@ export async function planBuild(input: {
 }
 
 /** The instruction the builder gets for step `index` of a planned run. */
-export function stepPrompt(prompt: string, steps: PlanStep[], index: number) {
+export function stepPrompt(prompt: string, all: PlanStep[], index: number) {
+  // The check at the end isn't the builder's concern.
+  const steps = all.filter((s) => s.kind !== "qa");
   if (steps.length === 1) return prompt;
   const list = steps
     .map((s, i) => {
@@ -207,4 +269,116 @@ Do step ${index + 1} now: ${step.title}.
 ${step.detail}
 
 Only do this step. ${index > 0 ? "Keep everything the earlier steps built working and intact. " : ""}Don't build later steps yet, though it's fine to leave sensible room for them (for example a nav item that later steps will fill in). The prototype must be complete and working at the end of this step.`;
+}
+
+/** The current document for the chat: whole when it fits, otherwise its outline. */
+function chatDocument(html: string) {
+  return html.length <= 90_000 ? html : outline(html);
+}
+
+export type ChatDecision =
+  | {
+      kind: "reply";
+      text: string;
+      usage: { input: number; output: number; costMicros: number };
+    }
+  | {
+      kind: "build";
+      /** The request to build, standing on its own without the chat. */
+      request: string;
+      steps: PlanStep[];
+      usage: { input: number; output: number; costMicros: number };
+    };
+
+/**
+ * A chat message: answer it, or plan a build for it. One fast model call decides and does
+ * either. Replies change nothing and don't use a build. If the call fails, it's a build.
+ */
+export async function respondOrPlan(input: {
+  prompt: string;
+  currentHtml: string | null;
+  history: { role: "user" | "assistant"; content: string }[];
+  context?: string;
+  smaller?: boolean;
+  focused?: boolean;
+}): Promise<ChatDecision> {
+  const none = { input: 0, output: 0, costMicros: 0 };
+  const build = async (request: string) => ({
+    kind: "build" as const,
+    request,
+    ...(await planBuild({ ...input, prompt: request })),
+  });
+  // A retry of a build that was cut off is a build by definition.
+  if (input.smaller) return build(input.prompt);
+  if (fakeAiEnabled())
+    return /\?\s*$/.test(input.prompt)
+      ? { kind: "reply", text: "Fake AI: here's an answer.", usage: none }
+      : build(input.prompt);
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
+  const client = new Anthropic({ apiKey });
+  const model = process.env.REALFRAME_PLANNER_MODEL || "claude-haiku-5-5";
+
+  const chat = input.history
+    .slice(-8)
+    .map((m) => `${m.role === "user" ? "Person" : "You"}: ${m.content.slice(0, 1500)}`)
+    .join("\n\n");
+  const request = [
+    input.currentHtml
+      ? `The current prototype:\n<current_document>\n${chatDocument(input.currentHtml)}\n</current_document>`
+      : "There is no prototype yet.",
+    chat ? `The chat so far, oldest first:\n<chat>\n${chat}\n</chat>` : "",
+    `Their new message:\n<message>\n${input.prompt}\n</message>`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  try {
+    const message = await client.messages.create(
+      {
+        model,
+        max_tokens: 2500,
+        system: systemBlocks(CHAT_PROMPT, input.context),
+        tools: [REPLY_TOOL, PLAN_TOOL],
+        tool_choice: { type: "any" },
+        messages: [{ role: "user", content: request }],
+      },
+      { signal: AbortSignal.timeout(45_000) },
+    );
+    const usage = {
+      input: billableInput(message.usage),
+      output: message.usage?.output_tokens ?? 0,
+      costMicros: 0,
+    };
+    usage.costMicros = Math.round(
+      usage.input * PLANNER_INPUT_USD_PER_MTOK +
+        usage.output * PLANNER_OUTPUT_USD_PER_MTOK,
+    );
+    const call = message.content.find((b) => b.type === "tool_use");
+    if (call?.type !== "tool_use") return build(input.prompt);
+    if (call.name === "reply") {
+      const text = String((call.input as { text?: unknown }).text ?? "").trim();
+      if (text) return { kind: "reply", text: text.slice(0, 4000), usage };
+      return build(input.prompt);
+    }
+    const raw = call.input as {
+      request?: unknown;
+      steps?: { title?: unknown; detail?: unknown }[];
+    };
+    const restated = String(raw.request ?? "").trim().slice(0, 4000);
+    const ask = restated || input.prompt;
+    // Small and pointed edits stay one step, carrying the request through.
+    if (
+      input.focused ||
+      obviouslySmall(input.prompt, Boolean(input.currentHtml))
+    )
+      return { kind: "build", request: ask, steps: singleStep(ask), usage };
+    const steps = cleanSteps(raw.steps, ask, Boolean(input.currentHtml));
+    return { kind: "build", request: ask, steps, usage };
+  } catch (err) {
+    // Deciding is an optimisation: if it fails, treat the message as a build request.
+    console.error("respondOrPlan", err);
+    return build(input.prompt);
+  }
 }

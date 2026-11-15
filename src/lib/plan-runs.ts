@@ -47,7 +47,8 @@ export async function updateRun(id: string, patch: Partial<BuildRun>) {
 }
 
 /** Short summary stored on the version (shown in the versions list). */
-function versionSummary(steps: PlanStep[]) {
+function versionSummary(all: PlanStep[]) {
+  const steps = all.filter((s) => s.kind !== "qa");
   const done = steps.filter((s) => s.status === "done");
   if (steps.length === 1) return done[0]?.summary ?? "Updated the prototype.";
   return `Built in ${done.length} step${done.length === 1 ? "" : "s"}: ${done
@@ -56,14 +57,19 @@ function versionSummary(steps: PlanStep[]) {
 }
 
 /** Longer summary posted to the chat, one line per step. */
-function chatSummary(steps: PlanStep[], note?: string) {
+function chatSummary(all: PlanStep[], note?: string) {
+  const steps = all.filter((s) => s.kind !== "qa");
+  // The automated check's result, as its own line at the end.
+  const qa = all.find((s) => s.kind === "qa" && s.summary)?.summary;
   if (steps.length === 1 && !note)
-    return steps[0].summary ?? "Updated the prototype.";
+    return [steps[0].summary ?? "Updated the prototype.", qa]
+      .filter(Boolean)
+      .join("\n\n");
   const lines = steps.map((s, i) => {
     const mark = s.status === "done" ? "✓" : s.status === "failed" ? "✕" : "–";
     return `${mark} ${i + 1}. ${s.title}${s.summary ? ` — ${s.summary}` : ""}`;
   });
-  return [note, ...lines].filter(Boolean).join("\n");
+  return [note, ...lines, qa ? `\n${qa}` : ""].filter(Boolean).join("\n");
 }
 
 /**
