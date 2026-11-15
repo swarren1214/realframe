@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { useSidebar } from "./AppShell";
 import { Mark } from "@/components/Logo";
@@ -11,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Bell,
   CreditCard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -44,6 +46,9 @@ type Props = {
   teams: Team[];
   currentId: string;
   invites: number;
+  /** Unread Inbox items. */
+  inbox: number;
+  userId: string;
   plan: "free" | "pro" | "team";
   members: number;
   ownerName: string | null;
@@ -149,6 +154,7 @@ function Body({
   teams,
   currentId,
   invites,
+  inbox,
   plan,
   members,
   ownerName,
@@ -177,7 +183,8 @@ function Body({
         </Button>
       </TooltipTrigger>
       <TooltipContent side="right">
-        {rail ? "Expand" : "Collapse"} <span className="opacity-60">{"⌘\\"}</span>
+        {rail ? "Expand" : "Collapse"}{" "}
+        <span className="opacity-60">{"⌘\\"}</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -197,6 +204,11 @@ function Body({
           invites={invites}
           variant="rail"
           ownerName={ownerName}
+        />
+        <NavLink
+          item={{ href: "/inbox", label: "Inbox", icon: Bell, count: inbox }}
+          path={path}
+          rail
         />
         <nav aria-label="Sections" className="flex flex-col items-center gap-1">
           {groups(current.personal, invites).map((g, gi) => (
@@ -248,6 +260,10 @@ function Body({
         subtitle={subtitle}
         ownerName={ownerName}
       />
+      <NavLink
+        item={{ href: "/inbox", label: "Inbox", icon: Bell, count: inbox }}
+        path={path}
+      />
       <nav aria-label="Sections" className="flex flex-col gap-4">
         {groups(current.personal, invites).map((g) => (
           <div key={g.label} className="flex flex-col gap-0.5">
@@ -286,6 +302,27 @@ export function AppSidebarClient(props: Props) {
   const [open, setOpen] = useState(false);
   const { collapsed, toggle } = useSidebar();
   const path = usePathname();
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  // New Inbox items refresh the count wherever you are.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`inbox:${props.userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${props.userId}`,
+        },
+        () => router.refresh(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, props.userId, router]);
   useEffect(() => setOpen(false), [path]);
   const current = props.teams.find((t) => t.id === props.currentId)!;
   return (
@@ -336,6 +373,18 @@ export function AppSidebarClient(props: Props) {
               : "Personal workspace"
             : current.name}
         </span>
+        <Link
+          href="/inbox"
+          aria-label={props.inbox ? `Inbox, ${props.inbox} unread` : "Inbox"}
+          className="relative grid size-9 place-items-center rounded-full text-stone-600 no-underline hover:bg-foreground/5"
+        >
+          <Bell className="size-[18px]" />
+          {props.inbox > 0 && (
+            <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-raspberry-600 px-1 text-[10px] font-bold text-white">
+              {props.inbox}
+            </span>
+          )}
+        </Link>
         {props.invites > 0 && (
           <Link
             href="/invites"

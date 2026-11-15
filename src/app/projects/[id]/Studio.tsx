@@ -305,11 +305,33 @@ export function Studio(props: {
   const large = useIsLarge();
   const [panelOpen, setPanelOpen] = useState(versions.length === 0);
   const [sharing, setSharing] = useState(false);
+  // Links from the Inbox open a version (?v=) and a panel tab (?tab=).
+  const fromLink = useRef(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const v = url.searchParams.get("v");
+    const t = url.searchParams.get("tab");
+    if (!v && !t) return;
+    if (v && versions.some((x) => x.id === v)) setSelectedId(v);
+    if (t === "comments" || t === "versions" || t === "chat") {
+      setTab(t);
+      setPanelOpen(true);
+      fromLink.current = Boolean(v && v !== selectedId);
+    }
+    url.searchParams.delete("v");
+    url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // A new or picked version closes the drawer so the preview shows it.
   const shownVersion = useRef(selectedId);
   useEffect(() => {
     if (shownVersion.current === selectedId) return;
     shownVersion.current = selectedId;
+    if (fromLink.current) {
+      fromLink.current = false;
+      return;
+    }
     setPanelOpen(false);
   }, [selectedId]);
   useEffect(() => {

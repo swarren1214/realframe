@@ -77,9 +77,53 @@ export async function finishBuild(
           .update({ error: outcome.error.slice(0, 500) })
           .eq("id", claimId);
     }
+    await notifyBuild(claimId, outcome.ok ? null : (outcome.error ?? null));
   } catch (e) {
     console.error("finish_generation", e);
   }
+}
+
+/** Builds that ran this long notify the person who started them; they may have left. */
+const LONG_BUILD_MS = 90_000;
+
+/**
+ * Inbox entries for a finished build: the prototype's owner hears about builds
+ * someone else ran, and anyone hears about their own long builds.
+ */
+async function notifyBuild(claimId: string, error: string | null) {
+  const admin = createAdminClient();
+  const { data: g } = await admin
+    .from("generations")
+    .select("user_id, project_id, created_at, version_id")
+    .eq("id", claimId)
+    .maybeSingle();
+  if (!g?.project_id) return;
+  const { data: project } = await admin
+    .from("projects")
+    .select("owner_id")
+    .eq("id", g.project_id)
+    .maybeSingle();
+  const { data: who } = await admin
+    .from("profiles")
+    .select("display_name, email")
+    .eq("id", g.user_id)
+    .maybeSingle();
+  const long = Date.now() - new Date(g.created_at).getTime() > LONG_BUILD_MS;
+  const to = new Set<string>();
+  if (project?.owner_id && project.owner_id !== g.user_id)
+    to.add(project.owner_id);
+  if (long) to.add(g.user_id);
+  if (!to.size) return;
+  await admin.from("notifications").insert(
+    [...to].map((user_id) => ({
+      user_id,
+      kind: error ? "build_failed" : "build_done",
+      project_id: g.project_id,
+      version_id: error ? null : g.version_id,
+      actor_name: who?.display_name || who?.email || null,
+      body: error ? error.slice(0, 280) : null,
+    })),
+  );
 }
 
 /** The version to build on plus recent chat history. */
