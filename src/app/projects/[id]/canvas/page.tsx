@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import type { Project } from "@/lib/types";
-import { Canvas, type Frame } from "./Canvas";
+import { Canvas, type Frame, type Link as FlowLink } from "./Canvas";
 import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
 
@@ -78,7 +78,7 @@ export default async function CanvasPage({
     );
   }
 
-  const [{ data: frames }, { data: latest }] = await Promise.all([
+  const [{ data: frames }, { data: latest }, { data: links }] = await Promise.all([
     supabase
       .from("canvas_frames")
       .select("id, label, route, width, height, x, y, version_id")
@@ -90,6 +90,10 @@ export default async function CanvasPage({
       .eq("project_id", id)
       .order("number", { ascending: false })
       .limit(1),
+    supabase
+      .from("canvas_links")
+      .select("from_route, to_route, label")
+      .eq("project_id", id),
   ]);
 
   return (
@@ -97,6 +101,7 @@ export default async function CanvasPage({
       accountMenu={<AccountMenu compact />}
       project={project as Project}
       frames={(frames ?? []) as Frame[]}
+      links={(links ?? []) as FlowLink[]}
       latest={
         latest?.[0]
           ? {
