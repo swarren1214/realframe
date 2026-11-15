@@ -17,7 +17,7 @@ export const GET = route<Params>(async (_request, { supabase }, { id }) => {
       supabase
         .from("projects")
         .select(
-          "id, name, slug, access_mode, published, live_version_id, has_password, guest_comments, updated_at",
+          "id, name, slug, access_mode, published, live_version_id, has_password, guest_comments, guest_inspect, updated_at",
         )
         .eq("id", id)
         .maybeSingle(),

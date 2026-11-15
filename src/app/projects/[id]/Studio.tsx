@@ -176,6 +176,7 @@ import {
   restoreVersion as raw_restoreVersion,
   setAccessMode as raw_setAccessMode,
   setGuestComments as raw_setGuestComments,
+  setGuestInspect as raw_setGuestInspect,
   updateDeviceSettings as raw_updateDeviceSettings,
   setProjectPassword as raw_setProjectPassword,
   updateSlug as raw_updateSlug,
@@ -216,6 +217,7 @@ const renameProject = unwrapped(raw_renameProject);
 const restoreVersion = unwrapped(raw_restoreVersion);
 const setAccessMode = unwrapped(raw_setAccessMode);
 const setGuestComments = unwrapped(raw_setGuestComments);
+const setGuestInspect = unwrapped(raw_setGuestInspect);
 const updateDeviceSettings = unwrapped(raw_updateDeviceSettings);
 const setProjectDesignSystem = unwrapped(raw_setProjectDesignSystem);
 const setProjectPassword = unwrapped(raw_setProjectPassword);
@@ -3053,6 +3055,18 @@ function SharePanel({
             }
           />
         </div>
+        <SwitchRow
+          id="guest-inspect"
+          className="-mx-1"
+          label="Guests can inspect code"
+          description="Lets password guests and anyone with a public link open dev mode. People you invite always can."
+          checked={project.guest_inspect === true}
+          loading={isBusy("inspect")}
+          disabled={pending && !isBusy("inspect")}
+          onCheckedChange={(on) =>
+            run(() => setGuestInspect(project.id, on), "inspect")
+          }
+        />
       </section>
 
       <section className="space-y-2">

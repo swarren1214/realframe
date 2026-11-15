@@ -1,10 +1,11 @@
 "use client";
 import { useIsLarge } from "@/lib/use-media";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   CircleCheck,
+  Code,
   Expand,
   LogIn,
   MessageSquare,
@@ -32,11 +33,18 @@ import {
   PresentControls,
   enterFullscreen,
 } from "@/components/PresentMode";
-import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
+import {
+  PrototypeFrame,
+  type FrameHandle,
+  type Pin,
+} from "@/components/PrototypeFrame";
+import { DevPanel } from "@/components/dev/DevPanel";
+import { annotateSource, type Inspected } from "@/lib/inspect";
 import { createClient } from "@/lib/supabase/client";
 import {
   authorLabel,
   canComment,
+  canInspect,
   type Project,
   type ReviewRound,
   type Role,
@@ -130,8 +138,13 @@ export function Review({
   );
   const canCompare = role !== "public" && earlier.length > 0;
   const [compareList, setCompareList] = useState<CompareVersion[] | null>(null);
-  const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
-  const [changed, setChanged] = useState<{ id: string; number: number } | null>(null);
+  const [compare, setCompare] = useState<{
+    before: string;
+    after: string;
+  } | null>(null);
+  const [changed, setChanged] = useState<{ id: string; number: number } | null>(
+    null,
+  );
   const seenKey = `rf_seen_${project.id}`;
   useEffect(() => {
     if (!canCompare) return;
@@ -145,7 +158,71 @@ export function Review({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version.number]);
 
+  // Dev mode: anyone with a role on the prototype, guests only if the owner allows it.
+  const inspectable = canInspect(role, project);
+  const frame = useRef<FrameHandle>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [inspected, setInspected] = useState<Inspected | null>(null);
+  const isBundle = Boolean(version.src);
+  const annotated = useMemo(
+    () => (inspecting && !isBundle ? annotateSource(version.html) : null),
+    [inspecting, isBundle, version.html],
+  );
+  useEffect(() => setInspected(null), [inspecting]);
+  // Dev mode is desktop only.
+  useEffect(() => {
+    if (!large) setInspecting(false);
+  }, [large]);
+  const loadSourceHtml = useCallback(
+    async (id: string) => (await loadForCompare(id)).html ?? "",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version.id],
+  );
+  function startInspecting() {
+    setCompare(null);
+    setCommentMode(false);
+    setDraft(null);
+    setInspecting(true);
+  }
+  useEffect(() => {
+    if (!inspectable) return;
+    const typing = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const down = (e: KeyboardEvent) => {
+      if (typing(e.target)) return;
+      if (
+        e.key.toLowerCase() === "d" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        window.matchMedia("(min-width: 1024px)").matches
+      ) {
+        e.preventDefault();
+        setInspecting((on) => {
+          if (!on) {
+            setCompare(null);
+            setCommentMode(false);
+            setDraft(null);
+          }
+          return !on;
+        });
+      } else if (e.key === "Escape") setInspecting(false);
+      else if (e.key === "Alt") frame.current?.inspectAlt(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Alt") frame.current?.inspectAlt(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [inspectable]);
+
   async function openCompare(before?: string) {
+    setInspecting(false);
     setCommentMode(false);
     setDraft(null);
     setPanelOpen(false);
@@ -402,6 +479,24 @@ export function Review({
             <span className="max-lg:sr-only">Compare</span>
           </Button>
         )}
+        {inspectable && !presenting && (
+          <Button
+            variant={inspecting ? "default" : "ghost"}
+            className="max-lg:hidden"
+            aria-pressed={inspecting}
+            title={
+              inspecting
+                ? "Stop inspecting (Esc)"
+                : "Inspect: code, measurements and tokens (D)"
+            }
+            onClick={() =>
+              inspecting ? setInspecting(false) : startInspecting()
+            }
+          >
+            {inspecting ? <X /> : <Code />}
+            {inspecting ? "Stop inspecting" : "Inspect"}
+          </Button>
+        )}
         {commenter && (
           <Button
             variant={commentMode ? "default" : "outline"}
@@ -409,6 +504,7 @@ export function Review({
             aria-pressed={commentMode}
             onClick={() => {
               setCompare(null);
+              setInspecting(false);
               setCommentMode((m) => !m);
               setDraft(null);
             }}
@@ -447,11 +543,19 @@ export function Review({
           role="status"
           className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-3xl bg-glow-soft px-4 py-2.5 text-[13px] text-raspberry-900 lg:mx-3"
         >
-          <Sparkles className="size-4 shrink-0 text-raspberry-700" aria-hidden="true" />
+          <Sparkles
+            className="size-4 shrink-0 text-raspberry-700"
+            aria-hidden="true"
+          />
           <span className="min-w-0 flex-1">
-            Updated since you last looked: <b>v{changed.number}</b> → <b>v{version.number}</b>
+            Updated since you last looked: <b>v{changed.number}</b> →{" "}
+            <b>v{version.number}</b>
           </span>
-          <Button size="sm" variant="default" onClick={() => openCompare(changed.id)}>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => openCompare(changed.id)}
+          >
             <Columns2 />
             See what changed
           </Button>
@@ -505,27 +609,30 @@ export function Review({
                 onClose={() => setCompare(null)}
               />
             ) : (
-            <DeviceStage
-              view={view}
-              presenting={presenting}
-              onMeasure={setMeasure}
-            >
-              <PrototypeFrame
-                html={version.html}
-                src={version.src}
-                title={`${project.name} v${version.number}`}
-                commentMode={commentMode}
-                pins={pins}
-                onPick={(x, y) => {
-                  setDraft({ x, y });
-                  setCommentMode(false);
-                }}
-                onSelectPin={(id) => {
-                  setSelected(id);
-                  setPanelOpen(true);
-                }}
-              />
-            </DeviceStage>
+              <DeviceStage
+                view={view}
+                presenting={presenting}
+                onMeasure={setMeasure}
+              >
+                <PrototypeFrame
+                  ref={frame}
+                  html={annotated?.html ?? version.html}
+                  src={version.src}
+                  inspect={inspecting}
+                  onInspect={setInspected}
+                  title={`${project.name} v${version.number}`}
+                  commentMode={commentMode}
+                  pins={pins}
+                  onPick={(x, y) => {
+                    setDraft({ x, y });
+                    setCommentMode(false);
+                  }}
+                  onSelectPin={(id) => {
+                    setSelected(id);
+                    setPanelOpen(true);
+                  }}
+                />
+              </DeviceStage>
             )}
           </div>
           {draft && (
@@ -583,6 +690,29 @@ export function Review({
                 panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
               )}
             />
+            {inspecting && (
+              <aside
+                aria-label="Dev mode"
+                className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:hidden lg:w-[440px] xl:w-[500px]"
+              >
+                <DevPanel
+                  frame={frame}
+                  source={isBundle ? null : version.html}
+                  spans={annotated?.spans ?? []}
+                  selected={inspected}
+                  frameKey={`${version.id}:${inspecting}`}
+                  versions={[
+                    ...(canCompare
+                      ? earlier.map(([id, number]) => ({ id, number }))
+                      : []),
+                    { id: version.id, number: version.number },
+                  ].sort((a, b) => a.number - b.number)}
+                  versionId={version.id}
+                  loadHtml={loadSourceHtml}
+                  onCompare={(before) => void openCompare(before)}
+                />
+              </aside>
+            )}
             <aside
               ref={(el) => {
                 drawerSwipe.panel.current = el;
@@ -594,6 +724,7 @@ export function Review({
                 "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[80dvh] max-lg:rounded-b-none max-lg:pb-[env(safe-area-inset-bottom)] max-lg:shadow-[0_-24px_60px_-30px_rgba(0,0,0,.5)] max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-(--ease-out)",
                 !panelOpen &&
                   "max-lg:pointer-events-none max-lg:translate-y-full",
+                inspecting && "lg:hidden",
               )}
             >
               <div
