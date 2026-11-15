@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/sweep",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/notifications/digest",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

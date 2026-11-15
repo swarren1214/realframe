@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GUEST_MAX_AGE, guestCookieName, signGuest } from "@/lib/guest";
 import { cookieDomain } from "@/lib/hosts";
+import { allow, clientIp } from "@/lib/rate-limit";
 
 // POST (form) { password, name } → sets the guest cookie for a password-protected prototype.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
@@ -21,6 +22,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (!name) return fail("name");
   if (!password) return fail("password");
+
+  // At most 10 tries per 10 minutes from one address, and 100 per prototype from everywhere.
+  const ip = clientIp(request);
+  const ok =
+    (await allow(`unlock:${slug}:${ip}`, 10, 600)) &&
+    (await allow(`unlock:${slug}`, 100, 600));
+  if (!ok) return fail("rate");
 
   // Slow down guessing a little.
   await new Promise((r) => setTimeout(r, 400));

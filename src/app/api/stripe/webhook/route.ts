@@ -183,9 +183,19 @@ export async function POST(request: NextRequest) {
       }
       case "customer.subscription.created":
       case "customer.subscription.updated":
-      case "customer.subscription.deleted":
-        await syncSubscription(event.data.object as Stripe.Subscription);
+      case "customer.subscription.deleted": {
+        // Events can arrive out of order; save what the subscription is now, not what the
+        // event says it was, so an older event can't overwrite newer state.
+        const sent = event.data.object as Stripe.Subscription;
+        let current: Stripe.Subscription = sent;
+        try {
+          current = (await stripe.subscriptions.retrieve(sent.id)) ?? sent;
+        } catch {
+          // Stripe unreachable: the event's copy is the best we have.
+        }
+        await syncSubscription(current);
         break;
+      }
       case "invoice.created":
         await addUsageOverage(event.data.object as Stripe.Invoice);
         break;

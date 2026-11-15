@@ -257,6 +257,8 @@ export function Studio(props: {
   userEmail: string;
   versions: VersionMeta[];
   messages: Message[];
+  /** Whether there are messages older than the ones loaded with the page. */
+  hasEarlierMessages?: boolean;
   members: Member[];
   threads: Thread[];
   initialHtml: string | null;
@@ -296,7 +298,8 @@ export function Studio(props: {
     project,
     role,
     versions,
-    messages,
+    messages: newestMessages,
+    hasEarlierMessages = false,
     members,
     threads,
     quota,
@@ -693,9 +696,39 @@ export function Studio(props: {
   }, [commentMode, draft, selected, editMode, selectMode, inspecting]);
   const isOwner = role === "owner";
 
+  // A long chat loads its newest messages with the page; older ones load on request.
+  const [earlier, setEarlier] = useState<Message[]>([]);
+  const [moreEarlier, setMoreEarlier] = useState(hasEarlierMessages);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const messages = useMemo(
+    () => [...earlier, ...newestMessages],
+    [earlier, newestMessages],
+  );
+  async function loadEarlier() {
+    const oldest = messages[0];
+    if (!oldest) return;
+    setLoadingEarlier(true);
+    const { data, error } = await supabase
+      .from("messages")
+      .select("id, role, content, version_id, created_at, attachments")
+      .eq("project_id", project.id)
+      .lt("created_at", oldest.created_at)
+      .order("created_at", { ascending: false })
+      .limit(101);
+    setLoadingEarlier(false);
+    if (error) {
+      notify.error("Couldn't load earlier messages.");
+      return;
+    }
+    const rows = (data ?? []) as Message[];
+    setMoreEarlier(rows.length > 100);
+    setEarlier((e) => [...rows.slice(0, 100).reverse(), ...e]);
+  }
+
+  // Follow new messages, but not when older ones are added at the top.
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, busy]);
+  }, [newestMessages.length, busy]);
 
   useEffect(() => {
     if (!selected || htmlCache[selected.id] || srcCache[selected.id]) return;
@@ -1730,6 +1763,18 @@ export function Studio(props: {
                           {s}
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {moreEarlier && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void loadEarlier()}
+                        loading={loadingEarlier}
+                      >
+                        Load earlier messages
+                      </Button>
                     </div>
                   )}
                   {messages.map((m, i) => {
