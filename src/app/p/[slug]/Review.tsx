@@ -1,4 +1,5 @@
 "use client";
+import { useIsLarge } from "@/lib/use-media";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -100,6 +101,8 @@ export function Review({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Phones only: whether the comments drawer is open.
+  // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
+  const large = useIsLarge();
   const [panelOpen, setPanelOpen] = useState(false);
   useEffect(() => {
     if (!panelOpen) return;
@@ -478,7 +481,7 @@ export function Review({
             />
             <aside
               aria-label="Comments"
-              {...(!panelOpen ? { inert: true } : {})}
+              {...(!panelOpen && !large ? { inert: true } : {})}
               className={cn(
                 "glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] lg:w-[340px]",
                 "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[80dvh] max-lg:rounded-b-none max-lg:pb-[env(safe-area-inset-bottom)] max-lg:shadow-[0_-24px_60px_-30px_rgba(0,0,0,.5)] max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-(--ease-out)",

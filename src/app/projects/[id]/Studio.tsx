@@ -1,4 +1,7 @@
 "use client";
+import { useIsLarge } from "@/lib/use-media";
+import { FailureCard } from "@/components/builds/FailureCard";
+import { isFailureMessage } from "@/lib/failures";
 import { MAX_PROMPT, START_PROMPT_KEY } from "@/lib/prompt-shared";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -281,6 +284,8 @@ export function Studio(props: {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   // Phones only: whether the panel drawer is open.
+  // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
+  const large = useIsLarge();
   const [panelOpen, setPanelOpen] = useState(versions.length === 0);
   const [reviewing, setReviewing] = useState(false);
   // A new or picked version closes the drawer so the preview shows it.
@@ -454,7 +459,11 @@ export function Studio(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function generate(e?: React.FormEvent, override?: string) {
+  async function generate(
+    e?: React.FormEvent,
+    override?: string,
+    opts: { smaller?: boolean } = {},
+  ) {
     e?.preventDefault();
     const text = (override ?? prompt).trim();
     if (!text || busy || isImportedApp) return;
@@ -468,7 +477,7 @@ export function Studio(props: {
     const many = variantCount > 1;
     try {
       if (many) await runVariants(text);
-      else await runPlanned(text);
+      else await runPlanned(text, opts.smaller);
       // Only worth a toast if they looked away while it built.
       if (document.hidden || Date.now() - startedAt > 20_000)
         notify.success(
@@ -508,7 +517,7 @@ export function Studio(props: {
    * Plan, then build step by step: the server breaks the request into ordered steps and
    * each one is built on top of the last, one request per step.
    */
-  async function runPlanned(text: string) {
+  async function runPlanned(text: string, smaller = false) {
     setPlanning(true);
     const res = await fetch(`/api/projects/${project.id}/plan`, {
       method: "POST",
@@ -516,6 +525,7 @@ export function Studio(props: {
       body: JSON.stringify({
         prompt: text,
         baseVersionId: selected?.id ?? null,
+        smaller,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -1062,7 +1072,7 @@ export function Studio(props: {
                 !panelOpen &&
                   "max-lg:pointer-events-none max-lg:translate-y-full",
               )}
-              {...(!panelOpen ? { inert: true } : {})}
+              {...(!panelOpen && !large ? { inert: true } : {})}
             >
               <div className="flex items-center gap-2 border-b border-stone-100 py-2 pl-4 pr-2 lg:hidden">
                 <h2 className="flex-1 text-[15px] font-semibold">
@@ -1153,10 +1163,36 @@ export function Studio(props: {
                       ))}
                     </div>
                   )}
-                  {messages.map((m) => {
+                  {messages.map((m, i) => {
                     const v = m.version_id
                       ? versions.find((x) => x.id === m.version_id)
                       : null;
+                    if (m.role !== "user" && isFailureMessage(m.content)) {
+                      const asked =
+                        messages
+                          .slice(0, i)
+                          .reverse()
+                          .find((x) => x.role === "user")?.content ?? null;
+                      return (
+                        <FailureCard
+                          key={m.id}
+                          content={m.content}
+                          prompt={asked}
+                          latest={i === messages.length - 1}
+                          busy={busy}
+                          onRetry={({ smaller }) =>
+                            asked && generate(undefined, asked, { smaller })
+                          }
+                          onEdit={() => {
+                            if (!asked) return;
+                            setPrompt(asked);
+                            requestAnimationFrame(() =>
+                              document.getElementById("prompt")?.focus(),
+                            );
+                          }}
+                        />
+                      );
+                    }
                     return m.role === "user" ? (
                       <div
                         key={m.id}
@@ -1370,11 +1406,15 @@ export function Studio(props: {
                         builds. It frees up on a rolling 24-hour basis.
                       </p>
                     )}
-                  {error && (
-                    <p role="alert" className="mt-2 text-xs text-red-700">
-                      {error}
-                    </p>
-                  )}
+                  {error &&
+                    !(
+                      messages.length > 0 &&
+                      isFailureMessage(messages[messages.length - 1].content)
+                    ) && (
+                      <p role="alert" className="mt-2 text-xs text-red-700">
+                        {error}
+                      </p>
+                    )}
                 </form>
               </TabsContent>
               {tab !== "chat" && (

@@ -96,12 +96,17 @@ export async function planBuild(input: {
   prompt: string;
   currentHtml: string | null;
   context?: string;
+  /** A retry after a reply was cut off: split into more, smaller steps. */
+  smaller?: boolean;
 }): Promise<{
   steps: PlanStep[];
   usage: { input: number; output: number; costMicros: number };
 }> {
   const none = { input: 0, output: 0, costMicros: 0 };
-  if (fakeAiEnabled() || obviouslySmall(input.prompt, Boolean(input.currentHtml)))
+  if (
+    fakeAiEnabled() ||
+    (!input.smaller && obviouslySmall(input.prompt, Boolean(input.currentHtml)))
+  )
     return { steps: singleStep(input.prompt), usage: none };
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -112,6 +117,9 @@ export async function planBuild(input: {
   const request = input.currentHtml
     ? `The prototype already exists. Its current structure (scripts and styles elided):\n<current_outline>\n${outline(input.currentHtml)}\n</current_outline>\n\nThe user's request:\n<request>\n${input.prompt}\n</request>`
     : `There is no prototype yet; this is a new build.\n\nThe user's request:\n<request>\n${input.prompt}\n</request>`;
+  const retryNote = input.smaller
+    ? "\n\nThe last attempt at this ran out of room before finishing. Split it into at least three smaller steps, each a self-contained piece (for example the layout and navigation first, then one screen or section per step)."
+    : "";
 
   try {
     const message = await client.messages.create({
@@ -122,7 +130,7 @@ export async function planBuild(input: {
         : PLANNER_PROMPT,
       tools: [PLAN_TOOL],
       tool_choice: { type: "tool", name: "submit_plan" },
-      messages: [{ role: "user", content: request }],
+      messages: [{ role: "user", content: request + retryNote }],
     });
     const usage = {
       input: message.usage?.input_tokens ?? 0,
@@ -139,15 +147,22 @@ export async function planBuild(input: {
     } | null;
     const steps = (raw?.steps ?? [])
       .map((s) => ({
-        title: String(s.title ?? "").trim().slice(0, 80),
-        detail: String(s.detail ?? "").trim().slice(0, 1200),
+        title: String(s.title ?? "")
+          .trim()
+          .slice(0, 80),
+        detail: String(s.detail ?? "")
+          .trim()
+          .slice(0, 1200),
       }))
       .filter((s) => s.title && s.detail)
       .slice(0, MAX_STEPS)
       .map((s) => ({ ...s, status: "pending" as const, summary: null }));
     if (steps.length === 0)
       return {
-        steps: singleStep(input.prompt, input.currentHtml ? "Apply the change" : "Build the prototype"),
+        steps: singleStep(
+          input.prompt,
+          input.currentHtml ? "Apply the change" : "Build the prototype",
+        ),
         usage,
       };
     // A one-step plan should still carry the user's full wording to the builder.
@@ -157,7 +172,10 @@ export async function planBuild(input: {
     // Planning is an optimisation: if it fails, build the request in one pass as before.
     console.error("planBuild", err);
     return {
-      steps: singleStep(input.prompt, input.currentHtml ? "Apply the change" : "Build the prototype"),
+      steps: singleStep(
+        input.prompt,
+        input.currentHtml ? "Apply the change" : "Build the prototype",
+      ),
       usage: none,
     };
   }

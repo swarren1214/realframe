@@ -39,6 +39,7 @@ export async function POST(
   const body = (await request.json().catch(() => ({}))) as {
     prompt?: string;
     baseVersionId?: string | null;
+    smaller?: boolean;
   };
   const read = readPrompt(body);
   if ("error" in read)
@@ -71,6 +72,7 @@ export async function POST(
     prompt,
     context,
     currentHtml: current?.html ?? null,
+    smaller: body.smaller === true,
   });
 
   const { data: run, error } = await createAdminClient()
