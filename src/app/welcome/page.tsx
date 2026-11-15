@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/server";
 import { AvatarEditor } from "@/components/AvatarEditor";
+import { readPrefs } from "@/lib/notify-links";
+import { NotifySettings } from "./NotifySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +51,7 @@ export default async function WelcomePage({
   if (!user) redirect("/login");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, onboarded_at, avatar_url")
+    .select("display_name, onboarded_at, avatar_url, notify_email")
     .maybeSingle();
   const editing = Boolean(edit) || Boolean(profile?.onboarded_at);
   const { data: quota } = await supabase.rpc("generation_quota");
@@ -126,6 +128,12 @@ export default async function WelcomePage({
           </Button>
         )}
       </form>
+      {editing && (
+        <NotifySettings
+          userId={user.id}
+          initial={readPrefs(profile?.notify_email)}
+        />
+      )}
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { readPrefs } from "@/lib/notify-links";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -195,7 +196,7 @@ export async function decideReview(
       const [{ data: requester }, { data: me }] = await Promise.all([
         admin
           .from("profiles")
-          .select("email")
+          .select("email, notify_email")
           .eq("id", r.requested_by)
           .single(),
         admin
@@ -204,7 +205,7 @@ export async function decideReview(
           .eq("id", opts.reviewer.id)
           .maybeSingle(),
       ]);
-      if (requester?.email)
+      if (requester?.email && readPrefs(requester.notify_email).reviews)
         await sendReviewDecision({
           to: requester.email,
           reviewer: me?.display_name || opts.reviewer.email,

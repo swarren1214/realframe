@@ -160,3 +160,100 @@ export async function sendFeedbackAddressed(opts: {
   );
   return send(opts.to, subject, html, text);
 }
+
+export type DigestItem = {
+  kind: string;
+  project_id: string | null;
+  project: string | null;
+  version_id: string | null;
+  version: number | null;
+  actor: string | null;
+  body: string | null;
+};
+
+/** One email for everything that happened since the last one. */
+export async function sendNotificationDigest(
+  opts: Parameters<typeof digestEmail>[0],
+) {
+  const { subject, html, text } = digestEmail(opts);
+  return send(opts.to, subject, html, text);
+}
+
+export function digestEmail(opts: {
+  to: string;
+  name: string | null;
+  items: DigestItem[];
+  appUrl: string;
+  unsubscribeUrl: string;
+}) {
+  const line = (n: DigestItem) => {
+    const who = n.actor || "Someone";
+    const v = n.version ? ` v${n.version}` : "";
+    const what =
+      n.kind === "comment"
+        ? `${who} commented on${v}`
+        : n.kind === "reply"
+          ? `${who} replied on${v}`
+          : n.kind === "build_done"
+            ? `Build finished${n.version ? `: v${n.version} is ready` : ""}`
+            : "A build didn't finish";
+    return { what, body: n.kind === "build_failed" ? null : n.body };
+  };
+  const link = (n: DigestItem) => {
+    if (!n.project_id) return `${opts.appUrl}/inbox`;
+    const q = new URLSearchParams();
+    if (n.version_id) q.set("v", n.version_id);
+    if (n.kind === "comment" || n.kind === "reply") q.set("tab", "comments");
+    return `${opts.appUrl}/projects/${n.project_id}${q.size ? `?${q}` : ""}`;
+  };
+  // Group by prototype so a busy thread reads as one block.
+  const byProject = new Map<string, DigestItem[]>();
+  for (const n of opts.items) {
+    const k = n.project ?? "Your prototypes";
+    byProject.set(k, [...(byProject.get(k) ?? []), n]);
+  }
+  const count = opts.items.length;
+  const first = [...byProject.keys()][0];
+  const subject =
+    byProject.size === 1
+      ? `${count === 1 ? line(opts.items[0]).what : `${count} updates`} · ${first}`
+      : `${count} updates on your prototypes`;
+
+  const html = `<!doctype html><html><body style="margin:0;background:#fafaf9;font-family:Inter,Arial,sans-serif;color:#1c1917">
+<div style="max-width:520px;margin:0 auto;padding:28px 20px">
+<p style="margin:0 0 18px;font-size:15px">${opts.name ? `Hi ${esc(opts.name.split(" ")[0])},` : "Hi,"} here&rsquo;s what happened on your prototypes.</p>
+${[...byProject.entries()]
+  .map(
+    ([
+      project,
+      list,
+    ]) => `<div style="margin:0 0 16px;padding:16px 18px;background:#fff;border:1px solid #e7e5e4;border-radius:16px">
+<p style="margin:0 0 10px;font-size:13px;font-weight:700">${esc(project)}</p>
+${list
+  .map((n) => {
+    const l = line(n);
+    return `<p style="margin:0 0 10px;font-size:14px;line-height:1.45"><a href="${link(n)}" style="color:#1c1917;text-decoration:none"><b>${esc(l.what)}</b></a>${l.body ? `<br><span style="color:#57534e">&ldquo;${esc(l.body)}&rdquo;</span>` : ""}</p>`;
+  })
+  .join("")}
+</div>`,
+  )
+  .join("")}
+<p style="margin:20px 0 0"><a href="${opts.appUrl}/inbox" style="display:inline-block;padding:11px 18px;border-radius:999px;background:#be185d;color:#fff;font-size:14px;font-weight:600;text-decoration:none">Open your Inbox</a></p>
+<p style="margin:28px 0 0;font-size:12px;color:#78716c">You get at most one of these every 15 minutes. <a href="${opts.appUrl}/welcome?edit=1#notifications" style="color:#78716c">Email settings</a> &middot; <a href="${opts.unsubscribeUrl}" style="color:#78716c">Unsubscribe</a></p>
+</div></body></html>`;
+  const text = [
+    "Here's what happened on your prototypes.",
+    "",
+    ...[...byProject.entries()].flatMap(([project, list]) => [
+      project,
+      ...list.map((n) => {
+        const l = line(n);
+        return `- ${l.what}${l.body ? `: "${l.body}"` : ""}\n  ${link(n)}`;
+      }),
+      "",
+    ]),
+    `Inbox: ${opts.appUrl}/inbox`,
+    `Unsubscribe: ${opts.unsubscribeUrl}`,
+  ].join("\n");
+  return { subject, html, text };
+}
