@@ -9,7 +9,11 @@ import { IGNORE, mimeFor } from "@/lib/bundle";
 const MAX_FILES = 1500;
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_LOG = 300_000;
-const BUILD_TIMEOUT_MS = 20 * 60_000;
+// The sandbox has to stop before the function hosting it does (api/builds/run allows 800 s,
+// about 13 minutes), or a slow build dies silently. The sweeper fails anything left after that.
+export const BUILD_TIMEOUT_MS = 11 * 60_000;
+/** Past this, a build still marked "building" has outlived its function: the sweeper ends it. */
+export const BUILD_STALE_MS = 14 * 60_000;
 
 // Registries and hosts a normal JavaScript install needs. Everything else is blocked,
 // so a build script can't send code or data anywhere else.
@@ -109,10 +113,12 @@ export async function runBuild(buildId: string) {
 
   const finish = async (fields: Record<string, unknown>) => {
     clearInterval(ticker);
+    // Only while it's still ours: a cancel or the sweeper may have ended it already.
     await admin
       .from("builds")
       .update({ ...fields, log, finished_at: new Date().toISOString() })
-      .eq("id", buildId);
+      .eq("id", buildId)
+      .in("status", ["queued", "building"]);
   };
 
   if (!source) {
@@ -396,7 +402,11 @@ export async function runBuild(buildId: string) {
   await startNextQueued(build.project_id);
 }
 
-/** After a build ends, start the newest build still waiting for the same prototype. */
+/**
+ * After a build ends, start the newest build still waiting for the same prototype, in a fresh
+ * function call so it gets the full time limit. If that call can't be made, the sweeper starts
+ * it within a few minutes.
+ */
 async function startNextQueued(projectId: string) {
   const admin = createAdminClient();
   const { data: next } = await admin
@@ -408,6 +418,15 @@ async function startNextQueued(projectId: string) {
     .limit(1)
     .maybeSingle();
   if (!next) return;
-  // Run it in this same function; the cron sweep picks up anything that's left behind.
-  await runBuild(next.id);
+  await startRunner(next.id, appOrigin()).catch((e) =>
+    console.error("startNextQueued", e),
+  );
+}
+
+/** This deployment's own address, for calling the runner. */
+export function appOrigin() {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  const host =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  return host ? `https://${host}` : "http://localhost:3000";
 }

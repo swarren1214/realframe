@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { ApiError, json, readJson, requireRole, route } from "@/lib/api/v1";
-import { GenerationError, generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype, routeDeadline } from "@/lib/ai";
 import {
   IMPORTED_APP_MESSAGE,
   finishBuild,
@@ -41,15 +41,15 @@ export const POST = route<{ id: string }>(
     if (claimError || !claimId) return limitResponse(claimError?.message);
     const buildId = claimId as string;
 
-    await supabase
-      .from("messages")
-      .insert({
-        project_id: id,
-        role: "user",
-        content: prompt,
-        created_by: user.id,
-      });
+    await supabase.from("messages").insert({
+      project_id: id,
+      role: "user",
+      content: prompt,
+      created_by: user.id,
+    });
 
+    // The build runs after the response, inside this same function's time limit.
+    const deadline = routeDeadline(maxDuration);
     after(async () => {
       const admin = createAdminClient();
       try {
@@ -57,6 +57,7 @@ export const POST = route<{ id: string }>(
           prompt,
           currentHtml: current?.html ?? null,
           history,
+          deadline,
         });
         const { data: version, error } = await supabase.rpc("create_version", {
           p_project: id,
@@ -77,15 +78,13 @@ export const POST = route<{ id: string }>(
           input: result.usage.input,
           output: result.usage.output,
         });
-        await supabase
-          .from("messages")
-          .insert({
-            project_id: id,
-            role: "assistant",
-            content: result.summary,
-            version_id: v.id,
-            created_by: user.id,
-          });
+        await supabase.from("messages").insert({
+          project_id: id,
+          role: "assistant",
+          content: result.summary,
+          version_id: v.id,
+          created_by: user.id,
+        });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Generation failed.";
@@ -98,14 +97,12 @@ export const POST = route<{ id: string }>(
           error: message,
           ...(err instanceof GenerationError ? err.usage : {}),
         });
-        await supabase
-          .from("messages")
-          .insert({
-            project_id: id,
-            role: "assistant",
-            content: `That didn't work: ${message}`,
-            created_by: user.id,
-          });
+        await supabase.from("messages").insert({
+          project_id: id,
+          role: "assistant",
+          content: `That didn't work: ${message}`,
+          created_by: user.id,
+        });
       }
     });
 

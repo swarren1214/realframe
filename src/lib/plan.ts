@@ -125,16 +125,19 @@ export async function planBuild(input: {
     : "";
 
   try {
-    const message = await client.messages.create({
-      model,
-      max_tokens: 2000,
-      system: input.context
-        ? `${PLANNER_PROMPT}\n\nAbout this project:\n${input.context}`
-        : PLANNER_PROMPT,
-      tools: [PLAN_TOOL],
-      tool_choice: { type: "tool", name: "submit_plan" },
-      messages: [{ role: "user", content: request + retryNote }],
-    });
+    const message = await client.messages.create(
+      {
+        model,
+        max_tokens: 2000,
+        system: input.context
+          ? `${PLANNER_PROMPT}\n\nAbout this project:\n${input.context}`
+          : PLANNER_PROMPT,
+        tools: [PLAN_TOOL],
+        tool_choice: { type: "tool", name: "submit_plan" },
+        messages: [{ role: "user", content: request + retryNote }],
+      },
+      { signal: AbortSignal.timeout(40_000) },
+    );
     const usage = {
       input: message.usage?.input_tokens ?? 0,
       output: message.usage?.output_tokens ?? 0,

@@ -21,7 +21,12 @@ function makeStripe() {
     },
     prices: { retrieve: vi.fn(async () => ({ product: "prod_pro" })) },
     subscriptions: { retrieve: vi.fn() },
-    invoices: { create: vi.fn(async () => ({ id: "in_usage_1" })) },
+    invoices: {
+      create: vi.fn(async () => ({ id: "in_usage_1", status: "draft" })),
+      search: vi.fn(async () => ({ data: [] })),
+      listLineItems: vi.fn(async () => ({ data: [] })),
+      finalizeInvoice: vi.fn(async () => ({})),
+    },
     invoiceItems: { create: vi.fn(async () => ({ id: "ii_1" })) },
     webhooks: { constructEvent: vi.fn() },
   };
@@ -43,6 +48,29 @@ vi.mock("@/lib/stripe", async (orig) => {
 });
 
 const user = { id: "u1", email: "steve@acme.co" };
+
+/** The billing functions in the database, over a list of builds. */
+function usageRpc(
+  c: { rpc?: string; args?: unknown },
+  rows: { billed_micros: number; created_at: string }[],
+) {
+  const a = c.args as { p_from: string; p_to: string; p_stamp?: string };
+  const inWindow = rows.filter(
+    (r) => r.created_at >= a.p_from && r.created_at < a.p_to,
+  );
+  if (c.rpc === "unbilled_usage")
+    return {
+      data: [
+        {
+          billed_micros: inWindow.reduce((n, r) => n + r.billed_micros, 0),
+          builds: inWindow.length,
+        },
+      ],
+    };
+  if (c.rpc === "claim_usage_bill")
+    return { data: { id: `bill-${a.p_from}`, invoice_id: null } };
+  if (c.rpc === "stamp_usage") return { data: inWindow.length };
+}
 
 function setup(
   server: Handler = () => undefined,
@@ -255,13 +283,11 @@ describe("Stripe webhook", () => {
       if (c.table === "teams") return { data: null };
       if (c.rpc === "plan_settings")
         return { data: [{ pro_included_micros: 10_000_000 }] };
-      if (c.table === "generations" && c.op === "select")
-        return {
-          data: [
-            { id: "g1", billed_micros: 8_000_000 },
-            { id: "g2", billed_micros: 4_500_001 },
-          ],
-        };
+      if (c.rpc)
+        return usageRpc(c, [
+          { billed_micros: 8_000_000, created_at: "2026-01-05T00:00:00.000Z" },
+          { billed_micros: 4_500_001, created_at: "2026-01-20T00:00:00.000Z" },
+        ]);
     });
     state.stripe.webhooks.constructEvent.mockReturnValue(
       event("invoice.created", invoice),
@@ -277,10 +303,8 @@ describe("Stripe webhook", () => {
     expect(item.amount).toBe(251);
     expect(item.invoice).toBe("in_1");
     expect(opts.idempotencyKey).toBe("overage-in_1");
-    const stamped = state.admin.calls.find(
-      (c) => c.table === "generations" && c.op === "update",
-    )!;
-    expect(stamped.values).toEqual({ billed_invoice_id: "in_1" });
+    const stamped = state.admin.calls.find((c) => c.rpc === "stamp_usage")!;
+    expect(stamped.args).toMatchObject({ p_user: "u1", p_stamp: "in_1" });
   });
 
   it("leaves annual renewals to the monthly usage cron", async () => {
@@ -296,9 +320,7 @@ describe("Stripe webhook", () => {
     const { POST } = await import("@/app/api/stripe/webhook/route");
     await POST(req());
     expect(state.stripe.invoiceItems.create).not.toHaveBeenCalled();
-    expect(state.admin.calls.some((c) => c.table === "generations")).toBe(
-      false,
-    );
+    expect(state.admin.calls.some((c) => c.rpc === "stamp_usage")).toBe(false);
   });
 });
 
@@ -335,14 +357,12 @@ describe("annual usage cron", () => {
           ],
         };
       if (c.table === "teams") return { data: [] };
-      if (c.table === "generations" && c.op === "select")
-        return {
-          data: [
-            { id: "g1", billed_micros: 9_000_000, created_at: old(70) },
-            { id: "g2", billed_micros: 3_000_000, created_at: old(66) },
-            { id: "g3", billed_micros: 1_000_000, created_at: old(40) },
-          ],
-        };
+      if (c.rpc)
+        return usageRpc(c, [
+          { billed_micros: 9_000_000, created_at: old(70) },
+          { billed_micros: 3_000_000, created_at: old(66) },
+          { billed_micros: 1_000_000, created_at: old(40) },
+        ]);
     });
     const { GET } = await import("@/app/api/cron/bill-usage/route");
     const res = await GET(cronReq("Bearer cron-secret"));
@@ -354,12 +374,11 @@ describe("annual usage cron", () => {
     const [item] = state.stripe.invoiceItems.create.mock
       .calls[0] as unknown as [{ amount: number; customer: string }];
     expect(item).toMatchObject({ amount: 200, customer: "cus_y" });
-    const stamps = state.admin.calls.filter(
-      (c) => c.table === "generations" && c.op === "update",
-    );
-    expect(stamps.map((s) => s.values)).toEqual([
-      { billed_invoice_id: "in_usage_1" },
-      { billed_invoice_id: expect.stringMatching(/^included-cus_y-/) },
+    const stamps = state.admin.calls.filter((c) => c.rpc === "stamp_usage");
+    expect(stamps.map((s) => (s.args as { p_stamp: string }).p_stamp)).toEqual([
+      "in_usage_1",
+      expect.stringMatching(/^included-cus_y-/),
     ]);
+    expect(state.stripe.invoices.finalizeInvoice).toHaveBeenCalledTimes(1);
   });
 });

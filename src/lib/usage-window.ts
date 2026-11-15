@@ -45,6 +45,22 @@ export function finishedWindows(anchor: Date, before: Date, max = 13) {
   return out.slice(-max);
 }
 
+/**
+ * Windows that ended before `now` and within the last `days`, oldest first, counted from
+ * `anchor` in both directions. Reaches back past the anchor, so the months just before an
+ * annual renewal (which moves the anchor) are still found.
+ */
+export function windowsToBill(anchor: Date, now: Date, days = 400) {
+  const since = now.getTime() - days * 86_400_000;
+  const out: Window[] = [];
+  for (let n = -Math.ceil(days / 28) - 1; n < 1200; n++) {
+    const w = { start: addMonths(anchor, n), end: addMonths(anchor, n + 1) };
+    if (w.end > now) break;
+    if (w.end.getTime() > since) out.push(w);
+  }
+  return out;
+}
+
 /** Overage in micro-USD for a window: usage beyond what's included, never negative. */
 export function overageMicros(billedMicros: number, includedMicros: number) {
   return Math.max(0, billedMicros - includedMicros);

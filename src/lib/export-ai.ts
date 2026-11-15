@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { GenerationError, fakeAiEnabled } from "@/lib/ai";
+import { GenerationError, fakeAiEnabled, isAbort } from "@/lib/ai";
 import {
   componentName,
   parseFiles,
@@ -65,6 +65,7 @@ ${src.css}
 export async function exportWithAi(
   format: ExportFormat,
   src: { name: string; html: string; css: string; brief?: string | null },
+  deadline = Date.now() + 260_000,
 ): Promise<{ files: ExportFile[]; usage: { input: number; output: number } }> {
   if (fakeAiEnabled()) {
     const name = componentName(src.name);
@@ -91,14 +92,27 @@ export async function exportWithAi(
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
   const client = new Anthropic({ apiKey });
   const model = process.env.REALFRAME_CODEGEN_MODEL || "claude-sonnet-5-5";
-  const message = await client.messages
-    .stream({
-      model,
-      max_tokens: 32000,
-      system: SYSTEM,
-      messages: [{ role: "user", content: request(format, src) }],
-    })
-    .finalMessage();
+  let message;
+  try {
+    message = await client.messages
+      .stream(
+        {
+          model,
+          max_tokens: 32000,
+          system: SYSTEM,
+          messages: [{ role: "user", content: request(format, src) }],
+        },
+        { signal: AbortSignal.timeout(Math.max(1000, deadline - Date.now())) },
+      )
+      .finalMessage();
+  } catch (e) {
+    if (isAbort(e))
+      throw new GenerationError(
+        "The export took too long and was stopped, so it wasn't charged. Export a smaller part, or use the ZIP.",
+        { input: 0, output: 0 },
+      );
+    throw e;
+  }
   const usage = {
     input: message.usage?.input_tokens ?? 0,
     output: message.usage?.output_tokens ?? 0,

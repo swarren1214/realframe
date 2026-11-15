@@ -234,6 +234,23 @@ describe("generate", () => {
     expect(finish()?.args).toMatchObject({ p_status: "succeeded" });
   });
 
+  it("says who is building when the prototype is busy", async () => {
+    const { POST } = await import("@/app/api/projects/[id]/generate/route");
+    setup(
+      server({
+        claim_generation: () => ({
+          error: { message: "build_in_progress: Dana" },
+        }),
+      }),
+    );
+    const res = await POST(post({ prompt: "make it blue" }, "generate"), ctx);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      code: "build_in_progress",
+      error: expect.stringMatching(/^Dana is building this prototype/),
+    });
+  });
+
   it("refuses empty prompts before claiming a build", async () => {
     const { POST } = await import("@/app/api/projects/[id]/generate/route");
     const res = await POST(post({ prompt: "  " }, "generate"), ctx);
