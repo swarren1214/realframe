@@ -26,3 +26,10 @@ describe("withAgent in a srcdoc frame", () => {
     expect(withAgent(doc)).not.toContain("about:srcdoc");
   });
 });
+
+describe("agent script", () => {
+  it("is valid JavaScript", async () => {
+    const { AGENT_SCRIPT } = await import("@/lib/agent");
+    expect(() => new Function(AGENT_SCRIPT)).not.toThrow();
+  });
+});

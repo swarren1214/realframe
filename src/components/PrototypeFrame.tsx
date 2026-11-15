@@ -13,6 +13,7 @@ import type { Inspected, Tokens, TreeNode } from "@/lib/inspect";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import type { ScreenReport } from "@/lib/flow";
 
 export type Pin = {
   id: string;
@@ -59,6 +60,10 @@ export type FrameHandle = {
   /** Dev mode: the rendered element tree, and the design values in use. */
   tree: () => Promise<TreeNode[]>;
   tokens: () => Promise<Tokens>;
+  /** Flow map: go to a screen without reporting it as the frame's route. */
+  navigate: (hash: string) => void;
+  /** Flow map: the screen showing now and the links on it. */
+  links: () => Promise<ScreenReport>;
 };
 
 export type Extracted = {
@@ -250,6 +255,19 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       tree: () =>
         ask("rf:tree").then((m) => (Array.isArray(m.nodes) ? m.nodes : [])),
       tokens: () => ask("rf:tokens").then((m) => m.tokens as Tokens),
+      navigate: (hash) => post({ type: "rf:route", hash }),
+      links: () =>
+        ask("rf:links").then((m) => ({
+          hash: String(m.hash ?? ""),
+          title: String(m.title ?? ""),
+          sig: typeof m.sig === "string" ? m.sig : undefined,
+          links: Array.isArray(m.links)
+            ? (m.links as { hash: unknown; text: unknown }[]).map((l) => ({
+                hash: String(l.hash ?? ""),
+                text: String(l.text ?? ""),
+              }))
+            : [],
+        })),
       extract: (target) =>
         new Promise<Extracted>((resolve, reject) => {
           const id = `x${++extractSeq.current}`;
@@ -317,7 +335,8 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
         if (
           (m?.type === "rf:extracted" ||
             m?.type === "rf:tree" ||
-            m?.type === "rf:tokens") &&
+            m?.type === "rf:tokens" ||
+            m?.type === "rf:links") &&
           typeof m.id === "string"
         ) {
           const done = extracting.current.get(m.id);

@@ -233,7 +233,30 @@ export const AGENT_SCRIPT = `(function(){
     if (m.type === 'rf:scroll-to' && typeof m.y === 'number') { syncUntil = Date.now() + 200;
       var se = m.path ? byPath(m.path) : (document.scrollingElement || document.documentElement);
       if (se) se.scrollTop = m.y * Math.max(0, se.scrollHeight - se.clientHeight); }
-    if (m.type === 'rf:route' && typeof m.hash === 'string' && location.hash !== m.hash) { location.hash = m.hash; } });
+    if (m.type === 'rf:route' && typeof m.hash === 'string' && location.hash !== m.hash) { location.hash = m.hash; }
+    if (m.type === 'rf:links') post({ type: 'rf:links', id: m.id, hash: location.hash, title: screenTitle(), sig: screenSig(), links: screenLinks() }); });
+  // Flow map: the links on the screen showing now. Anchors, inline onclick handlers and
+  // data-route style attributes; in-page anchors (#section with a matching id) don't count.
+  function screenTitle(){ var h = document.querySelector('h1') || document.querySelector('h2');
+    return ((h && h.textContent) || document.title || '').replace(/\\s+/g, ' ').trim().slice(0, 60); }
+  function screenSig(){ var t = ((document.body && document.body.innerText) || '').slice(0, 8000), h = 5381;
+    for (var i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return String(h >>> 0) + ':' + t.length; }
+  function screenLinks(){ var out = [], seen = {};
+    function shown(el){ var r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false;
+      var cs = getComputedStyle(el); return cs.visibility !== 'hidden' && cs.display !== 'none'; }
+    function add(h, el){ h = String(h || '').trim(); if (h.charAt(0) !== '#' || h === '#' || h.length > 200) return;
+      if (/^#[\\w-]+$/.test(h) && document.getElementById(h.slice(1))) return;
+      if (!shown(el)) return;
+      var t = (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 40);
+      if (seen[h + '|' + t]) return; seen[h + '|' + t] = 1; out.push({ hash: h, text: t }); }
+    var attrs = ['data-href', 'data-route', 'data-link', 'data-nav', 'data-to', 'data-screen', 'data-page'];
+    var els = document.querySelectorAll('a[href^="#"], [onclick], [' + attrs.join('], [') + ']');
+    for (var i = 0; i < els.length && out.length < 200; i++) { var el = els[i]; if (ours(el)) continue;
+      if (el.tagName === 'A') add(el.getAttribute('href'), el);
+      var oc = el.getAttribute('onclick'); if (oc) { var mm = oc.match(/['"](#[^'"\\s]*)['"]/); if (mm) add(mm[1], el); }
+      for (var k = 0; k < attrs.length; k++) { var v = el.getAttribute(attrs[k]); if (!v) continue;
+        v = v.trim(); add(v.charAt(0) === '#' ? v : '#/' + v.replace(/^\\//, ''), el); } }
+    return out; }
   // Compare view: report scrolling (as a fraction of the scrollable height) so the other side can follow.
   var syncUntil = 0, scrollQueued = false;
   function pathOf(el){ var parts = []; while (el && el !== document.body && el.parentElement) { parts.unshift(Array.prototype.indexOf.call(el.parentElement.children, el)); el = el.parentElement; } return parts.join('.'); }

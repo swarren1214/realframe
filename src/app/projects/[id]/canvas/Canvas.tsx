@@ -7,6 +7,8 @@ import {
   LayoutTemplate,
   Maximize,
   Monitor,
+  Route,
+  Spline,
   Plus,
   PencilRuler,
   Smartphone,
@@ -19,7 +21,25 @@ import { Mark } from "@/components/Logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { PrototypeFrame } from "@/components/PrototypeFrame";
+import {
+  PrototypeFrame,
+  type FrameHandle,
+} from "@/components/PrototypeFrame";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  arrowPath,
+  crawl,
+  layoutFlow,
+  normalizeRoute,
+  routesInSource,
+  screenName,
+  type Side,
+} from "@/lib/flow";
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import type { Project } from "@/lib/types";
@@ -38,6 +58,10 @@ export type Frame = {
   y: number;
   version_id: string | null;
 };
+
+export type Link = { from_route: string; to_route: string; label: string };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const DEVICES = [
   { label: "Desktop", width: 1280, height: 800, icon: Monitor },
@@ -65,12 +89,14 @@ type Drag =
 export function Canvas({
   project,
   frames: initialFrames,
+  links: initialLinks = [],
   latest,
   accountMenu,
 }: {
   accountMenu?: React.ReactNode;
   project: Project;
   frames: Frame[];
+  links?: Link[];
   latest: {
     id: string;
     number: number;
@@ -89,6 +115,15 @@ export function Canvas({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [links, setLinks] = useState<Link[]>(initialLinks);
+  const [showFlow, setShowFlow] = useState(true);
+  const [mapping, setMapping] = useState<{
+    device: (typeof DEVICES)[number];
+    found: number;
+  } | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const crawler = useRef<FrameHandle>(null);
+  const cancelMap = useRef(false);
   const editor = useVisualEditor(editing && !latest?.src ? latest?.html : null);
   const dragRef = useRef(drag);
   dragRef.current = drag;
@@ -97,6 +132,7 @@ export function Canvas({
   useEffect(() => {
     if (!dragRef.current) setFrames(initialFrames);
   }, [initialFrames]);
+  useEffect(() => setLinks(initialLinks), [initialLinks]);
 
   useEffect(() => {
     const channel = supabase
@@ -107,6 +143,18 @@ export function Canvas({
           event: "*",
           schema: "public",
           table: "canvas_frames",
+          filter: `project_id=eq.${project.id}`,
+        },
+        () => {
+          if (!dragRef.current) router.refresh();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "canvas_links",
           filter: `project_id=eq.${project.id}`,
         },
         () => {
@@ -315,6 +363,166 @@ export function Canvas({
     if (error) setError(error.message);
   }
 
+  /**
+   * Flow map: walk the prototype in a hidden frame from its first screen, following every
+   * in-app link, then add a frame per screen (in columns by how many taps away it is) and save
+   * the links so the canvas draws arrows between them.
+   */
+  async function mapFlow(device: (typeof DEVICES)[number]) {
+    if (!latest || mapping) return;
+    setMapOpen(false);
+    setError("");
+    cancelMap.current = false;
+    setMapping({ device, found: 0 });
+    const report = async () => {
+      for (let i = 0; i < 4; i++) {
+        if (cancelMap.current) break;
+        try {
+          if (!crawler.current) throw new Error();
+          return await crawler.current.links();
+        } catch {
+          await sleep(300);
+        }
+      }
+      throw new Error("The prototype didn't answer.");
+    };
+    try {
+      const result = await crawl(
+        async (route) => {
+          if (route !== null) {
+            crawler.current?.navigate(route);
+            // Let the app render the new screen.
+            await sleep(550);
+          }
+          return report();
+        },
+        {
+          seeds: latest.src ? [] : routesInSource(latest.html),
+          max: 30,
+          cancelled: () => cancelMap.current,
+          onProgress: (found) =>
+            setMapping((m) => (m ? { ...m, found } : m)),
+        },
+      );
+      if (cancelMap.current) return;
+      if (result.screens.length === 0)
+        throw new Error("Couldn't load the prototype to map it.");
+
+      // Screens that already have a frame at this size keep theirs.
+      const have = new Set(
+        frames
+          .filter((f) => f.width === device.width && f.height === device.height)
+          .map((f) => normalizeRoute(f.route)),
+      );
+      const right = frames.length
+        ? Math.max(...frames.map((f) => f.x + f.width)) + GAP * 2
+        : 0;
+      const top = frames.length ? Math.min(...frames.map((f) => f.y)) : 0;
+      const spots = layoutFlow(
+        result.screens,
+        device,
+        { x: right, y: top },
+        { x: Math.max(240, device.width * 0.6), y: HEADER + GAP },
+      );
+      const rows = result.screens
+        .filter((sc) => !have.has(sc.route))
+        .map((sc) => ({
+          project_id: project.id,
+          label: screenName(sc.route, sc.title || "Home"),
+          route: sc.route,
+          width: device.width,
+          height: device.height,
+          ...spots.get(sc.route)!,
+        }));
+      let added: Frame[] = [];
+      if (rows.length) {
+        const { data, error } = await supabase
+          .from("canvas_frames")
+          .insert(rows)
+          .select("id, label, route, width, height, x, y, version_id");
+        if (error) throw new Error(error.message);
+        added = (data ?? []) as Frame[];
+      }
+      const nextLinks: Link[] = result.links.map((l) => ({
+        from_route: l.from,
+        to_route: l.to,
+        label: l.label,
+      }));
+      const { error: delError } = await supabase
+        .from("canvas_links")
+        .delete()
+        .eq("project_id", project.id);
+      if (delError) throw new Error(delError.message);
+      if (nextLinks.length) {
+        const { error: insError } = await supabase
+          .from("canvas_links")
+          .insert(nextLinks.map((l) => ({ ...l, project_id: project.id })));
+        if (insError) throw new Error(insError.message);
+      }
+      const next = [...frames, ...added];
+      setFrames(next);
+      setLinks(nextLinks);
+      setShowFlow(true);
+      fit(next);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Couldn't map the prototype.",
+      );
+    } finally {
+      setMapping(null);
+    }
+  }
+
+  // Arrows between frames at the same size whose screens link to each other.
+  const arrows = useMemo(() => {
+    if (!showFlow || links.length === 0) return [];
+    const bySize = new Map<string, Map<string, Frame>>();
+    for (const f of frames) {
+      const key = `${f.width}x${f.height}`;
+      const group = bySize.get(key) ?? new Map<string, Frame>();
+      const r = normalizeRoute(f.route);
+      if (!group.has(r)) group.set(r, f);
+      bySize.set(key, group);
+    }
+    const pairs: { a: Frame; b: Frame; label: string }[] = [];
+    for (const group of bySize.values())
+      for (const l of links) {
+        const a = group.get(normalizeRoute(l.from_route));
+        const b = group.get(normalizeRoute(l.to_route));
+        if (a && b && a.id !== b.id) pairs.push({ a, b, label: l.label });
+      }
+    // Spread arrows leaving or entering the same frame, ordered to keep them from crossing.
+    const cy = (f: Frame) => f.y + f.height / 2;
+    const outs = new Map<string, typeof pairs>();
+    const ins = new Map<string, typeof pairs>();
+    for (const p of pairs) {
+      outs.set(p.a.id, [...(outs.get(p.a.id) ?? []), p]);
+      ins.set(p.b.id, [...(ins.get(p.b.id) ?? []), p]);
+    }
+    outs.forEach((l) => l.sort((p, q) => cy(p.b) - cy(q.b)));
+    ins.forEach((l) => l.sort((p, q) => cy(p.a) - cy(q.a)));
+    const box = (f: Frame) => ({
+      x: f.x,
+      y: f.y + HEADER,
+      w: f.width,
+      h: f.height,
+    });
+    return pairs.map((p) => {
+      const o = outs.get(p.a.id)!;
+      const i = ins.get(p.b.id)!;
+      return {
+        key: `${p.a.id}-${p.b.id}`,
+        label: p.label,
+        ...arrowPath(
+          box(p.a),
+          box(p.b),
+          { slot: o.indexOf(p), slots: o.length },
+          { slot: i.indexOf(p), slots: i.length },
+        ),
+      };
+    });
+  }, [frames, links, showFlow]);
+
   async function saveEdits() {
     const out = editor.result();
     if (!out) return;
@@ -420,6 +628,86 @@ export function Canvas({
             <Maximize />
           </Button>
         </div>
+        {mapping ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => (cancelMap.current = true)}
+            title="Stop mapping"
+          >
+            <Spinner className="size-3.5" />
+            <span className="max-sm:sr-only">
+              Mapping · {mapping.found} screen{mapping.found === 1 ? "" : "s"}
+            </span>
+            <X />
+          </Button>
+        ) : (
+          <div
+            role="group"
+            aria-label="Flow"
+            className="flex items-center gap-0.5 rounded-full bg-foreground/5 p-0.5"
+          >
+            <Popover open={mapOpen} onOpenChange={setMapOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 hover:bg-card max-sm:px-1.5"
+                  disabled={!latest}
+                  title="Lay out every screen with arrows between them"
+                >
+                  <Route />
+                  <span className="max-md:sr-only">Map flow</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-3">
+                <p className="text-sm font-semibold">Map the flow</p>
+                <p className="mt-1 text-[13px] text-stone-600">
+                  Realframe opens v{latest?.number} from its first screen,
+                  follows every link, and lays out a frame per screen with
+                  arrows showing where each one leads.
+                </p>
+                <div className="mt-3 grid grid-cols-3 gap-1.5">
+                  {DEVICES.map((d) => (
+                    <Button
+                      key={d.label}
+                      variant="outline"
+                      size="sm"
+                      className="h-auto flex-col gap-1 py-2"
+                      onClick={() => mapFlow(d)}
+                    >
+                      <d.icon />
+                      {d.label}
+                    </Button>
+                  ))}
+                </div>
+                {links.length > 0 && (
+                  <p className="mt-2 text-[11px] text-stone-500">
+                    Mapping again replaces the {links.length} saved link
+                    {links.length === 1 ? "" : "s"} and keeps frames you
+                    already have.
+                  </p>
+                )}
+              </PopoverContent>
+            </Popover>
+            {links.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(
+                  "size-7 hover:bg-card",
+                  showFlow && "bg-card text-raspberry-700",
+                )}
+                aria-pressed={showFlow}
+                aria-label={showFlow ? "Hide arrows" : "Show arrows"}
+                title={showFlow ? "Hide arrows" : "Show arrows"}
+                onClick={() => setShowFlow((v) => !v)}
+              >
+                <Spline />
+              </Button>
+            )}
+          </div>
+        )}
         <Button
           variant={editing ? "secondary" : "default"}
           disabled={!activeFrame || !latest || Boolean(latest.src)}
@@ -520,6 +808,9 @@ export function Canvas({
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`,
             }}
           >
+            {arrows.length > 0 && (
+              <FlowArrows arrows={arrows} zoom={view.z} />
+            )}
             {latest &&
               frames.map((f) => {
                 const isActive = f.id === active;
@@ -696,6 +987,25 @@ export function Canvas({
           )}
         </div>
 
+        {mapping && latest && (
+          // Off-screen frame the flow map walks through, at the size being mapped.
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed -left-[10000px] top-0 opacity-0"
+            style={{
+              width: mapping.device.width,
+              height: mapping.device.height,
+            }}
+          >
+            <PrototypeFrame
+              ref={crawler}
+              html={latest.html}
+              src={latest.src}
+              title="Mapping the flow"
+            />
+          </div>
+        )}
+
         {editing && (
           <aside
             aria-label="Visual editor"
@@ -733,5 +1043,74 @@ function EmptyState({ text, href }: { text: string; href: string }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+type Arrow = {
+  key: string;
+  label: string;
+  d: string;
+  mid: { x: number; y: number };
+  tip: { x: number; y: number };
+  end: Side;
+};
+
+/** Arrowhead pointing into the frame along the side the arrow enters. */
+function head(tip: { x: number; y: number }, end: Side, s: number) {
+  const [dx, dy] =
+    end === "left"
+      ? [1, 0]
+      : end === "right"
+        ? [-1, 0]
+        : end === "top"
+          ? [0, 1]
+          : [0, -1];
+  const bx = tip.x - dx * s;
+  const by = tip.y - dy * s;
+  const w = s * 0.55;
+  return `${tip.x},${tip.y} ${bx - dy * w},${by + dx * w} ${bx + dy * w},${by - dx * w}`;
+}
+
+function FlowArrows({ arrows, zoom }: { arrows: Arrow[]; zoom: number }) {
+  // Lines and labels stay the same size on screen at any zoom.
+  const k = 1 / Math.max(zoom, 0.05);
+  return (
+    <>
+      <svg
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 overflow-visible"
+        width={1}
+        height={1}
+      >
+        {arrows.map((a) => (
+          <g key={a.key} className="text-raspberry-600">
+            <path
+              d={a.d}
+              fill="none"
+              stroke="currentColor"
+              strokeOpacity={0.75}
+              strokeWidth={2 * k}
+              strokeLinecap="round"
+            />
+            <polygon points={head(a.tip, a.end, 11 * k)} fill="currentColor" />
+          </g>
+        ))}
+      </svg>
+      {arrows.map((a) =>
+        a.label ? (
+          <span
+            key={`${a.key}-label`}
+            className="pointer-events-none absolute max-w-[160px] truncate whitespace-nowrap rounded-full border border-raspberry-200 bg-card px-2 py-0.5 text-[11px] font-medium text-raspberry-800 shadow-sm"
+            style={{
+              left: a.mid.x,
+              top: a.mid.y,
+              transform: `translate(-50%, -50%) scale(${k})`,
+            }}
+          >
+            {a.label}
+          </span>
+        ) : null,
+      )}
+    </>
   );
 }
