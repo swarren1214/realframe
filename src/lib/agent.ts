@@ -4,6 +4,42 @@
 //   comment mode  → reports where the reviewer clicked, draws comment pins
 //   edit mode     → highlights and selects elements, applies live style/text edits
 //   routes        → follows #/hash routes the parent asks for and reports changes
+// Export: hands back one element's markup and the CSS that styles it (rules that match it or
+// anything inside it, the page's base rules, and the fonts and keyframes they use). Kept in its
+// own raw string so the regular expressions inside keep their backslashes.
+const EXTRACT_SCRIPT = String.raw`
+  var DYNAMIC = /::?(before|after|placeholder|marker|selection|first-line|first-letter|hover|focus-visible|focus-within|focus|active|visited|link|checked|disabled|enabled|invalid|valid|target|backdrop)\b(\([^)]*\))?/g;
+  function extract(m){
+    var el = target(m)[0];
+    if (!el) return { type: 'rf:extracted', id: m.id, error: 'That element is no longer on the page.' };
+    var nodes = [el].concat([].slice.call(el.querySelectorAll('*')));
+    var base = [document.documentElement, document.body];
+    function hits(sel, list){ for (var i = 0; i < list.length; i++) { try { if (list[i].matches(sel)) return true; } catch (e) { return false; } } return false; }
+    function matches(sel){ if (hits(sel, nodes) || hits(sel, base)) return true;
+      var loose = sel.replace(DYNAMIC, '').replace(/(^|[\s,>+~])(?=[\s,>+~]|$)/g, '$1*');
+      return loose !== sel && (hits(loose, nodes) || hits(loose, base)); }
+    var fonts = [], faces = [], frames = {};
+    function walk(rules){ var out = [];
+      for (var i = 0; i < rules.length; i++) { var r = rules[i];
+        if (r.type === 1) { if (matches(r.selectorText)) out.push(r.cssText); }
+        else if (r.type === 4 || r.type === 12) { var inner = walk(r.cssRules); if (inner.length) out.push((r.type === 4 ? '@media ' + r.conditionText : '@supports ' + r.conditionText) + ' {\n' + inner.join('\n') + '\n}'); }
+        else if (r.type === 5) faces.push(r.cssText);
+        else if (r.type === 7) frames[r.name] = r.cssText;
+        else if (r.type === 3 && r.href) fonts.push(r.href); }
+      return out; }
+    var css = [];
+    for (var s = 0; s < document.styleSheets.length; s++) { var sheet = document.styleSheets[s], rules = null;
+      try { rules = sheet.cssRules; } catch (e) { if (sheet.href) fonts.push(sheet.href); continue; }
+      if (rules) css = css.concat(walk(rules)); }
+    var text = css.join('\n');
+    var used = Object.keys(frames).filter(function(n){ return text.indexOf(n) >= 0; }).map(function(n){ return frames[n]; });
+    var html = (el.outerHTML || '').replace(/<script[\s\S]*?<\/script>/gi, '');
+    return { type: 'rf:extracted', id: m.id, html: html, label: (el.getAttribute('aria-label') || (el.innerText || '').trim()).slice(0, 60),
+      tag: el.tagName.toLowerCase(), css: faces.concat(css, used).join('\n\n'), fonts: fonts }; }
+  window.addEventListener('message', function(e){ if (e.source !== parent) return; var m = e.data || {};
+    if (m.type === 'rf:extract') post(extract(m)); });
+`;
+
 export const AGENT_SCRIPT = `(function(){
   var mode = false, editing = false, layer = null, pins = [], hoverBox = null, selBox = null, selected = null;
   var STYLE_PROPS = ['color','backgroundColor','fontSize','fontWeight','lineHeight','letterSpacing','textAlign',
@@ -99,6 +135,7 @@ export const AGENT_SCRIPT = `(function(){
   window.addEventListener('resize', function(){ draw(); if (editing) place(selBox, selected); });
   function ready(){ post({ type: 'rf:ready', hash: location.hash }); }
   if (document.readyState === 'complete') ready(); else window.addEventListener('load', ready);
+  ${EXTRACT_SCRIPT}
 })();`;
 
 // Prototypes run with an opaque origin, where touching localStorage, sessionStorage or

@@ -43,6 +43,19 @@ export type FrameHandle = {
   ) => void;
   /** Scrolls the same element (by path) to a fraction of its scrollable height. */
   scrollTo: (path: string, y: number) => void;
+  /** An element's full markup and the CSS that styles it, for export. */
+  extract: (target: {
+    rf?: string | null;
+    selector: string;
+  }) => Promise<Extracted>;
+};
+
+export type Extracted = {
+  html: string;
+  css: string;
+  fonts: string[];
+  label: string;
+  tag: string;
 };
 
 type Props = {
@@ -88,6 +101,11 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
     handle,
   ) {
     const ref = useRef<HTMLIFrameElement>(null);
+    // Pending export requests to the frame, by id.
+    const extracting = useRef(
+      new Map<string, (m: Record<string, unknown>) => void>(),
+    );
+    const extractSeq = useRef(0);
     const srcDoc = useMemo(
       () => (src ? undefined : withAgent(html)),
       [html, src],
@@ -179,6 +197,34 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
           ...change,
         }),
       scrollTo: (path, y) => post({ type: "rf:scroll-to", path, y }),
+      extract: (target) =>
+        new Promise<Extracted>((resolve, reject) => {
+          const id = `x${++extractSeq.current}`;
+          const timer = setTimeout(() => {
+            extracting.current.delete(id);
+            reject(
+              new Error("The preview didn't answer. Reload it and try again."),
+            );
+          }, 5000);
+          extracting.current.set(id, (m) => {
+            clearTimeout(timer);
+            if (m.error) reject(new Error(String(m.error)));
+            else
+              resolve({
+                html: String(m.html ?? ""),
+                css: String(m.css ?? ""),
+                fonts: Array.isArray(m.fonts) ? m.fonts.map(String) : [],
+                label: String(m.label ?? ""),
+                tag: String(m.tag ?? ""),
+              });
+          });
+          post({
+            type: "rf:extract",
+            id,
+            rf: target.rf ?? null,
+            selector: target.selector,
+          });
+        }),
     }));
 
     useEffect(() => {
@@ -213,6 +259,11 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
         }
         if (m?.type === "rf:route-changed" && typeof m.hash === "string")
           latest.current.onRouteChange?.(m.hash);
+        if (m?.type === "rf:extracted" && typeof m.id === "string") {
+          const done = extracting.current.get(m.id);
+          extracting.current.delete(m.id);
+          done?.(m as unknown as Record<string, unknown>);
+        }
         if (m?.type === "rf:scroll" && typeof m.y === "number")
           latest.current.onScroll?.(String(m.path ?? ""), m.y);
       }

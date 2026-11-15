@@ -32,6 +32,7 @@ import {
   ArrowUp,
   Columns2,
   Ellipsis,
+  FileDown,
   GitCommitHorizontal,
   Boxes,
   Expand,
@@ -101,9 +102,11 @@ import { AnimatePresence, listItem, motion } from "@/components/motion";
 import { copyWithToast, notify } from "@/lib/toast";
 import {
   PrototypeFrame,
+  type FrameHandle,
   type Pin,
   type SelectedElement,
 } from "@/components/PrototypeFrame";
+import { ExportDialog } from "@/components/export/ExportDialog";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -338,6 +341,9 @@ export function Studio(props: {
   const drawerSwipe = useDrawerSwipe(() => setPanelOpen(false));
   const barSwipe = useSwipeUp(() => setPanelOpen(true));
   const [sharing, setSharing] = useState(false);
+  // Export: which version the dialog is for (null = closed).
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const previewFrame = useRef<FrameHandle>(null);
   // Links from the Inbox open a version (?v=) and a panel tab (?tab=).
   const fromLink = useRef(false);
   useEffect(() => {
@@ -1044,6 +1050,17 @@ export function Studio(props: {
                 )}
                 {isOwner && <DropdownMenuSeparator />}
               </div>
+              {(isOwner || role === "editor") && selected && (
+                <>
+                  <DropdownMenuItem
+                    onSelect={() => setExportingId(selected.id)}
+                  >
+                    <FileDown />
+                    Export…
+                  </DropdownMenuItem>
+                  {isOwner && <DropdownMenuSeparator />}
+                </>
+              )}
               {isOwner && (
                 <>
                   <DropdownMenuItem
@@ -1079,6 +1096,27 @@ export function Studio(props: {
           </DropdownMenu>
         )}
         <div className="max-lg:hidden">{props.accountMenu}</div>
+        {(() => {
+          const v = versions.find((x) => x.id === exportingId);
+          if (!v) return null;
+          const here = v.id === selected?.id && !editMode && !compare;
+          return (
+            <ExportDialog
+              open
+              onOpenChange={(o) => !o && setExportingId(null)}
+              projectId={project.id}
+              projectName={project.name}
+              version={{ id: v.id, number: v.number, kind: v.kind }}
+              loadHtml={async () => (await loadForCompare(v.id)).html ?? ""}
+              targets={here ? targets : []}
+              extract={
+                here && previewFrame.current
+                  ? (t) => previewFrame.current!.extract(t)
+                  : null
+              }
+            />
+          );
+        })()}
         <ShareDialog
           open={sharing}
           onOpenChange={setSharing}
@@ -1362,6 +1400,7 @@ export function Studio(props: {
                       />
                     ) : (
                       <PrototypeFrame
+                        ref={previewFrame}
                         html={html}
                         title={`${project.name} v${selected?.number}`}
                         editMode={selectMode}
@@ -1975,6 +2014,11 @@ export function Studio(props: {
                                 onCompare={
                                   versions.length > 1
                                     ? () => openCompare(v.id)
+                                    : undefined
+                                }
+                                onExport={
+                                  isOwner || role === "editor"
+                                    ? () => setExportingId(v.id)
                                     : undefined
                                 }
                                 onRestore={() =>
@@ -3079,6 +3123,7 @@ function VersionItem({
   onSelect,
   onRestore,
   onCompare,
+  onExport,
   designSystem,
 }: {
   /** The design system this version was built with, if any. */
@@ -3092,6 +3137,7 @@ function VersionItem({
   onSelect: () => void;
   onRestore: () => void;
   onCompare?: () => void;
+  onExport?: () => void;
 }) {
   const summary = v.summary ?? "";
   const long = summary.length > 90;
@@ -3168,12 +3214,18 @@ function VersionItem({
           )
         )}
       </button>
-      {selected && (canRestore || onCompare) && (
+      {selected && (canRestore || onCompare || onExport) && (
         <div className="flex flex-wrap gap-1.5 px-3 pb-3">
           {onCompare && (
             <Button size="sm" variant="outline" onClick={onCompare}>
               <Columns2 />
               Compare
+            </Button>
+          )}
+          {onExport && (
+            <Button size="sm" variant="outline" onClick={onExport}>
+              <FileDown />
+              Export
             </Button>
           )}
           {canRestore && (
