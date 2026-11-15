@@ -34,6 +34,16 @@ export function limitResponse(message: string | undefined) {
       { status: 429 },
     );
   }
+  if (message?.includes("spend_cap_reached")) {
+    return NextResponse.json(
+      {
+        error:
+          "You've reached this period's spend cap. Raise it in Usage & billing to keep building.",
+        code: "spend_cap",
+      },
+      { status: 402 },
+    );
+  }
   return NextResponse.json(
     { error: message ?? "Couldn't start the build." },
     { status: 500 },

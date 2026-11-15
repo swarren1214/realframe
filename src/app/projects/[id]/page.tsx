@@ -157,6 +157,21 @@ export default async function StudioPage({
         | null
     )?.[0] ?? null;
 
+  // Whether this period's spend cap stops building here (Pro and Team only).
+  const { data: capRows } = await supabase.rpc("spend_cap_status", {
+    p_project: id,
+  });
+  const cap = (
+    capRows as
+      | {
+          reached: boolean;
+          cap_micros: number | null;
+          team_id: string | null;
+          can_change: boolean;
+        }[]
+      | null
+  )?.[0];
+
   return (
     <Studio
       accountMenu={<AccountMenu compact />}
@@ -177,6 +192,15 @@ export default async function StudioPage({
       quota={
         q
           ? { plan: q.plan, limit: q.build_limit, remaining: q.remaining }
+          : null
+      }
+      spendCap={
+        cap?.reached
+          ? {
+              capMicros: Number(cap.cap_micros ?? 0),
+              billingHref: cap.team_id ? "/team/billing" : "/billing",
+              canChange: cap.can_change,
+            }
           : null
       }
       variants={variants}

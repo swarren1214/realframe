@@ -6,6 +6,7 @@ import {
   CircleAlert,
   CircleCheck,
   FilePenLine,
+  Gauge,
   Inbox,
   MessageSquare,
   MessageSquareReply,
@@ -21,6 +22,7 @@ export type InboxItem = {
   projectId: string | null;
   versionId: string | null;
   threadId: string | null;
+  teamId?: string | null;
   actor: string | null;
   body: string | null;
   createdAt: string;
@@ -36,6 +38,8 @@ const ICON: Record<string, { icon: typeof Inbox; color: string }> = {
   changes: { icon: FilePenLine, color: "bg-amber-600" },
   build_done: { icon: Sparkles, color: "bg-raspberry-600" },
   build_failed: { icon: CircleAlert, color: "bg-red-600" },
+  usage_alert: { icon: Gauge, color: "bg-amber-600" },
+  spend_cap: { icon: CircleAlert, color: "bg-amber-700" },
 };
 
 function line(n: InboxItem) {
@@ -57,6 +61,10 @@ function line(n: InboxItem) {
           ? `v${n.versionNumber} is ready`
           : "a new version is ready",
       };
+    case "usage_alert":
+      return { who: "Usage alert:", what: n.body ?? "check your usage" };
+    case "spend_cap":
+      return { who: "Spend cap reached:", what: n.body ?? "builds are paused" };
     default:
       return { who: "Build failed:", what: n.body ?? "it didn't finish" };
   }
@@ -64,6 +72,8 @@ function line(n: InboxItem) {
 
 /** Where a notification opens: the version and the panel it's about. */
 function hrefFor(n: InboxItem) {
+  if (n.kind === "usage_alert" || n.kind === "spend_cap")
+    return `${n.teamId ? "/team/billing" : "/billing"}?tab=usage`;
   if (!n.projectId) return "/projects";
   const q = new URLSearchParams();
   if (n.versionId) q.set("v", n.versionId);
@@ -88,6 +98,7 @@ const TABS = [
   ["comments", "Comments"],
   ["reviews", "Reviews"],
   ["builds", "Builds"],
+  ["billing", "Billing"],
 ] as const;
 
 export function InboxList({
@@ -193,13 +204,21 @@ export function InboxList({
                         <span className="block text-[13px] text-foreground">
                           <b className="font-semibold">{who}</b> {what}
                         </span>
-                        {n.body && n.kind !== "build_failed" && (
-                          <span className="mt-0.5 block truncate text-[13px] text-stone-600">
-                            &ldquo;{n.body}&rdquo;
-                          </span>
-                        )}
+                        {n.body &&
+                          ![
+                            "build_failed",
+                            "usage_alert",
+                            "spend_cap",
+                          ].includes(n.kind) && (
+                            <span className="mt-0.5 block truncate text-[13px] text-stone-600">
+                              &ldquo;{n.body}&rdquo;
+                            </span>
+                          )}
                         <span className="mt-0.5 block text-xs text-stone-500">
-                          {n.projectName} · {when(n.createdAt)}
+                          {n.kind === "usage_alert" || n.kind === "spend_cap"
+                            ? "Usage & billing"
+                            : n.projectName}{" "}
+                          · {when(n.createdAt)}
                         </span>
                       </span>
                       {isUnread && (

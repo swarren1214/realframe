@@ -163,6 +163,7 @@ export async function sendFeedbackAddressed(opts: {
 
 export type DigestItem = {
   kind: string;
+  team_id?: string | null;
   project_id: string | null;
   project: string | null;
   version_id: string | null;
@@ -196,10 +197,16 @@ export function digestEmail(opts: {
           ? `${who} replied on${v}`
           : n.kind === "build_done"
             ? `Build finished${n.version ? `: v${n.version} is ready` : ""}`
-            : "A build didn't finish";
+            : n.kind === "usage_alert"
+              ? "Usage alert"
+              : n.kind === "spend_cap"
+                ? "Spend cap reached"
+                : "A build didn't finish";
     return { what, body: n.kind === "build_failed" ? null : n.body };
   };
   const link = (n: DigestItem) => {
+    if (n.kind === "usage_alert" || n.kind === "spend_cap")
+      return `${opts.appUrl}/${n.team_id ? "team/billing" : "billing"}?tab=usage`;
     if (!n.project_id) return `${opts.appUrl}/inbox`;
     const q = new URLSearchParams();
     if (n.version_id) q.set("v", n.version_id);
@@ -209,7 +216,10 @@ export function digestEmail(opts: {
   // Group by prototype so a busy thread reads as one block.
   const byProject = new Map<string, DigestItem[]>();
   for (const n of opts.items) {
-    const k = n.project ?? "Your prototypes";
+    const k =
+      n.kind === "usage_alert" || n.kind === "spend_cap"
+        ? "Usage & billing"
+        : (n.project ?? "Your prototypes");
     byProject.set(k, [...(byProject.get(k) ?? []), n]);
   }
   const count = opts.items.length;

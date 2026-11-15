@@ -20,7 +20,12 @@ export async function GET(req: NextRequest) {
   await createAdminClient()
     .from("profiles")
     .update({
-      notify_email: { comments: false, reviews: false, builds: false },
+      notify_email: {
+        comments: false,
+        reviews: false,
+        builds: false,
+        billing: false,
+      },
     })
     .eq("id", u);
   return page(
