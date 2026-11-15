@@ -24,7 +24,14 @@ import {
   useReferences,
   type Reference,
 } from "@/components/references/references";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -50,6 +57,7 @@ import {
   MessageSquare,
   MessageSquarePlus,
   MousePointer2,
+  Code,
   Monitor,
   PencilRuler,
   RotateCcw,
@@ -107,6 +115,8 @@ import {
   type SelectedElement,
 } from "@/components/PrototypeFrame";
 import { ExportDialog } from "@/components/export/ExportDialog";
+import { DevPanel, selectorForPath } from "@/components/dev/DevPanel";
+import { annotateSource, type Inspected } from "@/lib/inspect";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -344,6 +354,9 @@ export function Studio(props: {
   // Export: which version the dialog is for (null = closed).
   const [exportingId, setExportingId] = useState<string | null>(null);
   const previewFrame = useRef<FrameHandle>(null);
+  // Dev mode: inspecting the preview, and the element picked in it.
+  const [inspecting, setInspecting] = useState(false);
+  const [inspected, setInspected] = useState<Inspected | null>(null);
   // Links from the Inbox open a version (?v=) and a panel tab (?tab=).
   const fromLink = useRef(false);
   useEffect(() => {
@@ -429,6 +442,12 @@ export function Studio(props: {
   const html = selected && !isImportedApp ? htmlCache[selected.id] : undefined;
   const src = selected && isImportedApp ? srcCache[selected.id] : undefined;
   const hasPreview = Boolean(html || src);
+  // In dev mode the preview runs a copy of the source where each element carries its source index.
+  const annotated = useMemo(
+    () => (inspecting && html ? annotateSource(html) : null),
+    [inspecting, html],
+  );
+  useEffect(() => setInspected(null), [selected?.id, inspecting]);
   const editor = useVisualEditor(editMode ? html : null);
 
   /** Opens Compare: `after` against `before`, or the version just before it. */
@@ -443,6 +462,7 @@ export function Studio(props: {
     setSelectMode(false);
     setCommentMode(false);
     setPanelOpen(false);
+    setInspecting(false);
     setCompare({ before: older, after: newer });
   }
 
@@ -460,6 +480,13 @@ export function Studio(props: {
     setHtmlCache((c) => ({ ...c, [id]: data.html }));
     return { html: data.html as string };
   }
+
+  /** A version's stored HTML, for dev mode's diff. */
+  const loadSourceHtml = useCallback(
+    async (id: string) => (await loadForCompare(id)).html ?? "",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [htmlCache],
+  );
 
   function exitEdit() {
     editor.reset();
@@ -535,7 +562,17 @@ export function Studio(props: {
     }
   }
 
+  function startInspecting() {
+    setCompare(null);
+    setEditMode(false);
+    setCommentMode(false);
+    setSelectMode(false);
+    setDraft(null);
+    setInspecting(true);
+  }
+
   function startSelecting() {
+    setInspecting(false);
     setCompare(null);
     setEditMode(false);
     setCommentMode(false);
@@ -545,6 +582,7 @@ export function Studio(props: {
   }
 
   function startCommenting() {
+    setInspecting(false);
     setCompare(null);
     setSelectMode(false);
     setEditMode(false);
@@ -583,10 +621,29 @@ export function Studio(props: {
       const typing =
         t &&
         (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-      if (e.key === "Escape" && (commentMode || draft || selectMode)) {
+      if (
+        e.key === "Escape" &&
+        (commentMode || draft || selectMode || inspecting)
+      ) {
         setCommentMode(false);
         setDraft(null);
         setSelectMode(false);
+        setInspecting(false);
+      } else if (
+        (e.key === "d" || e.key === "D") &&
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        selected &&
+        !editMode &&
+        window.matchMedia("(min-width: 1024px)").matches
+      ) {
+        e.preventDefault();
+        if (inspecting) setInspecting(false);
+        else startInspecting();
+      } else if (inspecting && e.key === "Alt") {
+        previewFrame.current?.inspectAlt(true);
       } else if (
         (e.key === "c" || e.key === "C") &&
         !typing &&
@@ -601,9 +658,17 @@ export function Studio(props: {
         setCommentMode((m) => !m);
       }
     }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Alt") previewFrame.current?.inspectAlt(false);
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [commentMode, draft, selected, editMode, selectMode]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentMode, draft, selected, editMode, selectMode, inspecting]);
   const isOwner = role === "owner";
 
   useEffect(() => {
@@ -1278,6 +1343,26 @@ export function Studio(props: {
                   {commentMode ? "Click to pin" : "Comment"}
                 </Button>
               )}
+              {hasPreview && !editMode && (
+                <Button
+                  size="sm"
+                  variant={inspecting ? "default" : "ghost"}
+                  aria-pressed={inspecting}
+                  aria-keyshortcuts="D"
+                  title={
+                    inspecting
+                      ? "Stop inspecting (Esc)"
+                      : "Inspect: code, measurements and tokens (D)"
+                  }
+                  onClick={() =>
+                    inspecting ? setInspecting(false) : startInspecting()
+                  }
+                  className="max-lg:hidden"
+                >
+                  {inspecting ? <X /> : <Code />}
+                  {inspecting ? "Stop inspecting" : "Inspect"}
+                </Button>
+              )}
               {html && (
                 <Button
                   size="sm"
@@ -1285,7 +1370,9 @@ export function Studio(props: {
                   onClick={() =>
                     editMode
                       ? exitEdit()
-                      : (setCompare(null), setEditMode(true))
+                      : (setCompare(null),
+                        setInspecting(false),
+                        setEditMode(true))
                   }
                 >
                   {editMode ? <X /> : <PencilRuler />}
@@ -1377,8 +1464,11 @@ export function Studio(props: {
                 >
                   {src ? (
                     <PrototypeFrame
+                      ref={previewFrame}
                       src={src}
                       title={`${project.name} v${selected?.number}`}
+                      inspect={inspecting}
+                      onInspect={setInspected}
                       commentMode={commentMode}
                       pins={pins}
                       onPick={(x, y) => {
@@ -1402,8 +1492,10 @@ export function Studio(props: {
                     ) : (
                       <PrototypeFrame
                         ref={previewFrame}
-                        html={html}
+                        html={annotated?.html ?? html}
                         title={`${project.name} v${selected?.number}`}
+                        inspect={inspecting}
+                        onInspect={setInspected}
                         editMode={selectMode}
                         onSelectElement={pickElement}
                         commentMode={commentMode}
@@ -1464,6 +1556,37 @@ export function Studio(props: {
               onDiscard={exitEdit}
               saving={savingEdit}
               saveLabel={`Save as v${(versions[0]?.number ?? 0) + 1}`}
+            />
+          </aside>
+        ) : inspecting && selected ? (
+          <aside
+            aria-label="Dev mode"
+            className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:hidden lg:w-[440px] xl:w-[500px]"
+          >
+            <DevPanel
+              frame={previewFrame}
+              source={isImportedApp ? null : (html ?? null)}
+              spans={annotated?.spans ?? []}
+              selected={inspected}
+              frameKey={`${selected.id}:${inspecting}`}
+              versions={versions.map((v) => ({ id: v.id, number: v.number }))}
+              versionId={selected.id}
+              loadHtml={loadSourceHtml}
+              onCompare={(before) => openCompare(selected.id, before)}
+              onExportPart={(el) => {
+                setTargets([
+                  {
+                    rf: null,
+                    selector: selectorForPath(el.path),
+                    tag: el.tag,
+                    label: el.text.slice(0, 60),
+                    text: null,
+                    styles: {},
+                    rect: { w: el.rect.w, h: el.rect.h },
+                  },
+                ]);
+                setExportingId(selected.id);
+              }}
             />
           </aside>
         ) : (
