@@ -68,15 +68,22 @@ export async function POST(request: NextRequest) {
 
   const { data: sources } = await admin
     .from("project_sources")
-    .select("project_id, repo_full_name, branch, projects(owner_id)")
+    .select(
+      "project_id, repo_full_name, branch, projects(owner_id, archived_at)",
+    )
     .eq("repo_id", push.repository.id)
     .eq("branch", branch)
     .eq("build_on_push", true);
 
   const started: string[] = [];
   for (const s of sources ?? []) {
-    const owner =
-      (s.projects as unknown as { owner_id: string } | null)?.owner_id ?? null;
+    const proj = s.projects as unknown as {
+      owner_id: string;
+      archived_at: string | null;
+    } | null;
+    // Archived prototypes don't build until they're restored.
+    if (proj?.archived_at) continue;
+    const owner = proj?.owner_id ?? null;
     // A newer push replaces anything still waiting for this prototype.
     await admin
       .from("builds")

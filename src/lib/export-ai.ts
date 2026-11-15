@@ -1,6 +1,11 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { GenerationError, fakeAiEnabled, isAbort } from "@/lib/ai";
+import {
+  GenerationError,
+  billableInput,
+  fakeAiEnabled,
+  isAbort,
+} from "@/lib/ai";
 import {
   componentName,
   parseFiles,
@@ -114,7 +119,7 @@ export async function exportWithAi(
     throw e;
   }
   const usage = {
-    input: message.usage?.input_tokens ?? 0,
+    input: billableInput(message.usage),
     output: message.usage?.output_tokens ?? 0,
   };
   if (message.stop_reason === "max_tokens")

@@ -39,6 +39,8 @@ import {
   type Pin,
 } from "@/components/PrototypeFrame";
 import { DevPanel } from "@/components/dev/DevPanel";
+import { useLiveThreads } from "@/components/comments/useLiveThreads";
+import { REVIEW_THREAD_SELECT, mergeThreads } from "@/lib/threads";
 import { annotateSource, type Inspected } from "@/lib/inspect";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -79,7 +81,7 @@ export function Review({
   role,
   userEmail,
   version,
-  threads,
+  threads: initialThreads,
   versionNumbers,
   guestName,
   present = false,
@@ -105,6 +107,30 @@ export function Review({
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const {
+    threads,
+    changed: threadsChanged,
+    reload: reloadThreads,
+  } = useLiveThreads(initialThreads, async (ids) => {
+    if (role === "guest") {
+      // Guests have no session: the review link's own endpoint serves their threads.
+      const res = await fetch(`/api/p/${project.slug}/threads`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.threads) return null;
+      guestStamp.current = data.stamp;
+      return mergeThreads([], data.threads as Thread[], null).filter(
+        (t) => !ids || ids.includes(t.id),
+      );
+    }
+    let q = supabase
+      .from("comment_threads")
+      .select(REVIEW_THREAD_SELECT)
+      .eq("project_id", project.id);
+    if (ids) q = q.in("id", ids);
+    const { data, error } = await q.order("created_at");
+    return error ? null : ((data ?? []) as unknown as Thread[]);
+  });
+  const guestStamp = useRef<string | null>(null);
   const isGuest = role === "guest";
   const commenter =
     canComment(role) || (isGuest && project.guest_comments !== false);
@@ -293,10 +319,24 @@ export function Review({
 
   useEffect(() => {
     if (!isGuest) return;
-    // Guests have no session for Realtime, so poll for new comments instead.
-    const t = setInterval(() => router.refresh(), 15000);
+    // Guests have no session for Realtime, so they ask every 15 seconds whether anything
+    // changed (two tiny queries) and load the threads only when something did.
+    const t = setInterval(async () => {
+      if (document.hidden) return;
+      const q = guestStamp.current
+        ? `?stamp=${encodeURIComponent(guestStamp.current)}`
+        : "";
+      const res = await fetch(`/api/p/${project.slug}/threads${q}`).catch(
+        () => null,
+      );
+      const data = await res?.json().catch(() => null);
+      if (!data?.stamp) return;
+      const first = guestStamp.current === null;
+      guestStamp.current = data.stamp;
+      if (!data.unchanged && !first) threadsChanged(null);
+    }, 15000);
     return () => clearInterval(t);
-  }, [isGuest, router]);
+  }, [isGuest, project.slug, threadsChanged]);
 
   async function guestPost(payload: Record<string, unknown>) {
     const res = await fetch(`/api/p/${project.slug}/comments`, {
@@ -322,7 +362,11 @@ export function Review({
           table: "comments",
           filter: `project_id=eq.${project.id}`,
         },
-        () => router.refresh(),
+        (p) =>
+          threadsChanged([
+            (p.new as { thread_id?: string })?.thread_id,
+            (p.old as { thread_id?: string })?.thread_id,
+          ]),
       )
       .on(
         "postgres_changes",
@@ -332,7 +376,11 @@ export function Review({
           table: "comment_threads",
           filter: `project_id=eq.${project.id}`,
         },
-        () => router.refresh(),
+        (p) =>
+          threadsChanged([
+            (p.new as { id?: string })?.id,
+            (p.old as { id?: string })?.id,
+          ]),
       )
       .on(
         "postgres_changes",
@@ -348,7 +396,7 @@ export function Review({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, project.id, role, router]);
+  }, [supabase, project.id, role, router, threadsChanged]);
 
   async function submitThread(e: React.FormEvent) {
     e.preventDefault();
@@ -379,7 +427,7 @@ export function Review({
     setCommentMode(false);
     setFilter("open");
     if (typeof data === "string") setSelected(data);
-    router.refresh();
+    reloadThreads();
   }
 
   async function reply(threadId: string) {
@@ -392,7 +440,7 @@ export function Review({
       setBusy(false);
       if (error) return setError(error.message);
       setReplies((r) => ({ ...r, [threadId]: "" }));
-      router.refresh();
+      reloadThreads();
       return;
     }
     const {
@@ -408,7 +456,7 @@ export function Review({
     setBusy(false);
     if (error) return setError(error.message);
     setReplies((r) => ({ ...r, [threadId]: "" }));
-    router.refresh();
+    reloadThreads();
   }
 
   async function toggleResolved(t: Thread) {
@@ -421,7 +469,7 @@ export function Review({
       })
       .eq("id", t.id);
     if (error) setError(error.message);
-    router.refresh();
+    reloadThreads();
   }
 
   return (

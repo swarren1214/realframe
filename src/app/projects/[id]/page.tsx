@@ -17,9 +17,11 @@ import { swatches, type Tokens } from "@/lib/design-systems/types";
 import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
 import { BUILD_COLUMNS, type Build, type Source } from "@/lib/builds/types";
+import { STUDIO_THREAD_SELECT } from "@/lib/threads";
 
 /** Chat messages loaded with the page; older ones load from the Studio. */
 const CHAT_PAGE = 200;
+
 export const dynamic = "force-dynamic";
 
 export default async function StudioPage({
@@ -77,9 +79,7 @@ export default async function StudioPage({
       : Promise.resolve({ data: [] as Member[] }),
     supabase
       .from("comment_threads")
-      .select(
-        "id, version_id, x, y, status, created_at, addressed_version_id, comments(id, thread_id, author_email, author_name, body, created_at)",
-      )
+      .select(STUDIO_THREAD_SELECT)
       .eq("project_id", id)
       .order("created_at"),
     supabase
