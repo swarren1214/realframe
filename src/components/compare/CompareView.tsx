@@ -155,7 +155,7 @@ export function CompareView({
           <SelectItem key={v.id} value={v.id} disabled={v.id === exclude}>
             <span className="font-semibold">v{v.number}</span>
             {v.summary && (
-              <span data-summary className="max-w-52 truncate text-muted-foreground">
+              <span data-summary className="max-w-52 truncate text-stone-600">
                 {v.summary}
               </span>
             )}

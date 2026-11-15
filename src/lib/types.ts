@@ -10,6 +10,7 @@ export type Project = {
   access_mode: AccessMode;
   published: boolean;
   live_version_id: string | null;
+  archived_at?: string | null;
   has_password?: boolean;
   guest_comments?: boolean;
   devices?: unknown;

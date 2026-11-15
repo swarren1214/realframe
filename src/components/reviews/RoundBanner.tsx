@@ -121,7 +121,7 @@ export function RoundBanner({
               Request changes
             </Button>
             <Button
-              className="bg-emerald-700 text-white hover:bg-emerald-800"
+              className="bg-emerald-700 text-emerald-50 hover:bg-emerald-800"
               loading={busy === "approved"}
               disabled={Boolean(busy)}
               onClick={() => answer("approved")}

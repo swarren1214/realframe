@@ -50,6 +50,7 @@ export async function publishVersion(
     .from("projects")
     .update({
       published: true,
+      archived_at: null,
       live_version_id: versionId,
       updated_at: new Date().toISOString(),
     })

@@ -154,6 +154,40 @@ export const restoreVersion = action(
   },
 );
 
+/** Archiving takes a prototype offline (its link stops working) and moves it under Archived. */
+export const archiveProject = action(
+  async (projectId: string, archived: boolean) => {
+    const { supabase } = await requireUser();
+    const { data, error } = await supabase
+      .from("projects")
+      .update(
+        archived
+          ? { archived_at: new Date().toISOString(), published: false }
+          : { archived_at: null },
+      )
+      .eq("id", projectId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    if (!data?.length)
+      throw new Error("Only the prototype's owner can archive it.");
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${projectId}`);
+  },
+);
+
+/** Deletes without leaving the page (the projects list). */
+export const deleteProjectQuietly = action(async (projectId: string) => {
+  const { supabase } = await requireUser();
+  const { data, error } = await supabase
+    .from("projects")
+    .delete()
+    .eq("id", projectId)
+    .select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Only the prototype's owner can delete it.");
+  revalidatePath("/projects");
+});
+
 export const deleteProject = action(async (projectId: string) => {
   const { supabase } = await requireUser();
   const { data: project } = await supabase

@@ -12,6 +12,7 @@ import { useIsLarge } from "@/lib/use-media";
 import { FailureCard } from "@/components/builds/FailureCard";
 import { isFailureMessage } from "@/lib/failures";
 import { MAX_PROMPT, START_PROMPT_KEY } from "@/lib/prompt-shared";
+import { useDrawerSwipe, useSwipeUp } from "@/lib/use-drawer-swipe";
 import {
   CompareView,
   type CompareContent,
@@ -27,6 +28,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  Archive,
   ArrowUp,
   Columns2,
   Ellipsis,
@@ -316,6 +318,8 @@ export function Studio(props: {
   // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
   const large = useIsLarge();
   const [panelOpen, setPanelOpen] = useState(versions.length === 0);
+  const drawerSwipe = useDrawerSwipe(() => setPanelOpen(false));
+  const barSwipe = useSwipeUp(() => setPanelOpen(true));
   const [sharing, setSharing] = useState(false);
   // Links from the Inbox open a version (?v=) and a panel tab (?tab=).
   const fromLink = useRef(false);
@@ -935,6 +939,14 @@ export function Studio(props: {
               ? ` · v${selected.number} draft`
               : ""}
           </Badge>
+        ) : project.archived_at ? (
+          <Badge
+            className="max-lg:hidden"
+            title="Archived prototypes are offline. Publishing a version brings it back."
+          >
+            <Archive />
+            Archived
+          </Badge>
         ) : (
           <Badge className="max-lg:hidden">Not published</Badge>
         )}
@@ -1401,6 +1413,9 @@ export function Studio(props: {
               )}
             />
             <Tabs
+              ref={(el: HTMLDivElement | null) => {
+                drawerSwipe.panel.current = el;
+              }}
               value={tab}
               onValueChange={(v) => setTab(v as Tab)}
               aria-label="Project panel"
@@ -1412,7 +1427,14 @@ export function Studio(props: {
               )}
               {...(!panelOpen && !large ? { inert: true } : {})}
             >
-              <div className="flex items-center gap-2 border-b border-stone-100 py-2 pl-4 pr-2 lg:hidden">
+              <div
+                {...drawerSwipe.handle}
+                className="relative flex items-center gap-2 border-b border-stone-100 pb-2 pl-4 pr-2 pt-3.5 lg:hidden"
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-stone-300"
+                />
                 <h2 className="flex-1 text-[15px] font-semibold">
                   {
                     {
@@ -2167,6 +2189,7 @@ export function Studio(props: {
       {!editMode && !commentMode && !selectMode && variants.length === 0 && (
         <nav
           aria-label="Project panel"
+          {...barSwipe}
           className="glass mx-2 mb-2 flex shrink-0 items-center rounded-full p-1 pb-[max(.25rem,env(safe-area-inset-bottom))] lg:hidden"
         >
           {(

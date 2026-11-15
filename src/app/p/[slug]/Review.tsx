@@ -43,6 +43,7 @@ import {
   type Thread,
 } from "@/lib/types";
 import { RoundBanner } from "@/components/reviews/RoundBanner";
+import { useDrawerSwipe, useSwipeUp } from "@/lib/use-drawer-swipe";
 import {
   CompareView,
   type CompareContent,
@@ -112,6 +113,8 @@ export function Review({
   // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
   const large = useIsLarge();
   const [panelOpen, setPanelOpen] = useState(false);
+  const drawerSwipe = useDrawerSwipe(() => setPanelOpen(false));
+  const barSwipe = useSwipeUp(() => setPanelOpen(true));
   useEffect(() => {
     if (!panelOpen) return;
     const onKey = (e: KeyboardEvent) =>
@@ -581,6 +584,9 @@ export function Review({
               )}
             />
             <aside
+              ref={(el) => {
+                drawerSwipe.panel.current = el;
+              }}
               aria-label="Comments"
               {...(!panelOpen && !large ? { inert: true } : {})}
               className={cn(
@@ -590,7 +596,15 @@ export function Review({
                   "max-lg:pointer-events-none max-lg:translate-y-full",
               )}
             >
-              <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-2.5">
+              <div
+                {...drawerSwipe.handle}
+                style={large ? undefined : drawerSwipe.handle.style}
+                className="relative flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-2.5 max-lg:pt-4"
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-stone-300 lg:hidden"
+                />
                 <MessageSquare
                   className="size-4 text-muted-foreground"
                   aria-hidden="true"
@@ -770,7 +784,10 @@ export function Review({
 
       {/* Phones: comment actions live in a bottom bar. */}
       {role !== "public" && !presenting && (
-        <div className="glass mx-2 mb-2 flex shrink-0 items-center gap-2 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden">
+        <div
+          {...barSwipe}
+          className="glass mx-2 mb-2 flex shrink-0 items-center gap-2 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden"
+        >
           {commenter && (
             <Button
               size="lg"

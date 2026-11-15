@@ -153,6 +153,7 @@ export function AttachButton({
         accept={REFERENCE_ACCEPT}
         className="sr-only"
         tabIndex={-1}
+        aria-label="Reference images or PDFs"
         onChange={(e) => {
           if (e.target.files) void refs.add(e.target.files);
           e.target.value = "";
