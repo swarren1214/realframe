@@ -150,6 +150,49 @@ alter table public.notifications drop constraint notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check
   check (kind in ('comment', 'reply', 'approved', 'changes', 'build_done', 'build_failed', 'usage_alert', 'spend_cap'));
 
+-- Team alerts link to that team's billing page.
+alter table public.notifications add column team_id uuid references public.teams (id) on delete cascade;
+
+-- Notification emails carry the team, so billing alerts link to the right page.
+create or replace function public.claim_notification_digest()
+returns table (user_id uuid, email text, name text, prefs jsonb, items jsonb)
+language plpgsql security definer set search_path = '' as $$
+begin
+  return query
+  with due as (
+    select p.id
+    from public.profiles p
+    where (p.notified_at is null or p.notified_at < now() - interval '15 minutes')
+      and exists (
+        select 1 from public.notifications n
+        where n.user_id = p.id and n.emailed_at is null and n.created_at < now() - interval '2 minutes'
+      )
+    for update of p skip locked
+    limit 200
+  ),
+  stamped as (
+    update public.profiles p set notified_at = now() from due where p.id = due.id returning p.id
+  ),
+  taken as (
+    update public.notifications n set emailed_at = now()
+    from stamped s
+    where n.user_id = s.id and n.emailed_at is null and n.created_at < now() - interval '2 minutes'
+    returning n.*
+  )
+  select pr.id, pr.email, pr.display_name, pr.notify_email,
+    jsonb_agg(jsonb_build_object(
+      'kind', t.kind, 'team_id', t.team_id, 'project_id', t.project_id, 'project', pj.name, 'version_id', t.version_id,
+      'version', v.number, 'actor', t.actor_name, 'body', t.body, 'created_at', t.created_at
+    ) order by t.created_at)
+  from taken t
+  join public.profiles pr on pr.id = t.user_id
+  left join public.projects pj on pj.id = t.project_id
+  left join public.versions v on v.id = t.version_id
+  group by pr.id, pr.email, pr.display_name, pr.notify_email;
+end $$;
+
+revoke execute on function public.claim_notification_digest() from public, anon, authenticated;
+
 alter table public.profiles alter column notify_email
   set default '{"comments": true, "reviews": true, "builds": true, "billing": true}'::jsonb;
 
@@ -201,14 +244,14 @@ begin
     v_t := v_new[cardinality(v_new)];
     v_body := format('%s%% of this period''s included AI usage used: $%s of $%s.',
       v_t, to_char(a.usage_micros / 1e6, 'FM999990.00'), to_char(a.included_micros / 1e6, 'FM999990.00'));
-    insert into public.notifications (user_id, kind, body)
-      select u, 'usage_alert', v_body from unnest(v_to) u;
+    insert into public.notifications (user_id, kind, body, team_id)
+      select u, 'usage_alert', v_body, g.team_id from unnest(v_to) u;
   end if;
   if v_cap_hit then
     v_body := format('Spend cap of $%s reached. New builds are paused until you raise the cap or the period resets.',
       to_char(a.spend_cap_micros / 1e6, 'FM999990.00'));
-    insert into public.notifications (user_id, kind, body)
-      select u, 'spend_cap', v_body from unnest(v_to) u;
+    insert into public.notifications (user_id, kind, body, team_id)
+      select u, 'spend_cap', v_body, g.team_id from unnest(v_to) u;
   end if;
 
   v_sent := jsonb_set(v_sent, '{sent}', to_jsonb(v_done || v_new));

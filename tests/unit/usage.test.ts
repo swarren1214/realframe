@@ -131,3 +131,29 @@ describe("small formats", () => {
     });
   });
 });
+
+describe("billing alerts by email", async () => {
+  const { digestEmail } = await import("@/lib/email");
+  it("groups usage alerts under Usage & billing and links to the right page", () => {
+    const { html, subject } = digestEmail({
+      to: "a@b.co",
+      name: "Steve",
+      appUrl: "https://www.realframe.app",
+      unsubscribeUrl: "https://x/u",
+      items: [
+        {
+          kind: "usage_alert",
+          team_id: "t1",
+          project_id: null,
+          project: null,
+          version_id: null,
+          version: null,
+          actor: null,
+          body: "80% of this period's included AI usage used: $8.00 of $10.00.",
+        },
+      ],
+    });
+    expect(subject).toBe("Usage alert · Usage & billing");
+    expect(html).toContain("https://www.realframe.app/team/billing?tab=usage");
+  });
+});

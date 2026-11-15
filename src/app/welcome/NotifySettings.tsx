@@ -4,7 +4,12 @@ import { SwitchRow } from "@/components/ui/switch-row";
 import { createClient } from "@/lib/supabase/client";
 import { notify } from "@/lib/toast";
 
-type Prefs = { comments: boolean; reviews: boolean; builds: boolean };
+type Prefs = {
+  comments: boolean;
+  reviews: boolean;
+  builds: boolean;
+  billing: boolean;
+};
 
 const ROWS: { key: keyof Prefs; label: string; description: string }[] = [
   {
@@ -22,6 +27,12 @@ const ROWS: { key: keyof Prefs; label: string; description: string }[] = [
     label: "Builds",
     description:
       "Your builds that took over 90 seconds, and builds others ran on your prototypes.",
+  },
+  {
+    key: "billing",
+    label: "Usage and billing",
+    description:
+      "Usage alerts you set in Usage & billing, and when a spend cap is reached.",
   },
 ];
 

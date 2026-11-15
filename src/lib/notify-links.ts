@@ -19,6 +19,7 @@ export type NotifyPrefs = {
   comments: boolean;
   reviews: boolean;
   builds: boolean;
+  billing: boolean;
 };
 
 export function readPrefs(raw: unknown): NotifyPrefs {
@@ -27,5 +28,6 @@ export function readPrefs(raw: unknown): NotifyPrefs {
     comments: r.comments !== false,
     reviews: r.reviews !== false,
     builds: r.builds !== false,
+    billing: r.billing !== false,
   };
 }

@@ -35,7 +35,9 @@ async function run() {
         ? prefs.comments
         : n.kind === "build_done" || n.kind === "build_failed"
           ? prefs.builds
-          : false,
+          : n.kind === "usage_alert" || n.kind === "spend_cap"
+            ? prefs.billing
+            : false,
     );
     if (!items.length || !row.email) continue;
     const res = await sendNotificationDigest({

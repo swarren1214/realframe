@@ -9,6 +9,7 @@ const FILTERS = {
   comments: ["comment", "reply"],
   reviews: ["approved", "changes"],
   builds: ["build_done", "build_failed"],
+  billing: ["usage_alert", "spend_cap"],
 } as const;
 
 export default async function InboxPage({
@@ -27,7 +28,7 @@ export default async function InboxPage({
   let q = supabase
     .from("notifications")
     .select(
-      "id, kind, project_id, version_id, thread_id, actor_name, body, created_at, read_at, projects(name), versions(number)",
+      "id, kind, project_id, version_id, thread_id, team_id, actor_name, body, created_at, read_at, projects(name), versions(number)",
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -43,6 +44,7 @@ export default async function InboxPage({
       projectId: n.project_id,
       versionId: n.version_id,
       threadId: n.thread_id,
+      teamId: n.team_id,
       actor: n.actor_name,
       body: n.body,
       createdAt: n.created_at,

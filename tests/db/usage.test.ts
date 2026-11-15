@@ -222,6 +222,12 @@ describe("usage alerts", () => {
     await build(member, p.id, 6_000_000);
     expect((await inbox(admin)).map((x) => x.kind)).toEqual(["usage_alert"]);
     expect(await inbox(member)).toEqual([]);
+    expect(
+      await db.value(
+        `select team_id from public.notifications where user_id = $1 and kind = 'usage_alert'`,
+        [admin.id],
+      ),
+    ).toBe(t);
   });
 });
 
