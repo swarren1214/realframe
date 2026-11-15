@@ -19,6 +19,7 @@ import {
   Copy,
   ExternalLink,
   Globe,
+  GitFork,
   History,
   KeyRound,
   LayoutGrid,
@@ -318,6 +319,7 @@ export function Studio(props: {
   const [posting, setPosting] = useState(false);
   // Point and prompt: elements picked in the preview go out with the next request.
   const [selectMode, setSelectMode] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [targets, setTargets] = useState<SelectedElement[]>([]);
   const [presenting, setPresenting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -400,6 +402,31 @@ export function Studio(props: {
       setPanelOpen(true);
     }
     requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+  }
+
+  // GitHub and uploaded builds can't take prompts; an AI copy of one can.
+  async function makeAiCopy() {
+    if (!selected || copying) return;
+    setCopying(true);
+    setBusy(true);
+    setElapsed(0);
+    setTab("chat");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/ai-copy`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ versionId: selected.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.versionId) {
+        setSelectedId(data.versionId);
+        notify.success(`v${data.number} is ready to change with prompts`);
+      }
+    } finally {
+      setCopying(false);
+      setBusy(false);
+      router.refresh();
+    }
   }
 
   function startSelecting() {
@@ -1454,11 +1481,13 @@ export function Studio(props: {
                     >
                       <Spinner className="mt-0.5 shrink-0" />
                       <span>
-                        {planning
-                          ? "Planning the build"
-                          : variantCount > 1
-                            ? `Building ${variantCount} variants`
-                            : `Building ${selected ? `on v${selected.number}` : "v1"}`}
+                        {copying
+                          ? `Making an AI copy of v${selected?.number}`
+                          : planning
+                            ? "Planning the build"
+                            : variantCount > 1
+                              ? `Building ${variantCount} variants`
+                              : `Building ${selected ? `on v${selected.number}` : "v1"}`}
                         … {elapsed}s
                         <span className="block text-xs text-raspberry-800/70">
                           Larger prototypes can take a minute or two.
@@ -1478,9 +1507,25 @@ export function Studio(props: {
                         className="mt-px size-3.5 shrink-0"
                         aria-hidden="true"
                       />
-                      {selected?.source === "github" && props.source
-                        ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
-                        : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
+                      <span className="min-w-0 flex-1 space-y-2">
+                        <span className="block">
+                          {selected?.source === "github" && props.source
+                            ? `v${selected?.number} came from GitHub, so prompts change a copy of it. Pushes to ${props.source.branch} still arrive as their own versions.`
+                            : `v${selected?.number} is an uploaded build, so prompts change a copy of it.`}
+                        </span>
+                        {(role === "owner" || role === "editor") && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            loading={copying}
+                            disabled={busy}
+                            onClick={makeAiCopy}
+                          >
+                            <GitFork />
+                            Make an AI copy of v{selected?.number}
+                          </Button>
+                        )}
+                      </span>
                     </p>
                   )}
                   {targets.length > 0 && (
