@@ -18,6 +18,16 @@ vi.mock("@/lib/builds/run", () => ({
     started.push(id);
   },
 }));
+const resumed: string[] = [];
+vi.mock("@/lib/plan-runner", async (orig) => {
+  const real = await orig<typeof import("@/lib/plan-runner")>();
+  return {
+    ...real,
+    startRunStep: async (id: string) => {
+      resumed.push(id);
+    },
+  };
+});
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
     get: async ({ name }: { name: string }) => ({
@@ -41,6 +51,7 @@ beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-secret");
   started.length = 0;
   stopped.length = 0;
+  resumed.length = 0;
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -83,5 +94,24 @@ describe("sweep cron", () => {
     });
     expect(stopped).toEqual(["sbx-1"]);
     expect(started).toEqual(["q-new"]);
+  });
+
+  it("restarts planned builds whose step hand-off was lost, and leaves moving ones alone", async () => {
+    const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+    setup((c) => {
+      if (c.table === "build_runs" && c.op === "select")
+        return {
+          data: [
+            { id: "lost", status: "running", running_step: null, updated_at: ago(2 * 60_000) },
+            { id: "handing-off", status: "running", running_step: null, updated_at: ago(5_000) },
+            { id: "building", status: "running", running_step: 1, updated_at: ago(2 * 60_000) },
+            { id: "dead-step", status: "running", running_step: 1, updated_at: ago(8 * 60_000) },
+          ],
+        };
+    });
+    const { GET } = await import("@/app/api/cron/sweep/route");
+    const res = await GET(req("Bearer cron-secret"));
+    expect(await res.json()).toMatchObject({ plan_runs_resumed: 2 });
+    expect(resumed).toEqual(["lost", "dead-step"]);
   });
 });
