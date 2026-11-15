@@ -38,6 +38,8 @@ export type SelectedElement = {
 };
 
 export type FrameHandle = {
+  /** Reload the prototype from its starting state: first screen, no saved data. */
+  restart: () => void;
   apply: (
     target: { rf: string | null; selector: string },
     change: { styles?: Record<string, string>; text?: string },
@@ -224,6 +226,14 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
     }
 
     useImperativeHandle(handle, () => ({
+      restart: () => {
+        // Imported apps keep real storage on their own domain: clear it before reloading.
+        // Generated prototypes keep theirs in memory, which the reload drops.
+        if (src) post({ type: "rf:reset" });
+        clearTimers();
+        setState("loading");
+        window.setTimeout(() => setAttempt((a) => a + 1), src ? 120 : 0);
+      },
       apply: (target, change) =>
         post({
           type: "rf:apply",

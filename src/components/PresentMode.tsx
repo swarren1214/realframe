@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Maximize, Minimize2, Share, X } from "lucide-react";
+import { Maximize, Minimize2, Share, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type FsDoc = Document & {
@@ -61,7 +61,14 @@ export const PRESENT_FRAME_CLASS =
  * browser allows it; on iPhone, where it doesn't, we point people to Add to Home Screen,
  * which opens the review link as a full-screen web app.
  */
-export function PresentControls({ onExit }: { onExit: () => void }) {
+export function PresentControls({
+  onExit,
+  onRestart,
+}: {
+  onExit: () => void;
+  /** Shows a button that restarts the prototype from its first screen. */
+  onRestart?: () => void;
+}) {
   const [hint, setHint] = useState<"none" | "tap" | "homescreen">("none");
   const [full, setFull] = useState(false);
   const exitRef = useRef(onExit);
@@ -110,6 +117,18 @@ export function PresentControls({ onExit }: { onExit: () => void }) {
   return (
     <>
       <div className="rf-light-palette fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-[2147483001] flex gap-1 opacity-40 transition-opacity hover:opacity-100 focus-within:opacity-100">
+        {onRestart && (
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            className="bg-stone-900/80 backdrop-blur"
+            aria-label="Restart prototype"
+            title="Restart from the first screen (R)"
+            onClick={onRestart}
+          >
+            <RotateCcw />
+          </Button>
+        )}
         {!full && canFullscreen() && (
           <Button
             variant="secondary"

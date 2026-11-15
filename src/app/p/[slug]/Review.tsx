@@ -8,6 +8,7 @@ import {
   Code,
   Expand,
   LogIn,
+  RotateCcw,
   MessageSquare,
   MessageSquarePlus,
   PencilRuler,
@@ -195,6 +196,27 @@ export function Review({
     [inspecting, isBundle, version.html],
   );
   useEffect(() => setInspected(null), [inspecting]);
+
+  /** Reload the prototype from its starting state: first screen, no saved data. */
+  function restart() {
+    setDraft(null);
+    setInspected(null);
+    frame.current?.restart();
+  }
+
+  // R restarts the prototype (not while typing).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        frame.current?.restart();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // Dev mode is desktop only.
   useEffect(() => {
     if (!large) setInspecting(false);
@@ -508,6 +530,15 @@ export function Review({
           <Expand />
           <span className="max-lg:sr-only">Full screen</span>
         </Button>
+        <Button
+          variant="ghost"
+          aria-keyshortcuts="R"
+          title="Restart from the first screen (R)"
+          onClick={restart}
+        >
+          <RotateCcw />
+          <span className="max-lg:sr-only">Restart</span>
+        </Button>
         {(role === "owner" || role === "editor") && (
           <Button asChild variant="ghost" className="max-lg:hidden">
             <a href={`/projects/${project.id}`}>
@@ -629,6 +660,7 @@ export function Review({
         >
           {presenting && (
             <PresentControls
+              onRestart={restart}
               onExit={() => {
                 setPresenting(false);
                 if (present)
