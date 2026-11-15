@@ -1,12 +1,4 @@
 "use client";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { MAX_POINTED, pointedName } from "@/lib/pointing";
 import { useIsLarge } from "@/lib/use-media";
 import { FailureCard } from "@/components/builds/FailureCard";
@@ -34,41 +26,31 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+
 import {
   Archive,
   ArrowUp,
   Columns2,
   Ellipsis,
   FileDown,
-  GitCommitHorizontal,
   Boxes,
   Expand,
   Upload,
-  Check,
   CircleCheck,
   Copy,
   ExternalLink,
-  Globe,
   GitFork,
   History,
-  KeyRound,
   LayoutGrid,
-  Layers,
   MessageSquare,
   MessageSquarePlus,
   MousePointer2,
   Code,
-  Monitor,
   PencilRuler,
-  RotateCcw,
-  Rocket,
   Share2,
-  Smartphone,
   Sparkles,
-  Tablet,
   Trash2,
   Undo2,
-  UserPlus,
   Users,
   UserRoundCheck,
   X,
@@ -78,11 +60,7 @@ import {
 import { Mark } from "@/components/Logo";
 import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupCard } from "@/components/ui/radio-group";
-import { SwitchRow } from "@/components/ui/switch-row";
 import {
   Select,
   SelectContent,
@@ -91,7 +69,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,7 +78,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Eyebrow } from "@/components/Eyebrow";
@@ -118,6 +94,8 @@ import { ExportDialog } from "@/components/export/ExportDialog";
 import { DevPanel, selectorForPath } from "@/components/dev/DevPanel";
 import { useVoiceInput } from "@/components/voice/useVoiceInput";
 import { annotateSource, type Inspected } from "@/lib/inspect";
+import { useLiveThreads } from "@/components/comments/useLiveThreads";
+import { STUDIO_THREAD_SELECT } from "@/lib/threads";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -127,11 +105,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   BuildList,
   BuildLog,
@@ -148,7 +121,6 @@ import {
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
-import { splitEmails } from "@/components/reviews/RequestReviewDialog";
 import { requestReviewRound as raw_requestReviewRound } from "@/app/projects/review-actions";
 import { RoundCard } from "@/components/reviews/RoundCard";
 import { MAX_FIX_THREADS } from "@/lib/feedback";
@@ -203,6 +175,10 @@ import {
 import { setProjectDesignSystem as raw_setProjectDesignSystem } from "@/app/(app)/design-systems/actions";
 import type { Device } from "@/lib/devices";
 import type { Team } from "@/lib/team-shared";
+import { ShareDialog } from "./SharePanel";
+import type { Done } from "./studio-types";
+import { VariantCompare, VersionItem } from "./VersionList";
+import { PlanChecklist, readStep, type PlanProgress } from "./PlanChecklist";
 
 const contentUrl = unwrapped(raw_contentUrl);
 const deleteProject = unwrapped(raw_deleteProject);
@@ -225,25 +201,6 @@ const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
 
 type Tab = "chat" | "versions" | "share" | "comments";
-
-type PlanProgress = {
-  title: string;
-  status: "pending" | "running" | "done" | "failed";
-  summary?: string;
-};
-/** What a successful action says: a message, or a message with Undo or another action. */
-type Done =
-  | string
-  | {
-      title: string;
-      undo?: () => Promise<unknown>;
-      action?: { label: string; onClick: () => void };
-    };
-type Run = (
-  action: () => Promise<void | Done>,
-  key?: string,
-  done?: Done,
-) => void;
 
 const STARTERS = [
   "A dispatch board for field techs: one column per tech, an unassigned queue, drag jobs between columns, and flag jobs at risk of missing their SLA.",
@@ -301,7 +258,7 @@ export function Studio(props: {
     messages: newestMessages,
     hasEarlierMessages = false,
     members,
-    threads,
+    threads: initialThreads,
     quota,
     variants,
   } = props;
@@ -319,6 +276,18 @@ export function Studio(props: {
   }
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const { threads, changed: threadsChanged } = useLiveThreads(
+    initialThreads,
+    async (ids) => {
+      let q = supabase
+        .from("comment_threads")
+        .select(STUDIO_THREAD_SELECT)
+        .eq("project_id", project.id);
+      if (ids) q = q.in("id", ids);
+      const { data, error } = await q.order("created_at");
+      return error ? null : ((data ?? []) as unknown as Thread[]);
+    },
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     props.initialVersionId,
   );
@@ -769,6 +738,7 @@ export function Studio(props: {
   }, [busy]);
 
   useEffect(() => {
+    // Comment changes load just the threads they touched, not the whole page.
     const channel = supabase
       .channel(`studio-${project.id}`)
       .on(
@@ -779,7 +749,11 @@ export function Studio(props: {
           table: "comments",
           filter: `project_id=eq.${project.id}`,
         },
-        () => router.refresh(),
+        (p) =>
+          threadsChanged([
+            (p.new as { thread_id?: string })?.thread_id,
+            (p.old as { thread_id?: string })?.thread_id,
+          ]),
       )
       .on(
         "postgres_changes",
@@ -789,13 +763,17 @@ export function Studio(props: {
           table: "comment_threads",
           filter: `project_id=eq.${project.id}`,
         },
-        () => router.refresh(),
+        (p) =>
+          threadsChanged([
+            (p.new as { id?: string })?.id,
+            (p.old as { id?: string })?.id,
+          ]),
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, project.id, router]);
+  }, [supabase, project.id, threadsChanged]);
 
   // A prototype created from a description builds it straight away.
   const started = useRef(false);
@@ -935,35 +913,60 @@ export function Studio(props: {
         return;
       }
       mark(i, { status: "running" });
-      const step = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
+      runningRun.current = runId;
+      const res = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          accept: "application/x-ndjson",
+        },
         body: JSON.stringify({ index: i }),
       });
-      const out = await step.json().catch(() => ({}));
+      const { status, body: out } = await readStep(res, (chars) =>
+        mark(i, { chars }),
+      );
+      runningRun.current = null;
+      const step = { ok: status >= 200 && status < 300, status };
+      if (out.stopped) {
+        mark(i, { status: "pending", chars: undefined });
+        if (out.versionId) setSelectedId(out.versionId as string);
+        router.refresh();
+        return;
+      }
       if (!step.ok) {
         mark(i, { status: "failed" });
         // Earlier steps are saved as a version even when a later one fails.
-        if (out.versionId) setSelectedId(out.versionId);
+        if (out.versionId) setSelectedId(out.versionId as string);
         router.refresh();
         throw new Error(
           out.partial
-            ? `Step ${i + 1} failed, so the first ${i} step${i === 1 ? " was" : "s were"} saved as v${out.number}. ${out.error ?? ""}`.trim()
-            : out.error || `Request failed (${step.status})`,
+            ? `Step ${i + 1} failed, so the first ${i} step${i === 1 ? " was" : "s were"} saved as v${out.number}. ${(out.error as string) ?? ""}`.trim()
+            : (out.error as string) || `Request failed (${step.status})`,
         );
       }
-      mark(i, { status: "done", summary: out.summary });
+      mark(i, {
+        status: "done",
+        summary: out.summary as string,
+        chars: undefined,
+      });
       if (out.done) {
-        setSelectedId(out.versionId);
+        setSelectedId(out.versionId as string);
         router.refresh();
         return;
       }
     }
   }
 
+  // The planned run whose step is building right now, so Stop can end it mid-step.
+  const runningRun = useRef<string | null>(null);
   function requestStop() {
     stopRequested.current = true;
     setStopping(true);
+    // A step is building: ask it to stop now. It answers with what was saved.
+    if (runningRun.current)
+      void fetch(`/api/projects/${project.id}/plan/${runningRun.current}`, {
+        method: "DELETE",
+      });
   }
 
   // Fix from feedback: one build from the selected open comment threads.
@@ -2517,1017 +2520,6 @@ export function Studio(props: {
           ))}
         </nav>
       )}
-    </div>
-  );
-}
-
-const ACCESS = [
-  {
-    value: "invite",
-    title: "Only people I invite",
-    desc: "They sign in with an emailed link.",
-    icon: Users,
-  },
-  {
-    value: "password",
-    title: "Anyone with the password",
-    desc: "No account needed. Guests enter the password and a name.",
-    icon: KeyRound,
-  },
-  {
-    value: "public",
-    title: "Anyone with the link",
-    desc: "View only. Comments stay with invited reviewers.",
-    icon: Globe,
-  },
-] as const;
-
-/**
- * One place to share: which version people see, who can open it, and whether
- * to ask for approval, finished by a single action ("Publish v4 and send").
- */
-function ShareDialog({
-  open,
-  onOpenChange,
-  project,
-  selected,
-  live,
-  isOwner,
-  canBuild,
-  members,
-  reviewUrl,
-  pending,
-  isBusy,
-  run,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  project: Project;
-  selected: VersionMeta | null;
-  live: VersionMeta | null;
-  isOwner: boolean;
-  canBuild: boolean;
-  members: Member[];
-  reviewUrl: string;
-  pending: boolean;
-  isBusy: (key: string) => boolean;
-  run: Run;
-}) {
-  const router = useRouter();
-  const selectedIsLive =
-    project.published && !!selected && selected.id === project.live_version_id;
-  const [makeLive, setMakeLive] = useState(true);
-  const [approval, setApproval] = useState(false);
-  const [emails, setEmails] = useState("");
-  const [due, setDue] = useState("");
-  const [rule, setRule] = useState<"all" | "any">("all");
-  const [note, setNote] = useState("");
-  const [sending, setSending] = useState(false);
-  const list = splitEmails(emails);
-  const suggested = members
-    .filter((m) => m.role !== "editor")
-    .map((m) => m.email)
-    .filter((e) => !list.includes(e));
-
-  const publishing = isOwner && !!selected && !selectedIsLive && makeLive;
-  const asking = approval && list.length > 0 && !!selected;
-  const label =
-    publishing && asking
-      ? `Publish v${selected!.number} and send`
-      : publishing
-        ? `Publish v${selected!.number}`
-        : asking
-          ? `Send to ${list.length} reviewer${list.length === 1 ? "" : "s"}`
-          : "Done";
-
-  async function submit() {
-    if (!publishing && !asking) return onOpenChange(false);
-    setSending(true);
-    try {
-      if (publishing) await publishVersion(project.id, selected!.id);
-      if (asking) {
-        const res = await requestReviewRound({
-          projectId: project.id,
-          versionId: selected!.id,
-          emails: list,
-          note: note.trim() || undefined,
-          dueAt: due ? new Date(`${due}T23:59:00`).toISOString() : null,
-          rule,
-        });
-        notify.success(
-          `${publishing ? `v${selected!.number} is live. ` : ""}Asked ${res.reviewers} reviewer${res.reviewers === 1 ? "" : "s"} to approve it`,
-          {
-            description:
-              res.emailed === res.reviewers
-                ? "They've been emailed the link."
-                : "Email isn't set up for everyone, so send them the link too.",
-            action: {
-              label: "Copy link",
-              onClick: () => copyWithToast(reviewUrl),
-            },
-          },
-        );
-      } else {
-        notify.success(`v${selected!.number} is live`, {
-          action: {
-            label: "Copy link",
-            onClick: () => copyWithToast(reviewUrl),
-          },
-        });
-      }
-      setApproval(false);
-      setEmails("");
-      setNote("");
-      setDue("");
-      onOpenChange(false);
-      router.refresh();
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : "That didn't work.");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-1rem)] gap-5 pb-0 [&>*]:min-w-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-w-full max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Share {project.name}</DialogTitle>
-          <DialogDescription>
-            Pick what people see, who can open it, and whether you want an
-            approval.
-          </DialogDescription>
-        </DialogHeader>
-
-        <section className="space-y-2">
-          <Eyebrow>What people see</Eyebrow>
-          {selected ? (
-            <div className="flex items-center gap-2.5 rounded-2xl border border-stone-200 bg-card px-3.5 py-2.5">
-              <span className="text-[13px] font-semibold">
-                v{selected.number}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-xs text-stone-600">
-                {selected.summary || "Selected version"}
-              </span>
-              {selectedIsLive ? (
-                <Badge variant="success">
-                  <BadgeDot />
-                  Live
-                </Badge>
-              ) : isOwner ? (
-                <SwitchRow
-                  id="share-make-live"
-                  label={<span className="text-xs">Make live</span>}
-                  checked={makeLive}
-                  onCheckedChange={setMakeLive}
-                  className="border-0 bg-transparent p-0"
-                />
-              ) : (
-                <Badge>Draft</Badge>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-stone-600">Build a version first.</p>
-          )}
-          <p className="text-[11px] text-stone-500">
-            {live
-              ? `Now live: v${live.number}. People on the link always see the live version.`
-              : "Nothing is live yet, so the link doesn't work until you publish."}
-            {!isOwner && " Only the owner can change what's live."}
-          </p>
-        </section>
-
-        {(project.published || publishing) && (
-          <section className="space-y-2">
-            <Eyebrow>Link</Eyebrow>
-            <div className="flex gap-1.5">
-              <Input
-                readOnly
-                value={reviewUrl}
-                aria-label="Review link"
-                className="text-xs text-stone-600"
-              />
-              <Button
-                variant="outline"
-                onClick={() => copyWithToast(reviewUrl)}
-              >
-                <Copy />
-                Copy
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {isOwner && (
-          <SharePanel
-            hideLink
-            project={project}
-            isOwner={isOwner}
-            members={members}
-            reviewUrl={reviewUrl}
-            pending={pending}
-            isBusy={isBusy}
-            run={run}
-          />
-        )}
-
-        {canBuild && selected && (
-          <section className="space-y-3 rounded-2xl bg-stone-50 p-3.5">
-            <SwitchRow
-              id="share-approval"
-              label="Ask for approval"
-              description="Reviewers get an email and approve or ask for changes. Reviewers are free."
-              checked={approval}
-              onCheckedChange={setApproval}
-              className="border-0 bg-transparent p-0"
-            />
-            {approval && (
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="share-reviewers">Reviewers</Label>
-                  <Textarea
-                    id="share-reviewers"
-                    rows={2}
-                    value={emails}
-                    onChange={(e) => setEmails(e.target.value)}
-                    placeholder="maya@company.com, client@example.com"
-                  />
-                  {suggested.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {suggested.slice(0, 8).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() =>
-                            setEmails((v) =>
-                              v.trim() ? `${v.trim()}, ${m}` : m,
-                            )
-                          }
-                          className="min-h-8 rounded-full bg-card px-3 text-xs text-stone-700 shadow-[inset_0_0_0_1px_var(--color-border)] hover:bg-stone-100"
-                        >
-                          + {m}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="share-due">Due (optional)</Label>
-                    <Input
-                      id="share-due"
-                      type="date"
-                      value={due}
-                      onChange={(e) => setDue(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="share-rule">Approved when</Label>
-                    <Select
-                      value={rule}
-                      onValueChange={(v) => setRule(v as "all" | "any")}
-                    >
-                      <SelectTrigger id="share-rule">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Everyone approves</SelectItem>
-                        <SelectItem value="any">Anyone approves</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="share-note">Note (optional)</Label>
-                  <Textarea
-                    id="share-note"
-                    rows={2}
-                    maxLength={2000}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="What should they look at?"
-                  />
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        <DialogFooter className="sticky bottom-0 -mx-5 border-t border-stone-100 bg-card px-5 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="mr-auto"
-          >
-            Close
-          </Button>
-          <Button
-            variant="default"
-            loading={sending}
-            disabled={approval && list.length === 0 && !publishing}
-            onClick={submit}
-          >
-            {asking ? <Send /> : publishing ? <Rocket /> : <Check />}
-            {label}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SharePanel({
-  project,
-  isOwner,
-  members,
-  reviewUrl,
-  pending,
-  isBusy,
-  run,
-  hideLink = false,
-}: {
-  hideLink?: boolean;
-  project: Project;
-  isOwner: boolean;
-  members: Member[];
-  reviewUrl: string;
-  pending: boolean;
-  isBusy: (key: string) => boolean;
-  run: Run;
-}) {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"viewer" | "commenter" | "editor">(
-    "commenter",
-  );
-  const [copied, setCopied] = useState(false);
-  const [password, setPassword] = useState("");
-  const [address, setAddress] = useState(project.slug);
-  const [addressError, setAddressError] = useState("");
-
-  if (!isOwner) {
-    return (
-      <p className="p-4 text-[13px] text-stone-600">
-        Only the owner can change who has access.
-      </p>
-    );
-  }
-
-  return (
-    <div className={cn("space-y-6", hideLink ? "" : "p-4")}>
-      {!hideLink && (
-        <section className="space-y-2">
-          <Eyebrow>Review link</Eyebrow>
-          {project.published ? (
-            <>
-              <div className="flex gap-1.5">
-                <Input
-                  readOnly
-                  value={reviewUrl}
-                  aria-label="Review link"
-                  className="text-xs text-stone-600"
-                />
-                <Button
-                  size="icon"
-                  aria-label={copied ? "Copied" : "Copy link"}
-                  title={copied ? "Copied" : "Copy link"}
-                  onClick={async () => {
-                    await copyWithToast(reviewUrl);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  }}
-                >
-                  {copied ? <Check /> : <Copy />}
-                </Button>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                loading={isBusy("unpublish")}
-                disabled={pending}
-                onClick={() =>
-                  run(() => unpublish(project.id), "unpublish", {
-                    title: "Review link turned off",
-                    undo: project.live_version_id
-                      ? async () => {
-                          await publishVersion(
-                            project.id,
-                            project.live_version_id!,
-                          );
-                          router.refresh();
-                        }
-                      : undefined,
-                  })
-                }
-              >
-                Unpublish
-              </Button>
-            </>
-          ) : (
-            <p className="text-xs text-stone-600">
-              Publish a version (top right) to get a review link.
-            </p>
-          )}
-        </section>
-      )}
-
-      <section className="space-y-2">
-        <Eyebrow>Address</Eyebrow>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setAddressError("");
-            run(async () => {
-              try {
-                const slug = await updateSlug(project.id, address);
-                setAddress(slug);
-                notify.success(`Address changed to ${slug}`, {
-                  action: {
-                    label: "Copy link",
-                    onClick: () =>
-                      copyWithToast(reviewUrlFor(slug, window.location.host)),
-                  },
-                });
-              } catch (err) {
-                setAddressError(
-                  err instanceof Error
-                    ? err.message
-                    : "Couldn't change the address.",
-                );
-              }
-            }, "slug");
-          }}
-          className="flex items-center gap-1.5"
-        >
-          <label htmlFor="slug" className="sr-only">
-            Subdomain
-          </label>
-          <div className="flex min-w-0 flex-1 items-center rounded-full border border-stone-200 bg-card pr-3 focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
-            <input
-              id="slug"
-              value={address}
-              onChange={(e) => setAddress(e.target.value.toLowerCase())}
-              maxLength={60}
-              className="h-9 min-w-0 flex-1 rounded-full bg-transparent pl-3.5 text-[13px] outline-none"
-            />
-            <span className="shrink-0 text-xs text-stone-400">
-              .realframe.app
-            </span>
-          </div>
-          {address !== project.slug && (
-            <Button
-              variant="secondary"
-              type="submit"
-              loading={isBusy("slug")}
-              disabled={pending}
-            >
-              Save
-            </Button>
-          )}
-        </form>
-        {addressError ? (
-          <p role="alert" className="text-xs text-red-700">
-            {addressError}
-          </p>
-        ) : (
-          <p className="text-[11px] text-stone-500">
-            Changing it breaks links you&apos;ve already shared.
-          </p>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <Eyebrow id="access-label">Who can open it</Eyebrow>
-        <RadioGroup
-          aria-labelledby="access-label"
-          value={project.access_mode}
-          disabled={pending}
-          onValueChange={(value) => {
-            if (value === "password" && !project.has_password) {
-              document.getElementById("share-password")?.focus();
-              return;
-            }
-            const previous = project.access_mode;
-            run(
-              () => setAccessMode(project.id, value as Project["access_mode"]),
-              "access",
-              {
-                title: {
-                  invite: "Only invited people can open it",
-                  password: "Anyone with the password can open it",
-                  public: "Anyone with the link can view",
-                }[value as Project["access_mode"]],
-                undo: async () => {
-                  await setAccessMode(project.id, previous);
-                  router.refresh();
-                },
-              },
-            );
-          }}
-        >
-          {ACCESS.map(({ value, title, desc, icon: Icon }) => (
-            <RadioGroupCard key={value} value={value}>
-              <span
-                aria-hidden="true"
-                className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-stone-600 group-data-[state=checked]:btn-glow"
-              >
-                <Icon className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[13px] font-semibold">{title}</span>
-                <span className="block text-xs text-stone-600">{desc}</span>
-              </span>
-              <Check
-                className="ml-auto hidden size-4 shrink-0 text-raspberry-700 group-data-[state=checked]:block"
-                aria-hidden="true"
-              />
-            </RadioGroupCard>
-          ))}
-        </RadioGroup>
-        <div className="space-y-2 rounded-2xl bg-stone-900/[.03] p-3">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const value = password;
-              run(
-                async () => {
-                  await setProjectPassword(project.id, value);
-                  setPassword("");
-                },
-                "password",
-                project.has_password ? "Password changed" : "Password set",
-              );
-            }}
-            className="flex gap-1.5"
-          >
-            <label htmlFor="share-password" className="sr-only">
-              {project.has_password ? "New password" : "Password"}
-            </label>
-            <Input
-              id="share-password"
-              type="password"
-              autoComplete="new-password"
-              minLength={6}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={
-                project.has_password
-                  ? "Change the password"
-                  : "Set a password (6+ characters)"
-              }
-            />
-            <Button
-              variant="secondary"
-              type="submit"
-              loading={isBusy("password")}
-              disabled={pending}
-            >
-              <KeyRound />
-              {project.has_password ? "Change" : "Set"}
-            </Button>
-          </form>
-          <SwitchRow
-            id="guest-comments"
-            className="-mx-1"
-            label="Password guests can comment"
-            description="Guests add a name when they enter the password."
-            checked={project.guest_comments !== false}
-            loading={isBusy("guests")}
-            disabled={pending && !isBusy("guests")}
-            onCheckedChange={(on) =>
-              run(() => setGuestComments(project.id, on), "guests")
-            }
-          />
-        </div>
-        <SwitchRow
-          id="guest-inspect"
-          className="-mx-1"
-          label="Guests can inspect code"
-          description="Lets password guests and anyone with a public link open dev mode. People you invite always can."
-          checked={project.guest_inspect === true}
-          loading={isBusy("inspect")}
-          disabled={pending && !isBusy("inspect")}
-          onCheckedChange={(on) =>
-            run(() => setGuestInspect(project.id, on), "inspect")
-          }
-        />
-      </section>
-
-      <section className="space-y-2">
-        <Eyebrow>Invite people</Eyebrow>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const value = email;
-            run(
-              async () => {
-                await inviteMember(project.id, value, role);
-                setEmail("");
-              },
-              "invite",
-              `Invited ${value.trim().toLowerCase()} as ${role}`,
-            );
-          }}
-          className="space-y-1.5"
-        >
-          <label htmlFor="inv" className="sr-only">
-            Email
-          </label>
-          <Input
-            id="inv"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@company.com"
-          />
-          <div className="flex gap-1.5">
-            <Select
-              value={role}
-              onValueChange={(v) => setRole(v as typeof role)}
-            >
-              <SelectTrigger aria-label="Role" className="flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="commenter">Commenter</SelectItem>
-                <SelectItem value="viewer">Viewer</SelectItem>
-                <SelectItem value="editor">Editor</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="secondary"
-              type="submit"
-              loading={isBusy("invite")}
-              disabled={pending}
-            >
-              <UserPlus />
-              Invite
-            </Button>
-          </div>
-        </form>
-        <p className="text-[11px] text-stone-500">
-          Send them the review link. They sign in with this email to get access.
-        </p>
-        {members.length > 0 && (
-          <ul className="space-y-0.5">
-            {members.map((m) => (
-              <li
-                key={m.email}
-                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-0.5 hover:bg-stone-900/[.03]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="grid size-7 shrink-0 place-items-center rounded-full bg-glow-soft text-[11px] font-semibold uppercase text-raspberry-800"
-                >
-                  {m.email[0]}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-xs">
-                  {m.email}
-                </span>
-                <Badge className="capitalize">{m.role}</Badge>
-                <Button
-                  variant="destructive"
-                  size="icon-sm"
-                  aria-label={`Remove ${m.email}`}
-                  title={`Remove ${m.email}`}
-                  loading={isBusy(`remove-${m.email}`)}
-                  disabled={pending}
-                  onClick={() =>
-                    run(
-                      () => removeMember(project.id, m.email),
-                      `remove-${m.email}`,
-                      {
-                        title: `Removed ${m.email}`,
-                        undo: () =>
-                          inviteMember(
-                            project.id,
-                            m.email,
-                            m.role as "viewer" | "commenter" | "editor",
-                          ),
-                      },
-                    )
-                  }
-                >
-                  <Trash2 />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function VariantCompare({
-  variants,
-  busyKey,
-  onKeep,
-  onDiscard,
-}: {
-  variants: Variant[];
-  busyKey: string | null;
-  onKeep: (v: Variant) => void;
-  onDiscard: () => void;
-}) {
-  const anyBusy = busyKey !== null;
-  return (
-    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-            <Sparkles
-              className="size-4 text-raspberry-700"
-              aria-hidden="true"
-            />
-            Compare {variants.length} variants
-          </h2>
-          <p className="truncate text-xs text-stone-600">
-            “{variants[0].prompt}” · Keep one to make it the next version.
-          </p>
-        </div>
-        <Button
-          loading={busyKey === "discard"}
-          disabled={anyBusy}
-          onClick={onDiscard}
-        >
-          <X />
-          Discard all
-        </Button>
-      </div>
-      <div
-        className={cn(
-          "grid min-h-0 flex-1 gap-3",
-          variants.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-2",
-        )}
-      >
-        {variants.map((v) => (
-          <section
-            key={v.id}
-            aria-label={`Variant ${v.position}`}
-            className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-card shadow-[0_30px_60px_-30px_rgba(124,58,237,.35)]"
-          >
-            <div className="flex items-start gap-3 border-b border-stone-100 p-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold">
-                  Variant {v.position}
-                </p>
-                {v.summary && (
-                  <p className="line-clamp-2 text-xs text-stone-600">
-                    {v.summary}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="default"
-                size="sm"
-                loading={busyKey === `keep-${v.id}`}
-                disabled={anyBusy}
-                onClick={() => onKeep(v)}
-              >
-                <Check />
-                Keep
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1">
-              <PrototypeFrame html={v.html} title={`Variant ${v.position}`} />
-            </div>
-          </section>
-        ))}
-      </div>
-    </main>
-  );
-}
-
-const SOURCE_LABEL: Record<string, string> = {
-  restore: "Restore",
-  edit: "Visual edit",
-  variant: "Variant",
-  import: "Import",
-  github: "GitHub",
-};
-
-function versionTime(iso: string) {
-  const d = new Date(iso);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  return sameDay
-    ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function VersionItem({
-  version: v,
-  selected,
-  live,
-  canRestore,
-  restoring,
-  disabled,
-  onSelect,
-  onRestore,
-  onCompare,
-  onExport,
-  designSystem,
-}: {
-  /** The design system this version was built with, if any. */
-  designSystem?: string;
-  version: VersionMeta;
-  selected: boolean;
-  live: boolean;
-  canRestore: boolean;
-  restoring: boolean;
-  disabled: boolean;
-  onSelect: () => void;
-  onRestore: () => void;
-  onCompare?: () => void;
-  onExport?: () => void;
-}) {
-  const summary = v.summary ?? "";
-  const long = summary.length > 90;
-  const body = (
-    <span className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-700">
-      {summary}
-    </span>
-  );
-  return (
-    <motion.li
-      {...listItem}
-      className={cn(
-        "rounded-2xl transition-colors duration-[var(--duration-fast)]",
-        selected
-          ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
-          : "hover:bg-foreground/[.03]",
-      )}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected || undefined}
-        className="block w-full rounded-2xl p-3 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
-      >
-        <span className="flex items-center gap-1.5">
-          <span className="text-[13px] font-semibold">v{v.number}</span>
-          {live && (
-            <Badge variant="success">
-              <BadgeDot />
-              Live
-            </Badge>
-          )}
-          {v.source !== "ai" && (
-            <Badge>{SOURCE_LABEL[v.source] ?? v.source}</Badge>
-          )}
-          {designSystem && (
-            <Badge
-              className="max-w-28 bg-blue-50 text-blue-800"
-              title={`Built with ${designSystem}`}
-            >
-              <Layers />
-              <span className="truncate">{designSystem}</span>
-            </Badge>
-          )}
-          <span
-            suppressHydrationWarning
-            className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground"
-          >
-            {versionTime(v.created_at)}
-          </span>
-        </span>
-        {summary &&
-          (long ? (
-            <Tooltip>
-              <TooltipTrigger asChild>{body}</TooltipTrigger>
-              <TooltipContent side="left">{summary}</TooltipContent>
-            </Tooltip>
-          ) : (
-            body
-          ))}
-        {v.commit_sha ? (
-          <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-            <GitCommitHorizontal className="size-3" aria-hidden="true" />
-            <code className="font-mono">{v.commit_sha.slice(0, 7)}</code>
-            {v.commit_author && (
-              <span className="truncate">· {v.commit_author}</span>
-            )}
-          </span>
-        ) : (
-          v.prompt && (
-            <span className="mt-1 block truncate text-[11px] text-muted-foreground">
-              “{v.prompt}”
-            </span>
-          )
-        )}
-      </button>
-      {selected && (canRestore || onCompare || onExport) && (
-        <div className="flex flex-wrap gap-1.5 px-3 pb-3">
-          {onCompare && (
-            <Button size="sm" variant="outline" onClick={onCompare}>
-              <Columns2 />
-              Compare
-            </Button>
-          )}
-          {onExport && (
-            <Button size="sm" variant="outline" onClick={onExport}>
-              <FileDown />
-              Export
-            </Button>
-          )}
-          {canRestore && (
-            <Button
-              size="sm"
-              loading={restoring}
-              disabled={disabled}
-              onClick={onRestore}
-            >
-              <RotateCcw />
-              Restore as new version
-            </Button>
-          )}
-        </div>
-      )}
-    </motion.li>
-  );
-}
-
-/** Live checklist for a planned build: each step's state, with a way to stop between steps. */
-function PlanChecklist({
-  steps,
-  elapsed,
-  stopping,
-  onStop,
-}: {
-  steps: PlanProgress[];
-  elapsed: number;
-  stopping: boolean;
-  onStop: () => void;
-}) {
-  const done = steps.filter((s) => s.status === "done").length;
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="space-y-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">
-          Step {Math.min(done + 1, steps.length)} of {steps.length} · {elapsed}s
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={onStop}
-          disabled={stopping}
-          className="h-7 px-2 text-xs"
-        >
-          {stopping ? "Stopping after this step…" : "Stop"}
-        </Button>
-      </div>
-      <ol className="space-y-1.5">
-        {steps.map((s, i) => (
-          <li key={i} className="flex items-start gap-2">
-            <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-              {s.status === "done" ? (
-                <Check
-                  className="size-4 text-raspberry-700"
-                  aria-hidden="true"
-                />
-              ) : s.status === "running" ? (
-                <Spinner className="size-3.5" />
-              ) : s.status === "failed" ? (
-                <X className="size-4 text-red-700" aria-hidden="true" />
-              ) : (
-                <span
-                  className="size-2 rounded-full border border-raspberry-800/40"
-                  aria-hidden="true"
-                />
-              )}
-            </span>
-            <span
-              className={cn(
-                "leading-snug",
-                s.status === "pending" && "text-raspberry-800/60",
-              )}
-            >
-              {s.title}
-              {s.summary && (
-                <span className="block text-xs text-raspberry-800/70">
-                  {s.summary}
-                </span>
-              )}
-              <span className="sr-only">
-                {s.status === "done"
-                  ? " (done)"
-                  : s.status === "running"
-                    ? " (in progress)"
-                    : s.status === "failed"
-                      ? " (failed)"
-                      : ""}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }

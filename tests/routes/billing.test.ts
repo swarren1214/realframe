@@ -366,6 +366,31 @@ describe("annual usage cron", () => {
     expect((await GET(cronReq("Bearer nope"))).status).toBe(401);
   });
 
+  it("works through many accounts several at a time", async () => {
+    const anchor = new Date(Date.now() - 75 * 86_400_000).toISOString();
+    state.admin = fakeSupabase((c) => {
+      if (c.rpc === "plan_settings")
+        return { data: [{ pro_included_micros: 10_000_000 }] };
+      if (c.table === "profiles")
+        return {
+          data: Array.from({ length: 40 }, (_, i) => ({
+            id: `u${i}`,
+            stripe_customer_id: `cus_${i}`,
+            current_period_start: anchor,
+          })),
+        };
+      if (c.table === "teams") return { data: [] };
+      if (c.rpc) return usageRpc(c, []);
+    });
+    const { GET } = await import("@/app/api/cron/bill-usage/route");
+    const res = await GET(cronReq("Bearer cron-secret"));
+    expect(await res.json()).toMatchObject({
+      accounts: 40,
+      reached: 40,
+      left: 0,
+    });
+  });
+
   it("invoices each finished month's overage once and stamps the builds", async () => {
     const anchor = new Date(Date.now() - 75 * 86_400_000).toISOString();
     const old = (days: number) =>
@@ -395,6 +420,8 @@ describe("annual usage cron", () => {
     const res = await GET(cronReq("Bearer cron-secret"));
     expect(await res.json()).toEqual({
       accounts: 1,
+      reached: 1,
+      left: 0,
       invoices: 1,
       failures: [],
     });

@@ -262,6 +262,26 @@ async function annualInvoice(
   return invoice.id!;
 }
 
+/**
+ * A team's seats averaged over a window, weighted by time, so adding or removing seats part-way
+ * through a period changes the included usage for the part of the period it applied to.
+ * Never less than one seat. Falls back to the current count if the history can't be read.
+ */
+export async function averageSeats(
+  admin: SupabaseClient,
+  teamId: string,
+  window: Window,
+  fallback: number,
+) {
+  const { data, error } = await admin.rpc("team_average_seats", {
+    p_team: teamId,
+    p_from: window.start.toISOString(),
+    p_to: window.end.toISOString(),
+  });
+  const avg = error || data == null ? fallback : Number(data);
+  return Math.max(1, Number.isFinite(avg) ? avg : fallback);
+}
+
 /** Bills every finished month (about 13 back) for one annual account. Returns what it billed. */
 export async function billAnnualAccount(
   admin: SupabaseClient,
@@ -270,12 +290,13 @@ export async function billAnnualAccount(
   includedPerSeatMicros: number,
   now = new Date(),
 ) {
-  const included =
-    account.kind === "team"
-      ? includedPerSeatMicros * Math.max(1, account.seats)
-      : includedPerSeatMicros;
   const done: WindowResult[] = [];
   for (const window of windowsToBill(new Date(account.anchor), now)) {
+    const included =
+      account.kind === "team"
+        ? includedPerSeatMicros *
+          (await averageSeats(admin, account.id, window, account.seats))
+        : includedPerSeatMicros;
     const r = await billUsageWindow(admin, stripe, account, window, included);
     if (r.builds) done.push(r);
   }

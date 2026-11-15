@@ -15,6 +15,7 @@ import { Review } from "./Review";
 import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
 import { loadActiveRound } from "@/lib/services/reviews";
+import { REVIEW_THREAD_SELECT } from "@/lib/threads";
 
 type VersionRow = {
   id: string;
@@ -67,8 +68,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-const THREAD_SELECT =
-  "id, version_id, x, y, status, created_at, guest_name, addressed_version_id, comments(id, thread_id, author_email, author_name, is_guest, body, created_at)";
+const THREAD_SELECT = REVIEW_THREAD_SELECT;
 
 export default async function ReviewPage({
   params,

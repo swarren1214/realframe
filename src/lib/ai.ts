@@ -43,6 +43,10 @@ export type GenerateInput = {
    * being killed mid-build. Defaults to now + timeBudgetSeconds (or 280 s), less 20 s.
    */
   deadline?: number;
+  /** Stops the work early: the person pressed Stop, or closed the page. */
+  signal?: AbortSignal;
+  /** Called as the reply streams in, with the characters written so far. */
+  onProgress?: (chars: number) => void;
   history: { role: "user" | "assistant"; content: string }[];
   /** Reference images and PDFs the person attached, shown to the model first. */
   references?: ReferenceBlock[];
@@ -68,6 +72,13 @@ export function routeDeadline(maxDurationSeconds: number, marginSeconds = 25) {
 /** A continuation round needs at least this long to be worth starting. */
 export const MIN_ROUND_MS = 90_000;
 
+export const STOPPED_MESSAGE = "Stopped. This step wasn't charged.";
+
+/** The work was stopped on purpose (Stop, or the page closed), not by a failure. */
+export class StoppedError extends GenerationError {
+  readonly stopped = true;
+}
+
 export const TOO_SLOW_MESSAGE =
   "The build took too long and was stopped before it finished, so it wasn't charged. Try a smaller change, or split it into steps.";
 
@@ -80,6 +91,47 @@ export function isAbort(e: unknown) {
     name === "APIUserAbortError" ||
     /aborted/i.test((e as Error | null)?.message ?? "")
   );
+}
+
+/**
+ * Input tokens as billed, folding in prompt caching: a cache write costs 1.25x an input token
+ * and a cache read 0.1x. Callers price "input" at the normal rate, so this keeps cost exact
+ * without changing every caller.
+ */
+export function billableInput(
+  usage:
+    | {
+        input_tokens?: number | null;
+        cache_creation_input_tokens?: number | null;
+        cache_read_input_tokens?: number | null;
+      }
+    | null
+    | undefined,
+) {
+  if (!usage) return 0;
+  return Math.round(
+    (usage.input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0) * 1.25 +
+      (usage.cache_read_input_tokens ?? 0) * 0.1,
+  );
+}
+
+/**
+ * The system prompt as blocks, cached. The project's context (devices and design system) is
+ * the same for every build and planned step in a project, and a design system can run to
+ * thousands of tokens, so caching it saves most of its cost on repeat builds. Below the
+ * model's minimum cacheable length, the cache marker is simply ignored.
+ */
+export function systemBlocks(base: string, context?: string | null) {
+  const blocks: {
+    type: "text";
+    text: string;
+    cache_control?: { type: "ephemeral" };
+  }[] = [{ type: "text", text: base }];
+  if (context)
+    blocks.push({ type: "text", text: `About this project:\n${context}` });
+  blocks[blocks.length - 1].cache_control = { type: "ephemeral" };
+  return blocks;
 }
 
 export function parseResponse(text: string): GenerateResult {
@@ -133,9 +185,7 @@ export async function generatePrototype(
     ? `${request}\n\nDesign direction for this variant: ${input.variantHint}`
     : request;
 
-  const system = input.context
-    ? `${SYSTEM_PROMPT}\n\nAbout this project:\n${input.context}`
-    : SYSTEM_PROMPT;
+  const system = systemBlocks(SYSTEM_PROMPT, input.context);
   const refs = input.references ?? [];
   const first = {
     role: "user" as const,
@@ -164,7 +214,17 @@ export async function generatePrototype(
         : [
             ...history,
             first,
-            { role: "assistant" as const, content: text },
+            // Cached from round 1, so a third round re-reads everything so far cheaply.
+            {
+              role: "assistant" as const,
+              content: [
+                {
+                  type: "text" as const,
+                  text,
+                  cache_control: { type: "ephemeral" as const },
+                },
+              ],
+            },
             {
               role: "user" as const,
               content:
@@ -179,15 +239,36 @@ export async function generatePrototype(
           : "The prototype was too big to finish in one build. Try asking for fewer screens first, then add more in follow-up prompts.",
         { input: inTokens, output: outTokens },
       );
+    if (input.signal?.aborted)
+      throw new StoppedError(STOPPED_MESSAGE, {
+        input: inTokens,
+        output: outTokens,
+      });
     let message;
     try {
-      message = await client.messages
-        .stream(
-          { model, max_tokens: 32000, system, messages },
-          { signal: AbortSignal.timeout(left) },
-        )
-        .finalMessage();
+      const stream = client.messages.stream(
+        { model, max_tokens: 32000, system, messages },
+        {
+          signal: input.signal
+            ? AbortSignal.any([AbortSignal.timeout(left), input.signal])
+            : AbortSignal.timeout(left),
+        },
+      );
+      if (input.onProgress) {
+        const before = text.length;
+        let written = 0;
+        stream.on("text", (delta: string) => {
+          written += delta.length;
+          input.onProgress!(before + written);
+        });
+      }
+      message = await stream.finalMessage();
     } catch (e) {
+      if (input.signal?.aborted)
+        throw new StoppedError(STOPPED_MESSAGE, {
+          input: inTokens,
+          output: outTokens,
+        });
       if (isAbort(e))
         throw new GenerationError(TOO_SLOW_MESSAGE, {
           input: inTokens,
@@ -195,7 +276,7 @@ export async function generatePrototype(
         });
       throw e;
     }
-    inTokens += message.usage?.input_tokens ?? 0;
+    inTokens += billableInput(message.usage);
     outTokens += message.usage?.output_tokens ?? 0;
     text += message.content
       .map((block) => (block.type === "text" ? block.text : ""))

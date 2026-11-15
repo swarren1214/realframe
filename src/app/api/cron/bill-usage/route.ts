@@ -6,6 +6,10 @@ import { billAnnualAccount, type Account } from "@/lib/usage-billing";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+const CONCURRENCY = 6;
+/** Stop taking new accounts after this, leaving time for those in progress. */
+const BUDGET_MS = 230_000;
+
 // Vercel Cron, daily: bills each finished month of AI usage for annual Pro and Team Pro plans.
 // Vercel sends `Authorization: Bearer $CRON_SECRET`.
 export async function GET(request: NextRequest) {
@@ -54,19 +58,38 @@ export async function GET(request: NextRequest) {
     })),
   ];
 
+  // Several accounts at a time, within the function's time. Billing is idempotent, so
+  // accounts not reached today are billed on the next run.
   let invoices = 0;
+  let reached = 0;
   const failures: string[] = [];
-  for (const account of accounts) {
-    try {
-      const done = await billAnnualAccount(admin, stripe, account, included);
-      invoices += done.filter((d) => d.invoiceId).length;
-    } catch (e) {
-      console.error("bill-usage", account.kind, account.id, e);
-      failures.push(`${account.kind}:${account.id}`);
+  const started = Date.now();
+  const queue = [...accounts];
+  const worker = async () => {
+    for (
+      let account = queue.shift();
+      account && Date.now() - started < BUDGET_MS;
+      account = queue.shift()
+    ) {
+      reached++;
+      try {
+        const done = await billAnnualAccount(admin, stripe, account, included);
+        invoices += done.filter((d) => d.invoiceId).length;
+      } catch (e) {
+        console.error("bill-usage", account.kind, account.id, e);
+        failures.push(`${account.kind}:${account.id}`);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   return NextResponse.json(
-    { accounts: accounts.length, invoices, failures },
+    {
+      accounts: accounts.length,
+      reached,
+      left: accounts.length - reached,
+      invoices,
+      failures,
+    },
     { status: failures.length ? 500 : 200 },
   );
 }

@@ -2,7 +2,13 @@ import { readReferences, referenceBlocks } from "@/lib/references";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { GenerationError, generatePrototype, routeDeadline } from "@/lib/ai";
+import {
+  GenerationError,
+  StoppedError,
+  generatePrototype,
+  routeDeadline,
+} from "@/lib/ai";
+import { progressResponse, wantsProgress } from "@/lib/progress-stream";
 import { costMicros } from "@/lib/billing";
 import { loadBuildContext } from "@/lib/builds";
 import { stepPrompt, type PlanStep } from "@/lib/plan";
@@ -53,12 +59,28 @@ function notRunning(run: BuildRun) {
   );
 }
 
-/** Build the run's next step. Body: { index } — the step the client expects to run. */
-export async function POST(request: NextRequest, { params }: Ctx) {
-  const { id, runId } = await params;
+/**
+ * Build the run's next step. Body: { index } — the step the client expects to run. With
+ * `Accept: application/x-ndjson`, progress lines stream while the step builds, then the result.
+ */
+export async function POST(request: NextRequest, ctx: Ctx) {
   const deadline = routeDeadline(maxDuration);
+  if (wantsProgress(request))
+    return progressResponse((progress) =>
+      buildStep(request, ctx, deadline, progress),
+    );
+  return buildStep(request, ctx, deadline);
+}
+
+async function buildStep(
+  request: NextRequest,
+  { params }: Ctx,
+  deadline: number,
+  progress?: (chars: number) => void,
+): Promise<Response> {
+  const { id, runId } = await params;
   const auth = await authorize(id);
-  if ("error" in auth) return auth.error;
+  if ("error" in auth) return auth.error!;
   const { supabase, user } = auth;
 
   const run = await loadRun(runId, id, user.id);
@@ -100,6 +122,20 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   );
   const currentHtml = run.working_html ?? current?.html ?? null;
 
+  // Stop: the page closed (the request is aborted), or Stop was pressed (a flag on the run,
+  // checked every 2 seconds).
+  const stop = new AbortController();
+  const onAbort = () => stop.abort();
+  request.signal.addEventListener("abort", onAbort);
+  const watch = setInterval(async () => {
+    const { data } = await createAdminClient()
+      .from("build_runs")
+      .select("cancel_requested_at")
+      .eq("id", run.id)
+      .maybeSingle();
+    if (data?.cancel_requested_at) stop.abort();
+  }, 2000);
+
   try {
     const references = await referenceBlocks(
       readReferences(run.references, run.project_id, run.user_id),
@@ -111,7 +147,10 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       currentHtml,
       history,
       deadline,
+      signal: stop.signal,
+      onProgress: progress,
     });
+    clearInterval(watch);
     steps[index] = { ...steps[index], status: "done", summary: result.summary };
     const totals = {
       input_tokens: run.input_tokens + (result.usage.input ?? 0),
@@ -155,6 +194,9 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       nextStep: index + 1,
     });
   } catch (err) {
+    clearInterval(watch);
+    if (err instanceof StoppedError)
+      return stopMidStep(supabase, run, steps, index, user.id, err.usage);
     const message = err instanceof Error ? err.message : "Generation failed.";
     steps[index] = { ...steps[index], status: "failed" };
     // Earlier steps worked: keep that progress as a version rather than throwing it away.
@@ -191,7 +233,52 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       usage: err instanceof GenerationError ? err.usage : undefined,
     });
     return NextResponse.json({ error: message, index }, { status: 500 });
+  } finally {
+    clearInterval(watch);
+    request.signal.removeEventListener("abort", onAbort);
   }
+}
+
+/**
+ * Settle a run stopped part-way through a step: the step in progress isn't charged; steps
+ * that finished before it are kept as a version, like stopping between steps.
+ */
+async function stopMidStep(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  run: BuildRun,
+  steps: PlanStep[],
+  index: number,
+  userId: string,
+  usage: { input: number; output: number },
+) {
+  if (index > 0 && run.working_html) {
+    const { designSystemId } = await loadBuildContext(
+      supabase,
+      run.project_id,
+      run.base_version_id,
+    );
+    const v = await finalizeRun(supabase, run, {
+      html: run.working_html,
+      steps,
+      userId,
+      designSystemId,
+      status: "cancelled",
+      note: `Stopped during step ${index + 1} of ${steps.length}. The first ${index} step${index === 1 ? " is" : "s are"} saved; the step in progress wasn't charged.`,
+    });
+    return NextResponse.json({
+      stopped: true,
+      versionId: v.id,
+      number: v.number,
+    });
+  }
+  await failRun(supabase, run, {
+    steps,
+    userId,
+    status: "cancelled",
+    message: "Stopped before anything was built. Nothing was charged.",
+    usage,
+  });
+  return NextResponse.json({ stopped: true });
 }
 
 /** Stop a run between steps. Finished steps are kept as a version. */
@@ -207,11 +294,14 @@ export async function DELETE(_request: NextRequest, { params }: Ctx) {
   if (run.status !== "running") return notRunning(run);
   if (run.running_step !== null) {
     const age = Date.now() - new Date(run.updated_at).getTime();
-    if (age < STALE_STEP_MS)
-      return NextResponse.json(
-        { error: "A step is still building. Stop once it finishes." },
-        { status: 409 },
-      );
+    if (age < STALE_STEP_MS) {
+      // A step is building: ask it to stop. It settles the run itself within a few seconds.
+      await createAdminClient()
+        .from("build_runs")
+        .update({ cancel_requested_at: new Date().toISOString() })
+        .eq("id", run.id);
+      return NextResponse.json({ stopping: true }, { status: 202 });
+    }
   }
 
   const done = run.next_step;

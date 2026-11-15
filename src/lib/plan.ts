@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { fakeAiEnabled } from "@/lib/ai";
+import { billableInput, fakeAiEnabled, systemBlocks } from "@/lib/ai";
 
 // Planned builds. Before writing any code, a fast planner model breaks the request into a
 // short, ordered list of steps. Each step is then built on top of the previous one, the way
@@ -129,9 +129,7 @@ export async function planBuild(input: {
       {
         model,
         max_tokens: 2000,
-        system: input.context
-          ? `${PLANNER_PROMPT}\n\nAbout this project:\n${input.context}`
-          : PLANNER_PROMPT,
+        system: systemBlocks(PLANNER_PROMPT, input.context),
         tools: [PLAN_TOOL],
         tool_choice: { type: "tool", name: "submit_plan" },
         messages: [{ role: "user", content: request + retryNote }],
@@ -139,7 +137,7 @@ export async function planBuild(input: {
       { signal: AbortSignal.timeout(40_000) },
     );
     const usage = {
-      input: message.usage?.input_tokens ?? 0,
+      input: billableInput(message.usage),
       output: message.usage?.output_tokens ?? 0,
       costMicros: 0,
     };

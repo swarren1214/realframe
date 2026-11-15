@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { billUsageWindow } from "@/lib/usage-billing";
+import { averageSeats, billUsageWindow } from "@/lib/usage-billing";
 import {
   ACTIVE_STATUSES,
   USAGE_PRODUCT_ID,
@@ -126,22 +126,24 @@ async function addUsageOverage(invoice: Stripe.Invoice) {
     (settings as { pro_included_micros: number }[] | null)?.[0]
       ?.pro_included_micros ?? 10_000_000,
   );
-  // A team's included usage is pooled: one Pro allowance per seat.
-  const included = team
-    ? perSeat * Math.max(1, Number(team.seats ?? 1))
-    : perSeat;
-
   // The renewal invoice covers the period that just ended; bill that window once.
+  const window = {
+    start: new Date(invoice.period_start * 1000),
+    end: new Date(invoice.period_end * 1000),
+  };
+  // A team's included usage is pooled: one Pro allowance per seat, prorated by how long each
+  // seat count applied during the period.
+  const included = team
+    ? perSeat *
+      (await averageSeats(admin, team.id, window, Number(team.seats ?? 1)))
+    : perSeat;
   await billUsageWindow(
     admin,
     getStripe(),
     team
       ? { kind: "team", id: team.id, customerId }
       : { kind: "user", id: profile!.id, customerId },
-    {
-      start: new Date(invoice.period_start * 1000),
-      end: new Date(invoice.period_end * 1000),
-    },
+    window,
     included,
     { id: invoice.id!, currency: invoice.currency },
   );

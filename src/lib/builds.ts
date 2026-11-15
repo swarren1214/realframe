@@ -44,6 +44,15 @@ export function limitResponse(message: string | undefined) {
       { status: 402 },
     );
   }
+  if (message?.includes("project_archived")) {
+    return NextResponse.json(
+      {
+        error: "This prototype is archived. Restore it to build again.",
+        code: "archived",
+      },
+      { status: 409 },
+    );
+  }
   const busy = message?.match(/build_in_progress: ([^\n]+)/);
   if (busy) {
     const who = busy[1].trim();

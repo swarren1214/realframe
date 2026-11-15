@@ -72,6 +72,39 @@ export async function GET(request: NextRequest) {
       .catch((e) => console.error("sweep start", q.id, e));
   }
 
+  // Storage: files of failed or abandoned uploads, and of old versions nobody can reach.
+  let pruned = 0;
+  const { data: prune, error: pruneError } = await admin.rpc(
+    "bundle_files_to_prune",
+    { p_limit: 500 },
+  );
+  if (pruneError) console.error("bundle_files_to_prune", pruneError.message);
+  const files = (prune ?? []) as {
+    name: string;
+    bundle_id: string;
+    reason: "orphan" | "old";
+  }[];
+  for (let i = 0; i < files.length; i += 100) {
+    const chunk = files.slice(i, i + 100);
+    const { error: rmError } = await admin.storage
+      .from("bundles")
+      .remove(chunk.map((f) => f.name));
+    if (rmError) {
+      console.error("prune bundles", rmError.message);
+      break;
+    }
+    pruned += chunk.length;
+  }
+  const expired = [
+    ...new Set(files.filter((f) => f.reason === "old").map((f) => f.bundle_id)),
+  ];
+  if (pruned && expired.length)
+    await admin
+      .from("versions")
+      .update({ bundle_pruned_at: new Date(now).toISOString() })
+      .in("bundle_id", expired)
+      .is("bundle_pruned_at", null);
+
   // Housekeeping: 30 days of errors, a day of rate-limit windows.
   await Promise.all([
     admin
@@ -88,6 +121,7 @@ export async function GET(request: NextRequest) {
     ...((swept as Record<string, number>[] | null)?.[0] ?? {}),
     repo_builds_failed: stuck?.length ?? 0,
     repo_builds_started: started,
+    files_pruned: pruned,
     error: Boolean(error),
   });
 }
