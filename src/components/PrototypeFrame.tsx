@@ -121,7 +121,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
     );
     const extractSeq = useRef(0);
     const srcDoc = useMemo(
-      () => (src ? undefined : withAgent(html)),
+      () => (src ? undefined : withAgent(html, { srcdoc: true })),
       [html, src],
     );
     // "loading" until the agent inside says it's ready; "failed" if the page loads without it
