@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { BillingTabs, type BillingTab } from "@/components/usage/BillingTabs";
 import { useRouter } from "next/navigation";
 import {
   CreditCard,
@@ -127,8 +128,13 @@ export function TeamSettings({
   profiles = {},
   github = { mine: [], shared: [] },
   billing,
+  billingTab = "billing",
+  billingExtra = null,
 }: {
   view?: "settings" | "members" | "billing" | "devices";
+  /** Team Pro's billing page: which tab is open, and the server-rendered tab content. */
+  billingTab?: BillingTab;
+  billingExtra?: React.ReactNode;
   ownerName?: string | null;
   billing?: {
     plan: "free" | "team";
@@ -243,119 +249,136 @@ export function TeamSettings({
         </div>
       )}
 
-      {view === "billing" && !team.personal && billing && (
-        <Section
-          title="Plan"
-          action={
-            billing.plan === "team" ? (
-              <Badge className="bg-raspberry-50 text-raspberry-800">
-                Team Pro
-              </Badge>
-            ) : (
-              <Badge>Free</Badge>
-            )
-          }
-        >
-          {billing.plan === "team" ? (
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-              <dl className="grid flex-1 basis-72 grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-                <div>
-                  <dt className="text-xs text-stone-500">Builder seats</dt>
-                  <dd className="font-semibold">
-                    {billing.seats} ·{" "}
-                    {billing.interval === "year"
-                      ? `${formatUsd(billing.seats * PLANS.team.annualUsdPerBuilder * 1_000_000, 0)}/yr`
-                      : `${formatUsd(billing.seats * SEAT_MICROS, 0)}/mo`}
-                    {billing.reviewers > 0 && (
-                      <span className="block text-xs font-normal text-emerald-700">
-                        + {billing.reviewers} reviewer
-                        {billing.reviewers === 1 ? "" : "s"}, free
+      {view === "billing" && billing?.plan === "team" && (
+        <BillingTabs tab={billingTab} basePath="/team/billing" />
+      )}
+
+      {view === "billing" &&
+        billing?.plan === "team" &&
+        billingTab === "usage" &&
+        billingExtra}
+
+      {view === "billing" &&
+        !team.personal &&
+        billing &&
+        (billing.plan !== "team" || billingTab === "billing") && (
+          <Section
+            title="Plan"
+            action={
+              billing.plan === "team" ? (
+                <Badge className="bg-raspberry-50 text-raspberry-800">
+                  Team Pro
+                </Badge>
+              ) : (
+                <Badge>Free</Badge>
+              )
+            }
+          >
+            {billing.plan === "team" ? (
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+                <dl className="grid flex-1 basis-72 grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs text-stone-500">Builder seats</dt>
+                    <dd className="font-semibold">
+                      {billing.seats} ·{" "}
+                      {billing.interval === "year"
+                        ? `${formatUsd(billing.seats * PLANS.team.annualUsdPerBuilder * 1_000_000, 0)}/yr`
+                        : `${formatUsd(billing.seats * SEAT_MICROS, 0)}/mo`}
+                      {billing.reviewers > 0 && (
+                        <span className="block text-xs font-normal text-emerald-700">
+                          + {billing.reviewers} reviewer
+                          {billing.reviewers === 1 ? "" : "s"}, free
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-stone-500">
+                      {billing.interval === "year"
+                        ? "AI usage this month"
+                        : "AI usage this period"}
+                    </dt>
+                    <dd className="font-semibold">
+                      {formatUsd(billing.usageMicros)}{" "}
+                      <span className="font-normal text-stone-500">
+                        of {formatUsd(billing.seats * INCLUDED_MICROS, 0)}{" "}
+                        included
                       </span>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-stone-500">
-                    {billing.interval === "year"
-                      ? "AI usage this month"
-                      : "AI usage this period"}
-                  </dt>
-                  <dd className="font-semibold">
-                    {formatUsd(billing.usageMicros)}{" "}
-                    <span className="font-normal text-stone-500">
-                      of {formatUsd(billing.seats * INCLUDED_MICROS, 0)}{" "}
-                      included
-                    </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-stone-500">
-                    {billing.cancelAtPeriodEnd ? "Ends" : "Renews"}
-                  </dt>
-                  <dd className="font-semibold" suppressHydrationWarning>
-                    {billing.periodEnd
-                      ? new Date(billing.periodEnd).toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )
-                      : "—"}
-                  </dd>
-                </div>
-              </dl>
-              {admin && billing.hasCustomer && (
-                <form action="/api/billing/team-portal" method="post">
-                  <input type="hidden" name="team_id" value={team.id} />
-                  <Button type="submit" variant="outline">
-                    <CreditCard />
-                    Manage billing
-                  </Button>
-                </form>
-              )}
-              <p className="w-full text-xs text-stone-500">
-                Seats follow the team: adding or removing a builder adjusts the
-                next invoice. Reviewers never use a seat. Usage beyond
-                what&apos;s included is billed to the team at the end of each
-                month. Failed builds are never billed.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="min-w-0 flex-1 text-[13px] text-stone-600">
-                <p className="font-semibold text-stone-900">
-                  Team Pro · $20 per builder a month · reviewers free
-                </p>
-                <p className="mt-1">
-                  Everyone gets Pro build limits on team prototypes, with{" "}
-                  {formatUsd(INCLUDED_MICROS, 0)} of AI usage included per seat
-                  and pooled across the team. Right now that&apos;s{" "}
-                  {billing.seats} seat{billing.seats === 1 ? "" : "s"}:{" "}
-                  {formatUsd(billing.seats * SEAT_MICROS, 0)}/month.
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-stone-500">
+                      {billing.cancelAtPeriodEnd ? "Ends" : "Renews"}
+                    </dt>
+                    <dd className="font-semibold" suppressHydrationWarning>
+                      {billing.periodEnd
+                        ? new Date(billing.periodEnd).toLocaleDateString(
+                            "en-US",
+                            { month: "short", day: "numeric" },
+                          )
+                        : "—"}
+                    </dd>
+                  </div>
+                </dl>
+                {admin && billing.hasCustomer && (
+                  <form action="/api/billing/team-portal" method="post">
+                    <input type="hidden" name="team_id" value={team.id} />
+                    <Button type="submit" variant="outline">
+                      <CreditCard />
+                      Manage billing
+                    </Button>
+                  </form>
+                )}
+                <p className="w-full text-xs text-stone-500">
+                  Seats follow the team: adding or removing a builder adjusts
+                  the next invoice. Reviewers never use a seat. Usage beyond
+                  what&apos;s included is billed to the team at the end of each
+                  month. Failed builds are never billed.
                 </p>
               </div>
-              {admin ? (
-                <UpgradeForm
-                  action="/api/billing/team-checkout"
-                  monthlyUsd={PLANS.team.monthlyUsdPerBuilder}
-                  annualUsd={PLANS.team.annualUsdPerBuilder}
-                  unit=" per builder"
-                  button={() => (
-                    <Button type="submit">
-                      <Sparkles />
-                      Upgrade team
-                    </Button>
-                  )}
-                >
-                  <input type="hidden" name="team_id" value={team.id} />
-                </UpgradeForm>
-              ) : (
-                <p className="text-xs text-stone-500">
-                  Ask a team admin to upgrade.
-                </p>
-              )}
-            </div>
-          )}
-        </Section>
-      )}
+            ) : (
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="min-w-0 flex-1 text-[13px] text-stone-600">
+                  <p className="font-semibold text-stone-900">
+                    Team Pro · $20 per builder a month · reviewers free
+                  </p>
+                  <p className="mt-1">
+                    Everyone gets Pro build limits on team prototypes, with{" "}
+                    {formatUsd(INCLUDED_MICROS, 0)} of AI usage included per
+                    seat and pooled across the team. Right now that&apos;s{" "}
+                    {billing.seats} seat{billing.seats === 1 ? "" : "s"}:{" "}
+                    {formatUsd(billing.seats * SEAT_MICROS, 0)}/month.
+                  </p>
+                </div>
+                {admin ? (
+                  <UpgradeForm
+                    action="/api/billing/team-checkout"
+                    monthlyUsd={PLANS.team.monthlyUsdPerBuilder}
+                    annualUsd={PLANS.team.annualUsdPerBuilder}
+                    unit=" per builder"
+                    button={() => (
+                      <Button type="submit">
+                        <Sparkles />
+                        Upgrade team
+                      </Button>
+                    )}
+                  >
+                    <input type="hidden" name="team_id" value={team.id} />
+                  </UpgradeForm>
+                ) : (
+                  <p className="text-xs text-stone-500">
+                    Ask a team admin to upgrade.
+                  </p>
+                )}
+              </div>
+            )}
+          </Section>
+        )}
+
+      {view === "billing" &&
+        billing?.plan === "team" &&
+        billingTab === "billing" &&
+        billingExtra}
 
       {view === "members" && team.personal && (
         <section className="flex flex-col items-center gap-2 rounded-3xl border border-dashed border-stone-200 px-6 py-10 text-center">

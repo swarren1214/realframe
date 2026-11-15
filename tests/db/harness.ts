@@ -74,7 +74,8 @@ create function net.http_post(url text, headers jsonb default '{}', body jsonb d
 `;
 
 // Extensions PGlite can't load; the stand-ins above take their place.
-const UNAVAILABLE_EXTENSIONS = /create extension if not exists (pg_net|pg_cron)[^;]*;/gi;
+const UNAVAILABLE_EXTENSIONS =
+  /create extension if not exists (pg_net|pg_cron)[^;]*;/gi;
 
 export type TestUser = { id: string; email: string };
 
@@ -90,7 +91,10 @@ export class TestDb {
     for (const f of files) {
       try {
         await pg.exec(
-          readFileSync(join(MIGRATIONS, f), "utf8").replace(UNAVAILABLE_EXTENSIONS, ""),
+          readFileSync(join(MIGRATIONS, f), "utf8").replace(
+            UNAVAILABLE_EXTENSIONS,
+            "",
+          ),
         );
       } catch (e) {
         throw new Error(`migration ${f} failed: ${(e as Error).message}`);

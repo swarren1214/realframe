@@ -291,7 +291,10 @@ export function Studio(props: {
   const capBlocked = !!props.spendCap || capHit;
   const outOfQuota = (quota !== null && quota.remaining <= 0) || capBlocked;
   /** The error a failed build request should show; notes a reached spend cap. */
-  function requestError(res: Response, data: { error?: string; code?: string }) {
+  function requestError(
+    res: Response,
+    data: { error?: string; code?: string },
+  ) {
     if (data.code === "spend_cap") setCapHit(true);
     return new Error(data.error || `Request failed (${res.status})`);
   }
@@ -384,7 +387,10 @@ export function Studio(props: {
   const [copying, setCopying] = useState(false);
   const [targets, setTargets] = useState<SelectedElement[]>([]);
   const refs = useReferences(project.id);
-  const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
+  const [compare, setCompare] = useState<{
+    before: string;
+    after: string;
+  } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
@@ -672,7 +678,11 @@ export function Studio(props: {
     if (!new URLSearchParams(window.location.search).has("start")) return;
     started.current = true;
     window.history.replaceState(null, "", window.location.pathname);
-    let stash: { prompt?: string; at?: number; references?: Reference[] } | null = null;
+    let stash: {
+      prompt?: string;
+      at?: number;
+      references?: Reference[];
+    } | null = null;
     try {
       stash = JSON.parse(sessionStorage.getItem(START_PROMPT_KEY) ?? "null");
       sessionStorage.removeItem(START_PROMPT_KEY);
@@ -740,8 +750,7 @@ export function Studio(props: {
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok)
-      throw requestError(res, data);
+    if (!res.ok) throw requestError(res, data);
     setPrompt("");
     router.refresh();
   }
@@ -774,8 +783,7 @@ export function Studio(props: {
     });
     const data = await res.json().catch(() => ({}));
     setPlanning(false);
-    if (!res.ok)
-      throw requestError(res, data);
+    if (!res.ok) throw requestError(res, data);
     setPrompt("");
     setTargets([]);
     setSelectMode(false);
@@ -851,8 +859,7 @@ export function Studio(props: {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw requestError(res, data);
+      if (!res.ok) throw requestError(res, data);
       setSelectedId(data.versionId);
       setFixPick([]);
       setFixNote("");
@@ -1236,7 +1243,11 @@ export function Studio(props: {
                 <Button
                   size="sm"
                   aria-pressed={editMode}
-                  onClick={() => (editMode ? exitEdit() : (setCompare(null), setEditMode(true)))}
+                  onClick={() =>
+                    editMode
+                      ? exitEdit()
+                      : (setCompare(null), setEditMode(true))
+                  }
                 >
                   {editMode ? <X /> : <PencilRuler />}
                   <span className="max-sm:sr-only">
@@ -1825,7 +1836,12 @@ export function Studio(props: {
                           : "New builds are paused until you raise the cap or the period resets."}
                       </p>
                       {props.spendCap?.canChange !== false && (
-                        <Button asChild variant="default" size="sm" className="mt-2">
+                        <Button
+                          asChild
+                          variant="default"
+                          size="sm"
+                          className="mt-2"
+                        >
                           <Link
                             href={`${props.spendCap?.billingHref ?? "/billing"}?tab=billing#spend-controls`}
                           >

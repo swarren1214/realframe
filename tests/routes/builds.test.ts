@@ -215,7 +215,9 @@ describe("fix from feedback", () => {
     const res = await POST(post({ threadIds: ["t1"] }), ctx);
     expect(res.status).toBe(402);
     expect((await res.json()).code).toBe("spend_cap");
-    const claimCall = state.server.calls.find((c) => c.rpc === "claim_generation");
+    const claimCall = state.server.calls.find(
+      (c) => c.rpc === "claim_generation",
+    );
     expect(claimCall?.args).toMatchObject({ p_kind: "fix" });
   });
 });

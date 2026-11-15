@@ -65,10 +65,10 @@ function groups(personal: boolean, invites: number) {
   const workspace: Item[] = [
     { href: "/team/members", label: "Members", icon: Users },
     personal
-      ? { href: "/billing", label: "Billing", icon: CreditCard }
+      ? { href: "/billing", label: "Usage & billing", icon: CreditCard }
       : {
           href: "/team/billing",
-          label: "Billing",
+          label: "Usage & billing",
           icon: CreditCard,
           also: ["/billing"],
         },

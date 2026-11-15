@@ -273,9 +273,7 @@ describe("the Usage tab", () => {
       { kind: "build", billed_micros: 150_000 },
     ]);
     expect(
-      await db.rows(
-        `select kind from public.usage_ledger(p_kind => 'fix')`,
-      ),
+      await db.rows(`select kind from public.usage_ledger(p_kind => 'fix')`),
     ).toEqual([{ kind: "fix" }]);
   });
 
@@ -302,7 +300,11 @@ describe("the Usage tab", () => {
       `select public.usage_overview($1)`,
       [t],
     ))!;
-    expect(mo).toMatchObject({ usage_micros: 450_000, see_all: false, by_member: [] });
+    expect(mo).toMatchObject({
+      usage_micros: 450_000,
+      see_all: false,
+      by_member: [],
+    });
     await db.as(admin);
     expect(
       await db.value(`select count(*)::int from public.usage_ledger($1)`, [t]),
@@ -313,8 +315,8 @@ describe("the Usage tab", () => {
     ))!;
     expect((ao.by_member as unknown[]).length).toBe(2);
     await db.as(outsider);
-    expect(
-      await db.error(`select public.usage_overview($1)`, [t]),
-    ).toMatch(/forbidden/);
+    expect(await db.error(`select public.usage_overview($1)`, [t])).toMatch(
+      /forbidden/,
+    );
   });
 });
