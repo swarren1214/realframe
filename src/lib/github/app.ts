@@ -410,7 +410,10 @@ export async function pushFiles(
     await gh(`/repos/${fullName}/git/refs`, {
       method: "POST",
       token,
-      body: JSON.stringify({ ref: `refs/heads/${opts.branch}`, sha: commit.sha }),
+      body: JSON.stringify({
+        ref: `refs/heads/${opts.branch}`,
+        sha: commit.sha,
+      }),
     });
   return {
     sha: commit.sha,
@@ -431,7 +434,8 @@ export async function ensurePullRequest(
     `/repos/${fullName}/pulls?state=open&head=${encodeURIComponent(`${owner}:${opts.branch}`)}`,
     { token },
   );
-  if (open[0]) return { url: open[0].html_url, number: open[0].number, created: false };
+  if (open[0])
+    return { url: open[0].html_url, number: open[0].number, created: false };
   const pr = await gh<{ html_url: string; number: number }>(
     `/repos/${fullName}/pulls`,
     {

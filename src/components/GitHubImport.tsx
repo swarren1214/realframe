@@ -237,8 +237,8 @@ export function GitHubImport({
           </span>
           <p className="text-[13px] font-semibold">Connect GitHub</p>
           <p className="max-w-xs text-xs text-stone-600">
-            You choose which repositories Realframe can read. It never writes to
-            them.
+            You choose which repositories Realframe can use. It only writes when
+            you push an export.
           </p>
           <Button asChild variant="secondary" size="sm">
             <a href={status.installUrl!}>
@@ -350,7 +350,7 @@ export function GitHubImport({
           <p className="text-[11px] text-muted-foreground">
             Don&apos;t see a repository?{" "}
             <a href={status.installUrl!} className="font-medium text-primary">
-              Choose which repositories Realframe can read
+              Choose which repositories Realframe can use
             </a>
             .
           </p>

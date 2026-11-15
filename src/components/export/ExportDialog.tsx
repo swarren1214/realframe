@@ -2,12 +2,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { strToU8, zipSync } from "fflate";
 import {
+  ArrowLeft,
   Copy,
   Download,
   FileCode2,
   FolderClosed,
   Sparkles,
 } from "lucide-react";
+import { GitHubMark } from "@/components/icons/GitHubMark";
+import { PushToGitHub } from "@/components/export/PushToGitHub";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +34,7 @@ import {
   slugify,
   splitHtml,
   cleanHtml,
+  exportBranch,
   type ExportFile,
   type ExportFormat,
   type ExportScope,
@@ -88,6 +92,7 @@ export function ExportDialog(props: Props) {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [toGitHub, setToGitHub] = useState(false);
   const ai = AI_FORMATS.includes(format);
   const base = slugify(props.projectName);
 
@@ -97,8 +102,13 @@ export function ExportDialog(props: Props) {
     setScope(canSelect ? "selection" : "prototype");
     setError("");
     setSource(null);
+    setToGitHub(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, version.id]);
+  // Nothing to push once the files go away (a new format, or an AI format not generated yet).
+  useEffect(() => {
+    if (!files?.length) setToGitHub(false);
+  }, [files]);
   useEffect(() => {
     if (!formats.includes(format)) setFormat(formats[0]);
   }, [formats, format]);
@@ -259,6 +269,11 @@ export function ExportDialog(props: Props) {
   }
 
   const shown = files?.[active];
+  const partName = scope === "selection" ? (source?.name ?? "part") : undefined;
+  const selection =
+    scope === "selection"
+      ? targets.map((t) => ({ label: t.label, selector: t.selector }))
+      : [];
   return (
     <Dialog open={open} onOpenChange={props.onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
@@ -370,10 +385,26 @@ export function ExportDialog(props: Props) {
           </div>
 
           <div className="flex min-h-72 min-w-0 flex-col gap-3 bg-stone-50/70 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-stone-600">
-              Files
-            </p>
-            {bundle ? (
+            {!toGitHub && (
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-600">
+                Files
+              </p>
+            )}
+            {toGitHub && files?.length ? (
+              <PushToGitHub
+                projectId={props.projectId}
+                versionId={version.id}
+                format={format}
+                files={files}
+                selection={selection}
+                defaultBranch={exportBranch(
+                  props.projectName,
+                  version.number,
+                  partName,
+                )}
+                defaultMessage={`Export ${partName ? `${partName} from ` : ""}${props.projectName} v${version.number} from Realframe`}
+              />
+            ) : bundle ? (
               <p className="text-sm text-stone-700">
                 Every file of this build, zipped as it&apos;s served.
               </p>
@@ -450,38 +481,55 @@ export function ExportDialog(props: Props) {
               : "Made in your browser. No usage charge."}
           </p>
           <div className="flex gap-2">
-            {files && files.length > 0 && (
-              <Button variant="outline" onClick={copy}>
-                <Copy />
-                Copy file
-              </Button>
-            )}
-            {ai && !props.canUseAi ? (
-              <form action="/api/billing/checkout" method="post">
-                <Button variant="default" type="submit">
-                  <Sparkles />
-                  Upgrade to Pro
-                </Button>
-              </form>
-            ) : ai && !files ? (
-              <Button
-                variant="default"
-                onClick={generate}
-                loading={generating}
-                disabled={!source || loading}
-              >
-                <Sparkles />
-                {generating ? "Generating…" : "Generate"}
+            {toGitHub ? (
+              <Button variant="outline" onClick={() => setToGitHub(false)}>
+                <ArrowLeft />
+                Back to files
               </Button>
             ) : (
-              <Button
-                variant="default"
-                onClick={download}
-                disabled={!bundle && (!files || !files.length)}
-              >
-                <Download />
-                {files && files.length === 1 ? "Download file" : "Download ZIP"}
-              </Button>
+              <>
+                {files && files.length > 0 && (
+                  <Button variant="outline" onClick={() => setToGitHub(true)}>
+                    <GitHubMark />
+                    Push to GitHub
+                  </Button>
+                )}
+                {files && files.length > 0 && (
+                  <Button variant="outline" onClick={copy}>
+                    <Copy />
+                    Copy file
+                  </Button>
+                )}
+                {ai && !props.canUseAi ? (
+                  <form action="/api/billing/checkout" method="post">
+                    <Button variant="default" type="submit">
+                      <Sparkles />
+                      Upgrade to Pro
+                    </Button>
+                  </form>
+                ) : ai && !files ? (
+                  <Button
+                    variant="default"
+                    onClick={generate}
+                    loading={generating}
+                    disabled={!source || loading}
+                  >
+                    <Sparkles />
+                    {generating ? "Generating…" : "Generate"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    onClick={download}
+                    disabled={!bundle && (!files || !files.length)}
+                  >
+                    <Download />
+                    {files && files.length === 1
+                      ? "Download file"
+                      : "Download ZIP"}
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </DialogFooter>
