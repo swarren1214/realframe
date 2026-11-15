@@ -55,6 +55,8 @@ type Props = {
   targets: ExportTarget[];
   /** Reads an element's full markup and CSS from the preview. */
   extract: ((t: ExportTarget) => Promise<Extracted>) | null;
+  /** AI formats need Pro or Team. */
+  canUseAi: boolean;
 };
 
 /** Whole prototype or the pointed-at part, as files or as AI-written components. */
@@ -353,11 +355,13 @@ export function ExportDialog(props: Props) {
                           : "bg-stone-100 text-stone-700",
                       )}
                     >
-                      {isAi
-                        ? cost
-                          ? `AI · about ${formatUsd(cost)}`
-                          : "AI"
-                        : "Free"}
+                      {isAi && !props.canUseAi
+                        ? "Pro"
+                        : isAi
+                          ? cost
+                            ? `AI · about ${formatUsd(cost)}`
+                            : "AI"
+                          : "Free"}
                     </span>
                   </button>
                 );
@@ -417,6 +421,11 @@ export function ExportDialog(props: Props) {
                   </pre>
                 )}
               </>
+            ) : ai && !props.canUseAi ? (
+              <p className="text-sm text-stone-700">
+                React and Tailwind exports are part of Pro, along with $10 of AI
+                usage a month. File exports stay free on every plan.
+              </p>
             ) : ai ? (
               <p className="text-sm text-stone-700">
                 An AI writes these files. It runs as a build, shows in Usage
@@ -447,7 +456,14 @@ export function ExportDialog(props: Props) {
                 Copy file
               </Button>
             )}
-            {ai && !files ? (
+            {ai && !props.canUseAi ? (
+              <form action="/api/billing/checkout" method="post">
+                <Button variant="default" type="submit">
+                  <Sparkles />
+                  Upgrade to Pro
+                </Button>
+              </form>
+            ) : ai && !files ? (
               <Button
                 variant="default"
                 onClick={generate}

@@ -29,6 +29,7 @@ function server(
     if (c.rpc && over[c.rpc]) return over[c.rpc]!(c) as never;
     if (c.rpc === "project_role") return { data: "editor" };
     if (c.rpc === "claim_generation") return { data: "claim-1" };
+    if (c.rpc === "build_quota") return { data: [{ plan: "pro" }] };
     if (c.table === "versions")
       return {
         data: { id: V, html: "<html><body>Hi</body></html>", kind: "html" },
@@ -133,6 +134,20 @@ describe("export", () => {
     expect(
       (await POST(post({ format: "zip", versionId: V }), ctx)).status,
     ).toBe(403);
+  });
+
+  it("keeps AI formats to Pro and Team, and file formats free", async () => {
+    const { POST } = await import("@/app/api/projects/[id]/export/route");
+    setup(server({ build_quota: () => ({ data: [{ plan: "free" }] }) }));
+    const res = await POST(post({ format: "react", versionId: V }), ctx);
+    expect(res.status).toBe(402);
+    expect((await res.json()).code).toBe("pro_required");
+    expect(state.server.calls.some((c) => c.rpc === "claim_generation")).toBe(
+      false,
+    );
+    expect(
+      (await POST(post({ format: "zip", versionId: V }), ctx)).status,
+    ).toBe(200);
   });
 
   it("passes on a reached spend cap", async () => {

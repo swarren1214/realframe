@@ -1109,6 +1109,7 @@ export function Studio(props: {
               version={{ id: v.id, number: v.number, kind: v.kind }}
               loadHtml={async () => (await loadForCompare(v.id)).html ?? ""}
               targets={here ? targets : []}
+              canUseAi={quota?.plan === "pro" || quota?.plan === "team"}
               extract={
                 here && previewFrame.current
                   ? (t) => previewFrame.current!.extract(t)

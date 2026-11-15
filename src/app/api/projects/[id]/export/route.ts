@@ -127,6 +127,19 @@ export async function POST(
       { status: 413 },
     );
 
+  // AI exports are a Pro and Team feature.
+  const { data: quota } = await supabase.rpc("build_quota", { p_project: id });
+  const plan = (quota as { plan?: string }[] | null)?.[0]?.plan ?? "free";
+  if (plan !== "pro" && plan !== "team")
+    return NextResponse.json(
+      {
+        error:
+          "React and Tailwind exports are part of Pro. File exports stay free.",
+        code: "pro_required",
+      },
+      { status: 402 },
+    );
+
   const { data: claimId, error: claimError } = await supabase.rpc(
     "claim_generation",
     {
