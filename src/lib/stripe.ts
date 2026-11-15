@@ -18,11 +18,15 @@ const IDS = LIVE
       pro: "price_1UbZfLELy2PWKr0eYb9r7gwz",
       team: "price_1UbZfMELy2PWKr0e60VOBQRu",
       usage: "prod_VcpKAOdeOSQ1wf",
+      proAnnual: "price_1UcBxMELy2PWKr0eSVLv4eHk",
+      teamAnnual: "price_1UcBxWELy2PWKr0erYHOwOEo",
     }
   : {
       pro: "price_1UbUTj2SmZye3a20wKhLL40Z",
       team: "price_1UbZQB2SmZye3a208JBrKt0f",
       usage: "prod_VcjxgXHZ3lmLdl",
+      proAnnual: null,
+      teamAnnual: null,
     };
 
 // Realframe Pro, $20/month.
@@ -38,10 +42,10 @@ export const ACTIVE_STATUSES = new Set(["active", "trialing", "past_due"]);
 // Annual prices. When these aren't set, Checkout builds the yearly price inline on the same
 // product as the monthly price, so annual billing works before any Stripe setup. Set them
 // once real prices exist, so the customer portal can switch between monthly and annual.
-export const PRO_ANNUAL_PRICE_ID =
-  process.env.STRIPE_PRO_ANNUAL_PRICE_ID || null;
-export const TEAM_ANNUAL_PRICE_ID =
-  process.env.STRIPE_TEAM_ANNUAL_PRICE_ID || null;
+export const PRO_ANNUAL_PRICE_ID: string | null =
+  process.env.STRIPE_PRO_ANNUAL_PRICE_ID || IDS.proAnnual;
+export const TEAM_ANNUAL_PRICE_ID: string | null =
+  process.env.STRIPE_TEAM_ANNUAL_PRICE_ID || IDS.teamAnnual;
 
 type LineItem = Stripe.Checkout.SessionCreateParams.LineItem;
 
