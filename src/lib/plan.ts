@@ -98,6 +98,8 @@ export async function planBuild(input: {
   context?: string;
   /** A retry after a reply was cut off: split into more, smaller steps. */
   smaller?: boolean;
+  /** A change aimed at elements someone pointed at: one focused step. */
+  focused?: boolean;
 }): Promise<{
   steps: PlanStep[];
   usage: { input: number; output: number; costMicros: number };
@@ -105,6 +107,7 @@ export async function planBuild(input: {
   const none = { input: 0, output: 0, costMicros: 0 };
   if (
     fakeAiEnabled() ||
+    (input.focused && !input.smaller) ||
     (!input.smaller && obviouslySmall(input.prompt, Boolean(input.currentHtml)))
   )
     return { steps: singleStep(input.prompt), usage: none };

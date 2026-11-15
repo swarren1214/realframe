@@ -1,4 +1,5 @@
 "use client";
+import { MAX_POINTED, pointedName } from "@/lib/pointing";
 import { useIsLarge } from "@/lib/use-media";
 import { FailureCard } from "@/components/builds/FailureCard";
 import { isFailureMessage } from "@/lib/failures";
@@ -24,6 +25,7 @@ import {
   Layers,
   MessageSquare,
   MessageSquarePlus,
+  MousePointer2,
   Monitor,
   PencilRuler,
   RotateCcw,
@@ -74,7 +76,11 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, listItem, motion } from "@/components/motion";
 import { copyWithToast, notify } from "@/lib/toast";
-import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
+import {
+  PrototypeFrame,
+  type Pin,
+  type SelectedElement,
+} from "@/components/PrototypeFrame";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -310,6 +316,9 @@ export function Studio(props: {
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [draftText, setDraftText] = useState("");
   const [posting, setPosting] = useState(false);
+  // Point and prompt: elements picked in the preview go out with the next request.
+  const [selectMode, setSelectMode] = useState(false);
+  const [targets, setTargets] = useState<SelectedElement[]>([]);
   const [presenting, setPresenting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
@@ -376,7 +385,33 @@ export function Studio(props: {
     .filter(({ t }) => t.version_id === selected?.id && t.status === "open")
     .map(({ t, n }) => ({ id: t.id, n, x: t.x, y: t.y, status: t.status }));
 
+  function pickElement(el: SelectedElement) {
+    setTargets((cur) =>
+      el.shift
+        ? cur.some((t) => t.selector === el.selector)
+          ? cur
+          : [...cur, el].slice(0, MAX_POINTED)
+        : [el],
+    );
+    setTab("chat");
+    if (!large) {
+      // Phones: one tap picks it and opens the chat.
+      setSelectMode(false);
+      setPanelOpen(true);
+    }
+    requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+  }
+
+  function startSelecting() {
+    setEditMode(false);
+    setCommentMode(false);
+    setDraft(null);
+    setSelectMode(true);
+    setPanelOpen(false);
+  }
+
   function startCommenting() {
+    setSelectMode(false);
     setEditMode(false);
     setDraft(null);
     setCommentMode(true);
@@ -395,7 +430,10 @@ export function Studio(props: {
       p_body: draftText.trim(),
     });
     setPosting(false);
-    if (err) return notify.error("Couldn't post the comment.", { description: err.message });
+    if (err)
+      return notify.error("Couldn't post the comment.", {
+        description: err.message,
+      });
     setDraft(null);
     setDraftText("");
     notify.success(`Comment added to v${selected.number}`);
@@ -410,9 +448,10 @@ export function Studio(props: {
       const typing =
         t &&
         (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-      if (e.key === "Escape" && (commentMode || draft)) {
+      if (e.key === "Escape" && (commentMode || draft || selectMode)) {
         setCommentMode(false);
         setDraft(null);
+        setSelectMode(false);
       } else if (
         (e.key === "c" || e.key === "C") &&
         !typing &&
@@ -429,7 +468,7 @@ export function Studio(props: {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [commentMode, draft, selected, editMode]);
+  }, [commentMode, draft, selected, editMode, selectMode]);
   const isOwner = role === "owner";
 
   useEffect(() => {
@@ -590,6 +629,12 @@ export function Studio(props: {
         prompt: text,
         baseVersionId: selected?.id ?? null,
         smaller,
+        targets: targets.map((t) => ({
+          label: t.label,
+          tag: t.tag,
+          selector: t.selector,
+          html: t.html ?? "",
+        })),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -597,6 +642,8 @@ export function Studio(props: {
     if (!res.ok)
       throw new Error(data.error || `Request failed (${res.status})`);
     setPrompt("");
+    setTargets([]);
+    setSelectMode(false);
     router.refresh(); // shows the prompt in the chat
     const runId = data.runId as string;
     const steps: PlanProgress[] = (data.steps as { title: string }[]).map(
@@ -998,7 +1045,9 @@ export function Studio(props: {
                   ? "Click an element to edit it. Links and buttons are paused while editing."
                   : commentMode
                     ? `Click anywhere on v${selected?.number} to pin a comment. Esc to cancel.`
-                    : selected?.summary}
+                    : selectMode
+                      ? "Click an element to point at it. Shift-click to add more."
+                      : selected?.summary}
               </span>
               {hasPreview && view.scale !== "dynamic" && (
                 <span className="hidden text-xs tabular-nums text-stone-500 md:inline">
@@ -1017,6 +1066,26 @@ export function Studio(props: {
                 >
                   <Expand />
                   <span className="max-sm:sr-only">Full screen</span>
+                </Button>
+              )}
+              {html && !editMode && !isImportedApp && (
+                <Button
+                  size="sm"
+                  variant={selectMode ? "default" : "ghost"}
+                  aria-pressed={selectMode}
+                  title={
+                    selectMode
+                      ? "Stop selecting (Esc)"
+                      : "Point at an element, then describe the change"
+                  }
+                  onClick={() =>
+                    selectMode ? setSelectMode(false) : startSelecting()
+                  }
+                >
+                  {selectMode ? <X /> : <MousePointer2 />}
+                  <span className="max-sm:sr-only">
+                    {selectMode ? "Done selecting" : "Select"}
+                  </span>
                 </Button>
               )}
               {hasPreview && !editMode && (
@@ -1144,6 +1213,8 @@ export function Studio(props: {
                       <PrototypeFrame
                         html={html}
                         title={`${project.name} v${selected?.number}`}
+                        editMode={selectMode}
+                        onSelectElement={pickElement}
                         commentMode={commentMode}
                         pins={pins}
                         onPick={(x, y) => {
@@ -1411,6 +1482,41 @@ export function Studio(props: {
                         ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
                         : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
                     </p>
+                  )}
+                  {targets.length > 0 && (
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                      {targets.map((t) => (
+                        <span
+                          key={t.selector}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-raspberry-200 bg-raspberry-50 pl-2.5 pr-1 text-xs font-semibold text-raspberry-800"
+                        >
+                          <MousePointer2
+                            className="size-3"
+                            aria-hidden="true"
+                          />
+                          <span className="max-w-40 truncate">
+                            {pointedName(t)}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Stop pointing at ${pointedName(t)}`}
+                            onClick={() =>
+                              setTargets((cur) =>
+                                cur.filter((x) => x.selector !== t.selector),
+                              )
+                            }
+                            className="grid size-5 place-items-center rounded-full hover:bg-raspberry-100"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </span>
+                      ))}
+                      {selectMode && targets.length < MAX_POINTED && (
+                        <span className="text-[11px] text-muted-foreground max-lg:hidden">
+                          Shift-click to add more
+                        </span>
+                      )}
+                    </div>
                   )}
                   <label htmlFor="prompt" className="sr-only">
                     {versions.length
@@ -1912,7 +2018,19 @@ export function Studio(props: {
           </Button>
         </div>
       )}
-      {!editMode && !commentMode && variants.length === 0 && (
+      {selectMode && (
+        <div className="glass mx-2 mb-2 flex shrink-0 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden">
+          <Button
+            size="lg"
+            className="flex-1"
+            onClick={() => setSelectMode(false)}
+          >
+            <X />
+            Tap an element · Cancel
+          </Button>
+        </div>
+      )}
+      {!editMode && !commentMode && !selectMode && variants.length === 0 && (
         <nav
           aria-label="Project panel"
           className="glass mx-2 mb-2 flex shrink-0 items-center rounded-full p-1 pb-[max(.25rem,env(safe-area-inset-bottom))] lg:hidden"

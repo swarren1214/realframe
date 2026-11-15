@@ -30,6 +30,10 @@ export type SelectedElement = {
   styles: Record<string, string>;
   rect: { w: number; h: number };
   label: string;
+  /** The element's markup, trimmed to 2,000 characters. */
+  html?: string;
+  /** Whether Shift was held: add to the selection instead of replacing it. */
+  shift?: boolean;
 };
 
 export type FrameHandle = {

@@ -50,10 +50,12 @@ export const AGENT_SCRIPT = `(function(){
     var r = el.getBoundingClientRect();
     return { type: 'rf:selected', rf: el.getAttribute('data-rf'), selector: pathFor(el), tag: el.tagName.toLowerCase(),
       text: leafText(el), styles: styles, rect: { w: Math.round(r.width), h: Math.round(r.height) },
-      label: (el.getAttribute('aria-label') || (el.textContent || '').trim()).slice(0, 60) }; }
+      label: (el.getAttribute('aria-label') || (el.innerText || '').trim()).slice(0, 60),
+      html: (el.outerHTML || '').replace(/<script[\\s\\S]*?<\\/script>/gi, '').slice(0, 2000) }; }
   function setEditing(on){ editing = !!on; if (!hoverBox) { hoverBox = box('#FB923C', true); selBox = box('#C2410C', false); }
     if (!editing) { selected = null; place(hoverBox, null); place(selBox, null); }
-    document.documentElement.style.cursor = editing ? 'default' : (mode ? 'crosshair' : ''); }
+    document.documentElement.style.cursor = editing ? 'default' : (mode ? 'crosshair' : '');
+    document.documentElement.style.userSelect = editing ? 'none' : ''; }
   document.addEventListener('mousemove', function(e){ if (!editing || ours(e.target)) return; place(hoverBox, e.target); }, true);
   document.addEventListener('scroll', function(){ if (editing) { place(selBox, selected); place(hoverBox, null); } }, true);
   function target(m){ if (m.rf) return [].slice.call(document.querySelectorAll('[data-rf="' + m.rf + '"]'));
@@ -62,7 +64,7 @@ export const AGENT_SCRIPT = `(function(){
   document.addEventListener('click', function(e){
     if (ours(e.target) && !(e.target.closest && e.target.closest('[data-rf-pin]'))) return;
     if (editing) { if (ours(e.target)) return; e.preventDefault(); e.stopPropagation();
-      selected = e.target; place(selBox, selected); post(describe(selected)); return; }
+      selected = e.target; place(selBox, selected); var d = describe(selected); d.shift = !!e.shiftKey; post(d); return; }
     if (!mode) return;
     if (e.target && e.target.closest && e.target.closest('[data-rf-pin]')) return;
     e.preventDefault(); e.stopPropagation(); var s = size();

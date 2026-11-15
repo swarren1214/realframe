@@ -1,4 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  messageWithPointed,
+  promptWithPointed,
+  readPointed,
+} from "@/lib/pointing";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { planBuild } from "@/lib/plan";
@@ -40,11 +45,13 @@ export async function POST(
     prompt?: string;
     baseVersionId?: string | null;
     smaller?: boolean;
+    targets?: unknown;
   };
   const read = readPrompt(body);
   if ("error" in read)
     return NextResponse.json({ error: read.error }, { status: 400 });
   const { prompt } = read;
+  const targets = readPointed(body.targets);
 
   const { current, context } = await loadBuildContext(
     supabase,
@@ -64,12 +71,13 @@ export async function POST(
   await supabase.from("messages").insert({
     project_id: id,
     role: "user",
-    content: prompt,
+    content: messageWithPointed(prompt, targets),
     created_by: user.id,
   });
 
   const { steps, usage } = await planBuild({
-    prompt,
+    prompt: promptWithPointed(prompt, targets),
+    focused: targets.length > 0,
     context,
     currentHtml: current?.html ?? null,
     smaller: body.smaller === true,
