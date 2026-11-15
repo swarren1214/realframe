@@ -160,11 +160,22 @@ export function devicesFor(settings: DeviceSettings, extra: Device[] = []) {
   );
 }
 
-export function defaultDevice(settings: DeviceSettings, extra: Device[] = []) {
+export function defaultDevice(
+  settings: DeviceSettings,
+  extra: Device[] = [],
+  /** The viewer's screen: a small one prefers a phone when the prototype allows it. */
+  screen: "small" | "large" = "large",
+) {
   const list = devicesFor(settings, extra);
+  const kind = (k: DeviceKind) => list.find((d) => d.kind === k);
+  const explicit = list.find((d) => d.id === settings.default);
+  if (explicit) return explicit;
+  // Without a set default: desktop if allowed, then phone, then tablet. On a
+  // phone-sized screen, a phone comes first.
   return (
-    list.find((d) => d.id === settings.default) ??
-    list.find((d) => d.kind === "desktop") ??
+    (screen === "small" ? kind("phone") : undefined) ??
+    kind("desktop") ??
+    kind("phone") ??
     list[0] ??
     DEVICES[0]
   );

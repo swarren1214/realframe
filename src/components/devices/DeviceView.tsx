@@ -64,7 +64,12 @@ export function useDeviceView(
   extra: Device[] = [],
 ) {
   const list = useMemo(() => devicesFor(settings, extra), [settings, extra]);
-  const fallback = defaultDevice(settings, extra);
+  // Known only in the browser, so the first render matches the server.
+  const [screen, setScreen] = useState<"small" | "large">("large");
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 639px)").matches) setScreen("small");
+  }, []);
+  const fallback = defaultDevice(settings, extra, screen);
   const [stored, setStored] = useState<Stored>({});
 
   useEffect(() => {
