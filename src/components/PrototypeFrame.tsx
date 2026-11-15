@@ -9,6 +9,7 @@ import {
 } from "react";
 import { RotateCw, TriangleAlert } from "lucide-react";
 import { withAgent } from "@/lib/agent";
+import type { Inspected, Tokens, TreeNode } from "@/lib/inspect";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,14 @@ export type FrameHandle = {
     rf?: string | null;
     selector: string;
   }) => Promise<Extracted>;
+  /** Dev mode: select or hover an element by its path, hold Alt, highlight a token's uses. */
+  inspectSelect: (path: string) => void;
+  inspectHover: (path: string | null) => void;
+  inspectAlt: (on: boolean) => void;
+  highlight: (kind: keyof Tokens | null, value?: string) => void;
+  /** Dev mode: the rendered element tree, and the design values in use. */
+  tree: () => Promise<TreeNode[]>;
+  tokens: () => Promise<Tokens>;
 };
 
 export type Extracted = {
@@ -70,6 +79,9 @@ type Props = {
   onSelectPin?: (id: string) => void;
   editMode?: boolean;
   onSelectElement?: (el: SelectedElement) => void;
+  /** Dev mode: measure and select elements instead of using the prototype. */
+  inspect?: boolean;
+  onInspect?: (el: Inspected) => void;
   route?: string;
   onRouteChange?: (hash: string) => void;
   /** Fires as the prototype scrolls; used to keep two versions in step. */
@@ -95,6 +107,8 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       route,
       onRouteChange,
       onScroll,
+      inspect = false,
+      onInspect,
       className = "",
       style,
     },
@@ -163,6 +177,8 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       route,
       onRouteChange,
       onScroll,
+      inspect,
+      onInspect,
     });
     latest.current = {
       commentMode,
@@ -174,6 +190,8 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       route,
       onRouteChange,
       onScroll,
+      inspect,
+      onInspect,
     };
 
     function post(message: unknown) {
@@ -184,8 +202,25 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       post({ type: "rf:mode", on: latest.current.commentMode });
       post({ type: "rf:pins", pins: latest.current.pins });
       post({ type: "rf:edit", on: latest.current.editMode });
+      post({ type: "rf:inspect", on: Boolean(latest.current.inspect) });
       if (typeof latest.current.route === "string")
         post({ type: "rf:route", hash: latest.current.route });
+    }
+
+    /** A request the preview answers by id. */
+    function ask(type: string) {
+      return new Promise<Record<string, unknown>>((resolve, reject) => {
+        const id = `q${++extractSeq.current}`;
+        const timer = setTimeout(() => {
+          extracting.current.delete(id);
+          reject(new Error("The preview didn't answer."));
+        }, 8000);
+        extracting.current.set(id, (m) => {
+          clearTimeout(timer);
+          resolve(m);
+        });
+        post({ type, id });
+      });
     }
 
     useImperativeHandle(handle, () => ({
@@ -197,6 +232,14 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
           ...change,
         }),
       scrollTo: (path, y) => post({ type: "rf:scroll-to", path, y }),
+      inspectSelect: (path) => post({ type: "rf:inspect-select", path }),
+      inspectHover: (path) => post({ type: "rf:inspect-hover", path }),
+      inspectAlt: (on) => post({ type: "rf:inspect-alt", on }),
+      highlight: (kind, value) =>
+        post({ type: "rf:inspect-highlight", kind, value }),
+      tree: () =>
+        ask("rf:tree").then((m) => (Array.isArray(m.nodes) ? m.nodes : [])),
+      tokens: () => ask("rf:tokens").then((m) => m.tokens as Tokens),
       extract: (target) =>
         new Promise<Extracted>((resolve, reject) => {
           const id = `x${++extractSeq.current}`;
@@ -259,7 +302,14 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
         }
         if (m?.type === "rf:route-changed" && typeof m.hash === "string")
           latest.current.onRouteChange?.(m.hash);
-        if (m?.type === "rf:extracted" && typeof m.id === "string") {
+        if (m?.type === "rf:inspected" && typeof m.path === "string")
+          latest.current.onInspect?.(m as unknown as Inspected);
+        if (
+          (m?.type === "rf:extracted" ||
+            m?.type === "rf:tree" ||
+            m?.type === "rf:tokens") &&
+          typeof m.id === "string"
+        ) {
           const done = extracting.current.get(m.id);
           extracting.current.delete(m.id);
           done?.(m as unknown as Record<string, unknown>);
@@ -273,7 +323,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
 
     useEffect(() => {
       sync();
-    }, [commentMode, pins, editMode, route]);
+    }, [commentMode, pins, editMode, route, inspect]);
 
     // Every prototype runs with an opaque origin (no allow-same-origin), so its code can't reach
     // Realframe's cookies or storage. Imported apps load by URL from their own subdomain.
