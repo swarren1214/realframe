@@ -1,4 +1,12 @@
 "use client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MAX_POINTED, pointedName } from "@/lib/pointing";
 import { useIsLarge } from "@/lib/use-media";
 import { FailureCard } from "@/components/builds/FailureCard";
@@ -112,7 +120,8 @@ import {
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
-import { RequestReviewDialog } from "@/components/reviews/RequestReviewDialog";
+import { splitEmails } from "@/components/reviews/RequestReviewDialog";
+import { requestReviewRound as raw_requestReviewRound } from "@/app/projects/review-actions";
 import { RoundCard } from "@/components/reviews/RoundCard";
 import { MAX_FIX_THREADS } from "@/lib/feedback";
 import type { ReviewRound } from "@/lib/types";
@@ -173,6 +182,7 @@ const inviteMember = unwrapped(raw_inviteMember);
 const keepVariant = unwrapped(raw_keepVariant);
 const saveVisualEdit = unwrapped(raw_saveVisualEdit);
 const publishVersion = unwrapped(raw_publishVersion);
+const requestReviewRound = unwrapped(raw_requestReviewRound);
 const removeMember = unwrapped(raw_removeMember);
 const renameProject = unwrapped(raw_renameProject);
 const restoreVersion = unwrapped(raw_restoreVersion);
@@ -294,7 +304,7 @@ export function Studio(props: {
   // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
   const large = useIsLarge();
   const [panelOpen, setPanelOpen] = useState(versions.length === 0);
-  const [reviewing, setReviewing] = useState(false);
+  const [sharing, setSharing] = useState(false);
   // A new or picked version closes the drawer so the preview shows it.
   const shownVersion = useRef(selectedId);
   useEffect(() => {
@@ -838,8 +848,12 @@ export function Studio(props: {
         />
         {project.published && live ? (
           <Badge variant="success" className="max-lg:hidden">
-            <BadgeDot />
-            Live v{live.number}
+            <BadgeDot />v{live.number} live
+            {selected &&
+            selected.id !== live.id &&
+            selected.number > live.number
+              ? ` · v${selected.number} draft`
+              : ""}
           </Badge>
         ) : (
           <Badge className="max-lg:hidden">Not published</Badge>
@@ -877,54 +891,15 @@ export function Studio(props: {
             )}
           </Link>
         </Button>
-        {project.published && (
-          <Button asChild variant="ghost" className="max-lg:hidden">
-            <a href={reviewUrl} target="_blank" rel="noreferrer">
-              <ExternalLink />
-              Review link
-            </a>
-          </Button>
-        )}
-        {isOwner && selected && (
+        {(role === "owner" || role === "editor") && (
           <Button
             variant="default"
-            loading={isBusy("publish")}
-            disabled={pending || Boolean(isLive)}
-            onClick={() =>
-              run(() => publishVersion(project.id, selected.id), "publish", {
-                title: `v${selected.number} is live`,
-                action: {
-                  label: "Copy link",
-                  onClick: () => copyWithToast(reviewUrl),
-                },
-              })
-            }
+            onClick={() => setSharing(true)}
+            disabled={!selected}
           >
-            {isLive ? <Check /> : <Rocket />}
-            <span className="max-sm:hidden">
-              {isLive
-                ? `v${selected.number} is live`
-                : `Publish v${selected.number}`}
-            </span>
-            <span className="sm:hidden">{isLive ? "Live" : "Publish"}</span>
+            <Share2 />
+            <span className="max-sm:sr-only">Share</span>
           </Button>
-        )}
-        {(role === "owner" || role === "editor") && selected && (
-          <RequestReviewDialog
-            projectId={project.id}
-            version={{ id: selected.id, number: selected.number }}
-            suggested={members
-              .filter((m) => m.role !== "editor")
-              .map((m) => m.email)}
-            open={reviewing}
-            onOpenChange={setReviewing}
-            trigger={
-              <Button variant="outline" className="max-lg:hidden">
-                <Send />
-                Request review
-              </Button>
-            }
-          />
         )}
         {(isOwner || role === "editor" || project.published) && (
           <DropdownMenu modal={false}>
@@ -940,12 +915,6 @@ export function Studio(props: {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="lg:hidden">
-                {(role === "owner" || role === "editor") && selected && (
-                  <DropdownMenuItem onSelect={() => setReviewing(true)}>
-                    <Send />
-                    Request review
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuItem asChild>
                   <Link href={`/projects/${project.id}/canvas`}>
                     <LayoutGrid />
@@ -997,6 +966,20 @@ export function Studio(props: {
           </DropdownMenu>
         )}
         <div className="max-lg:hidden">{props.accountMenu}</div>
+        <ShareDialog
+          open={sharing}
+          onOpenChange={setSharing}
+          project={project}
+          selected={selected}
+          live={live}
+          isOwner={isOwner}
+          canBuild={role === "owner" || role === "editor"}
+          members={members}
+          reviewUrl={reviewUrl}
+          pending={pending}
+          isBusy={isBusy}
+          run={run}
+        />
       </header>
       {props.teammates && (
         <TransferDialog
@@ -1353,7 +1336,6 @@ export function Studio(props: {
                       ["chat", "Chat", Sparkles, 0],
                       ["versions", "Versions", History, versions.length],
                       ["comments", "Comments", MessageSquare, openThreads],
-                      ["share", "Share", Share2, 0],
                     ] as const
                   ).map(([id, label, Icon, count]) => (
                     <TabsTrigger key={id} value={id} className="gap-1 px-1.5">
@@ -1817,18 +1799,6 @@ export function Studio(props: {
                     </section>
                   </TabsContent>
 
-                  <TabsContent value="share">
-                    <SharePanel
-                      project={project}
-                      isOwner={isOwner}
-                      members={members}
-                      reviewUrl={reviewUrl}
-                      pending={pending}
-                      isBusy={isBusy}
-                      run={run}
-                    />
-                  </TabsContent>
-
                   <TabsContent value="comments" className="space-y-1 p-3">
                     {versions.length > 0 && (
                       <Button
@@ -2092,6 +2062,7 @@ export function Studio(props: {
               key={id}
               type="button"
               onClick={() => {
+                if (id === "share") return setSharing(true);
                 setTab(id);
                 setPanelOpen(true);
               }}
@@ -2140,6 +2111,300 @@ const ACCESS = [
   },
 ] as const;
 
+/**
+ * One place to share: which version people see, who can open it, and whether
+ * to ask for approval, finished by a single action ("Publish v4 and send").
+ */
+function ShareDialog({
+  open,
+  onOpenChange,
+  project,
+  selected,
+  live,
+  isOwner,
+  canBuild,
+  members,
+  reviewUrl,
+  pending,
+  isBusy,
+  run,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: Project;
+  selected: VersionMeta | null;
+  live: VersionMeta | null;
+  isOwner: boolean;
+  canBuild: boolean;
+  members: Member[];
+  reviewUrl: string;
+  pending: boolean;
+  isBusy: (key: string) => boolean;
+  run: Run;
+}) {
+  const router = useRouter();
+  const selectedIsLive =
+    project.published && !!selected && selected.id === project.live_version_id;
+  const [makeLive, setMakeLive] = useState(true);
+  const [approval, setApproval] = useState(false);
+  const [emails, setEmails] = useState("");
+  const [due, setDue] = useState("");
+  const [rule, setRule] = useState<"all" | "any">("all");
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const list = splitEmails(emails);
+  const suggested = members
+    .filter((m) => m.role !== "editor")
+    .map((m) => m.email)
+    .filter((e) => !list.includes(e));
+
+  const publishing = isOwner && !!selected && !selectedIsLive && makeLive;
+  const asking = approval && list.length > 0 && !!selected;
+  const label =
+    publishing && asking
+      ? `Publish v${selected!.number} and send`
+      : publishing
+        ? `Publish v${selected!.number}`
+        : asking
+          ? `Send to ${list.length} reviewer${list.length === 1 ? "" : "s"}`
+          : "Done";
+
+  async function submit() {
+    if (!publishing && !asking) return onOpenChange(false);
+    setSending(true);
+    try {
+      if (publishing) await publishVersion(project.id, selected!.id);
+      if (asking) {
+        const res = await requestReviewRound({
+          projectId: project.id,
+          versionId: selected!.id,
+          emails: list,
+          note: note.trim() || undefined,
+          dueAt: due ? new Date(`${due}T23:59:00`).toISOString() : null,
+          rule,
+        });
+        notify.success(
+          `${publishing ? `v${selected!.number} is live. ` : ""}Asked ${res.reviewers} reviewer${res.reviewers === 1 ? "" : "s"} to approve it`,
+          {
+            description:
+              res.emailed === res.reviewers
+                ? "They've been emailed the link."
+                : "Email isn't set up for everyone, so send them the link too.",
+            action: {
+              label: "Copy link",
+              onClick: () => copyWithToast(reviewUrl),
+            },
+          },
+        );
+      } else {
+        notify.success(`v${selected!.number} is live`, {
+          action: {
+            label: "Copy link",
+            onClick: () => copyWithToast(reviewUrl),
+          },
+        });
+      }
+      setApproval(false);
+      setEmails("");
+      setNote("");
+      setDue("");
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : "That didn't work.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] gap-5 pb-0 [&>*]:min-w-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-w-full max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Share {project.name}</DialogTitle>
+          <DialogDescription>
+            Pick what people see, who can open it, and whether you want an
+            approval.
+          </DialogDescription>
+        </DialogHeader>
+
+        <section className="space-y-2">
+          <Eyebrow>What people see</Eyebrow>
+          {selected ? (
+            <div className="flex items-center gap-2.5 rounded-2xl border border-stone-200 bg-card px-3.5 py-2.5">
+              <span className="text-[13px] font-semibold">
+                v{selected.number}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs text-stone-600">
+                {selected.summary || "Selected version"}
+              </span>
+              {selectedIsLive ? (
+                <Badge variant="success">
+                  <BadgeDot />
+                  Live
+                </Badge>
+              ) : isOwner ? (
+                <SwitchRow
+                  id="share-make-live"
+                  label={<span className="text-xs">Make live</span>}
+                  checked={makeLive}
+                  onCheckedChange={setMakeLive}
+                  className="border-0 bg-transparent p-0"
+                />
+              ) : (
+                <Badge>Draft</Badge>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-stone-600">Build a version first.</p>
+          )}
+          <p className="text-[11px] text-stone-500">
+            {live
+              ? `Now live: v${live.number}. People on the link always see the live version.`
+              : "Nothing is live yet, so the link doesn't work until you publish."}
+            {!isOwner && " Only the owner can change what's live."}
+          </p>
+        </section>
+
+        {(project.published || publishing) && (
+          <section className="space-y-2">
+            <Eyebrow>Link</Eyebrow>
+            <div className="flex gap-1.5">
+              <Input
+                readOnly
+                value={reviewUrl}
+                aria-label="Review link"
+                className="text-xs text-stone-600"
+              />
+              <Button
+                variant="outline"
+                onClick={() => copyWithToast(reviewUrl)}
+              >
+                <Copy />
+                Copy
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {isOwner && (
+          <SharePanel
+            hideLink
+            project={project}
+            isOwner={isOwner}
+            members={members}
+            reviewUrl={reviewUrl}
+            pending={pending}
+            isBusy={isBusy}
+            run={run}
+          />
+        )}
+
+        {canBuild && selected && (
+          <section className="space-y-3 rounded-2xl bg-stone-50 p-3.5">
+            <SwitchRow
+              id="share-approval"
+              label="Ask for approval"
+              description="Reviewers get an email and approve or ask for changes. Reviewers are free."
+              checked={approval}
+              onCheckedChange={setApproval}
+              className="border-0 bg-transparent p-0"
+            />
+            {approval && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-reviewers">Reviewers</Label>
+                  <Textarea
+                    id="share-reviewers"
+                    rows={2}
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    placeholder="maya@company.com, client@example.com"
+                  />
+                  {suggested.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggested.slice(0, 8).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() =>
+                            setEmails((v) =>
+                              v.trim() ? `${v.trim()}, ${m}` : m,
+                            )
+                          }
+                          className="min-h-8 rounded-full bg-card px-3 text-xs text-stone-700 shadow-[inset_0_0_0_1px_var(--color-border)] hover:bg-stone-100"
+                        >
+                          + {m}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="share-due">Due (optional)</Label>
+                    <Input
+                      id="share-due"
+                      type="date"
+                      value={due}
+                      onChange={(e) => setDue(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="share-rule">Approved when</Label>
+                    <Select
+                      value={rule}
+                      onValueChange={(v) => setRule(v as "all" | "any")}
+                    >
+                      <SelectTrigger id="share-rule">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Everyone approves</SelectItem>
+                        <SelectItem value="any">Anyone approves</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-note">Note (optional)</Label>
+                  <Textarea
+                    id="share-note"
+                    rows={2}
+                    maxLength={2000}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="What should they look at?"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        <DialogFooter className="sticky bottom-0 -mx-5 border-t border-stone-100 bg-card px-5 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="mr-auto"
+          >
+            Close
+          </Button>
+          <Button
+            variant="default"
+            loading={sending}
+            disabled={approval && list.length === 0 && !publishing}
+            onClick={submit}
+          >
+            {asking ? <Send /> : publishing ? <Rocket /> : <Check />}
+            {label}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SharePanel({
   project,
   isOwner,
@@ -2148,7 +2413,9 @@ function SharePanel({
   pending,
   isBusy,
   run,
+  hideLink = false,
 }: {
+  hideLink?: boolean;
   project: Project;
   isOwner: boolean;
   members: Member[];
@@ -2176,60 +2443,62 @@ function SharePanel({
   }
 
   return (
-    <div className="space-y-6 p-4">
-      <section className="space-y-2">
-        <Eyebrow>Review link</Eyebrow>
-        {project.published ? (
-          <>
-            <div className="flex gap-1.5">
-              <Input
-                readOnly
-                value={reviewUrl}
-                aria-label="Review link"
-                className="text-xs text-stone-600"
-              />
+    <div className={cn("space-y-6", hideLink ? "" : "p-4")}>
+      {!hideLink && (
+        <section className="space-y-2">
+          <Eyebrow>Review link</Eyebrow>
+          {project.published ? (
+            <>
+              <div className="flex gap-1.5">
+                <Input
+                  readOnly
+                  value={reviewUrl}
+                  aria-label="Review link"
+                  className="text-xs text-stone-600"
+                />
+                <Button
+                  size="icon"
+                  aria-label={copied ? "Copied" : "Copy link"}
+                  title={copied ? "Copied" : "Copy link"}
+                  onClick={async () => {
+                    await copyWithToast(reviewUrl);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                >
+                  {copied ? <Check /> : <Copy />}
+                </Button>
+              </div>
               <Button
-                size="icon"
-                aria-label={copied ? "Copied" : "Copy link"}
-                title={copied ? "Copied" : "Copy link"}
-                onClick={async () => {
-                  await copyWithToast(reviewUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
+                variant="ghost"
+                size="sm"
+                loading={isBusy("unpublish")}
+                disabled={pending}
+                onClick={() =>
+                  run(() => unpublish(project.id), "unpublish", {
+                    title: "Review link turned off",
+                    undo: project.live_version_id
+                      ? async () => {
+                          await publishVersion(
+                            project.id,
+                            project.live_version_id!,
+                          );
+                          router.refresh();
+                        }
+                      : undefined,
+                  })
+                }
               >
-                {copied ? <Check /> : <Copy />}
+                Unpublish
               </Button>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              loading={isBusy("unpublish")}
-              disabled={pending}
-              onClick={() =>
-                run(() => unpublish(project.id), "unpublish", {
-                  title: "Review link turned off",
-                  undo: project.live_version_id
-                    ? async () => {
-                        await publishVersion(
-                          project.id,
-                          project.live_version_id!,
-                        );
-                        router.refresh();
-                      }
-                    : undefined,
-                })
-              }
-            >
-              Unpublish
-            </Button>
-          </>
-        ) : (
-          <p className="text-xs text-stone-600">
-            Publish a version (top right) to get a review link.
-          </p>
-        )}
-      </section>
+            </>
+          ) : (
+            <p className="text-xs text-stone-600">
+              Publish a version (top right) to get a review link.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="space-y-2">
         <Eyebrow>Address</Eyebrow>
