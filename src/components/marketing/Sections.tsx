@@ -14,6 +14,7 @@ import {
 import { Mark } from "@/components/Logo";
 import { PLANS } from "@/lib/plans";
 import { HeroSignup } from "./HeroSignup";
+import { HOME_FAQ } from "./faq-content";
 
 export function MarketingHeader() {
   return (
@@ -36,12 +37,12 @@ export function MarketingHeader() {
           >
             How it works
           </a>
-          <a
-            href="/#review"
+          <Link
+            href="/faq"
             className="hidden min-h-11 items-center rounded-full px-3.5 text-stone-600 hover:text-stone-900 sm:inline-flex"
           >
-            Review
-          </a>
+            FAQ
+          </Link>
           <Link
             href="/pricing"
             className="inline-flex min-h-11 items-center rounded-full px-3.5 text-stone-600 hover:text-stone-900"
@@ -85,7 +86,15 @@ export function Hero() {
         <HeroSignup />
         <p className="mt-3 text-[13px] text-stone-500">
           No password, no card. {PLANS.free.monthlyBuilds} free builds every
-          month.
+          month. By signing up you agree to the{" "}
+          <Link href="/terms" className="underline underline-offset-2">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline underline-offset-2">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </div>
       <HeroArt />
@@ -352,29 +361,6 @@ export function Features() {
   );
 }
 
-export const FAQ = [
-  {
-    q: "Who needs a paid seat?",
-    a: "Only people who build: anyone who prompts, edits or publishes. Reviewers, clients and stakeholders comment and approve for free with an account, or with a password and no account at all.",
-  },
-  {
-    q: "How does AI usage billing work?",
-    a: `Pro and each Team builder include $${PLANS.pro.includedUsdPerMonth} of AI usage every month. Past that, you pay what the model costs us plus 50%, added to your next invoice. A build that fails costs nothing.`,
-  },
-  {
-    q: "Do annual plans include usage every month?",
-    a: `Yes. The $${PLANS.pro.includedUsdPerMonth} allowance resets monthly whether you pay monthly or yearly, and any usage past it is billed at the end of each month.`,
-  },
-  {
-    q: "Can I bring my own code?",
-    a: "Yes. Import a file or folder, or connect a GitHub repo. Pushes to the branch you choose build and publish automatically.",
-  },
-  {
-    q: "Can I cancel any time?",
-    a: "Yes. You keep Pro until the end of the period you paid for, then move to Free with your prototypes intact.",
-  },
-];
-
 export function Faq() {
   return (
     <section
@@ -389,7 +375,7 @@ export function Faq() {
         Questions
       </h2>
       <div className="space-y-3">
-        {FAQ.map((f) => (
+        {HOME_FAQ.map((f) => (
           <details
             key={f.q}
             className="group rounded-2xl border border-stone-200 bg-card px-5 py-4 [&_summary::-webkit-details-marker]:hidden"
@@ -409,6 +395,14 @@ export function Faq() {
           </details>
         ))}
       </div>
+      <p className="mt-5 text-[15px]">
+        <Link
+          href="/faq"
+          className="font-semibold text-raspberry-700 hover:underline"
+        >
+          See all questions
+        </Link>
+      </p>
     </section>
   );
 }
@@ -443,11 +437,29 @@ export function MarketingFooter() {
           >
             Pricing
           </Link>
-          <a
-            href="/#faq"
+          <Link
+            href="/faq"
             className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
           >
             FAQ
+          </Link>
+          <Link
+            href="/privacy"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
+            Privacy
+          </Link>
+          <Link
+            href="/terms"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
+            Terms
+          </Link>
+          <a
+            href="mailto:support@hearthapps.com"
+            className="hover:text-stone-900"
+          >
+            Contact
           </a>
           <Link
             href="/login"
