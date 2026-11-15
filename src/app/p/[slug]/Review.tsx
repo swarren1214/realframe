@@ -13,7 +13,10 @@ import {
   Send,
   Undo2,
   X,
+  Columns2,
+  Sparkles,
 } from "lucide-react";
+import { notify } from "@/lib/toast";
 import { Mark } from "@/components/Logo";
 import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +43,11 @@ import {
   type Thread,
 } from "@/lib/types";
 import { RoundBanner } from "@/components/reviews/RoundBanner";
+import {
+  CompareView,
+  type CompareContent,
+  type CompareVersion,
+} from "@/components/compare/CompareView";
 import { readSettings, type Device } from "@/lib/devices";
 import {
   DevicePicker,
@@ -112,6 +120,54 @@ export function Review({
     return () => window.removeEventListener("keydown", onKey);
   }, [panelOpen]);
   const [commentMode, setCommentMode] = useState(false);
+
+  // Compare: the live version against anything before it.
+  const earlier = Object.entries(versionNumbers).filter(
+    ([, n]) => n < version.number,
+  );
+  const canCompare = role !== "public" && earlier.length > 0;
+  const [compareList, setCompareList] = useState<CompareVersion[] | null>(null);
+  const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
+  const [changed, setChanged] = useState<{ id: string; number: number } | null>(null);
+  const seenKey = `rf_seen_${project.id}`;
+  useEffect(() => {
+    if (!canCompare) return;
+    try {
+      const seen = Number(localStorage.getItem(seenKey) ?? 0);
+      const match = earlier.find(([, n]) => n === seen);
+      if (seen && seen < version.number && match)
+        setChanged({ id: match[0], number: seen });
+      localStorage.setItem(seenKey, String(version.number));
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version.number]);
+
+  async function openCompare(before?: string) {
+    setCommentMode(false);
+    setDraft(null);
+    setPanelOpen(false);
+    let list = compareList;
+    if (!list) {
+      const res = await fetch(`/api/p/${project.slug}/versions`);
+      const data = await res.json().catch(() => ({}));
+      list = (data.versions ?? []) as CompareVersion[];
+      setCompareList(list);
+    }
+    const older = before ?? list.find((v) => v.number < version.number)?.id;
+    if (!older) {
+      notify.error("There's no earlier version to compare with.");
+      return;
+    }
+    setChanged(null);
+    setCompare({ before: older, after: version.id });
+  }
+
+  async function loadForCompare(id: string): Promise<CompareContent> {
+    if (id === version.id) return { html: version.html, src: version.src };
+    const res = await fetch(`/api/p/${project.slug}/versions?v=${id}`);
+    if (!res.ok) throw new Error("Couldn't load it");
+    return (await res.json()) as CompareContent;
+  }
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [draftText, setDraftText] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -332,12 +388,24 @@ export function Review({
             </a>
           </Button>
         )}
+        {canCompare && !presenting && (
+          <Button
+            variant={compare ? "default" : "ghost"}
+            aria-pressed={Boolean(compare)}
+            title="Compare with an earlier version"
+            onClick={() => (compare ? setCompare(null) : openCompare())}
+          >
+            <Columns2 />
+            <span className="max-lg:sr-only">Compare</span>
+          </Button>
+        )}
         {commenter && (
           <Button
             variant={commentMode ? "default" : "outline"}
             className="max-lg:hidden"
             aria-pressed={commentMode}
             onClick={() => {
+              setCompare(null);
               setCommentMode((m) => !m);
               setDraft(null);
             }}
@@ -371,6 +439,29 @@ export function Review({
         />
       )}
 
+      {changed && !compare && !presenting && (
+        <div
+          role="status"
+          className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-3xl bg-glow-soft px-4 py-2.5 text-[13px] text-raspberry-900 lg:mx-3"
+        >
+          <Sparkles className="size-4 shrink-0 text-raspberry-700" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            Updated since you last looked: <b>v{changed.number}</b> → <b>v{version.number}</b>
+          </span>
+          <Button size="sm" variant="default" onClick={() => openCompare(changed.id)}>
+            <Columns2 />
+            See what changed
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Dismiss"
+            onClick={() => setChanged(null)}
+          >
+            <X />
+          </Button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 gap-3 p-2 lg:p-3">
         <main
           className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-2 lg:p-4"
@@ -402,6 +493,15 @@ export function Review({
               presenting && PRESENT_FRAME_CLASS,
             )}
           >
+            {compare && compareList ? (
+              <CompareView
+                versions={compareList}
+                initial={compare}
+                load={loadForCompare}
+                view={view}
+                onClose={() => setCompare(null)}
+              />
+            ) : (
             <DeviceStage
               view={view}
               presenting={presenting}
@@ -423,6 +523,7 @@ export function Review({
                 }}
               />
             </DeviceStage>
+            )}
           </div>
           {draft && (
             <form

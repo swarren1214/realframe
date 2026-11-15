@@ -12,6 +12,7 @@ export type BuildRun = {
   base_version_id: string | null;
   prompt: string;
   steps: PlanStep[];
+  references: unknown;
   next_step: number;
   running_step: number | null;
   working_html: string | null;

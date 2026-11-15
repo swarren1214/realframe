@@ -61,7 +61,7 @@ export default async function StudioPage({
       .order("number", { ascending: false }),
     supabase
       .from("messages")
-      .select("id, role, content, version_id, created_at")
+      .select("id, role, content, version_id, created_at, attachments")
       .eq("project_id", id)
       .order("created_at"),
     role === "owner"

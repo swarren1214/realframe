@@ -41,6 +41,8 @@ export type FrameHandle = {
     target: { rf: string | null; selector: string },
     change: { styles?: Record<string, string>; text?: string },
   ) => void;
+  /** Scrolls the same element (by path) to a fraction of its scrollable height. */
+  scrollTo: (path: string, y: number) => void;
 };
 
 type Props = {
@@ -57,6 +59,8 @@ type Props = {
   onSelectElement?: (el: SelectedElement) => void;
   route?: string;
   onRouteChange?: (hash: string) => void;
+  /** Fires as the prototype scrolls; used to keep two versions in step. */
+  onScroll?: (path: string, y: number) => void;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -77,6 +81,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       onSelectElement,
       route,
       onRouteChange,
+      onScroll,
       className = "",
       style,
     },
@@ -139,6 +144,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       onSelectElement,
       route,
       onRouteChange,
+      onScroll,
     });
     latest.current = {
       commentMode,
@@ -149,6 +155,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
       onSelectElement,
       route,
       onRouteChange,
+      onScroll,
     };
 
     function post(message: unknown) {
@@ -171,6 +178,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
           selector: target.selector,
           ...change,
         }),
+      scrollTo: (path, y) => post({ type: "rf:scroll-to", path, y }),
     }));
 
     useEffect(() => {
@@ -182,6 +190,7 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
           y?: number;
           id?: string;
           hash?: string;
+          path?: string;
         } & Partial<SelectedElement>;
         if (m?.type === "rf:ready") {
           sync();
@@ -204,6 +213,8 @@ export const PrototypeFrame = forwardRef<FrameHandle, Props>(
         }
         if (m?.type === "rf:route-changed" && typeof m.hash === "string")
           latest.current.onRouteChange?.(m.hash);
+        if (m?.type === "rf:scroll" && typeof m.y === "number")
+          latest.current.onScroll?.(String(m.path ?? ""), m.y);
       }
       window.addEventListener("message", onMessage);
       return () => window.removeEventListener("message", onMessage);

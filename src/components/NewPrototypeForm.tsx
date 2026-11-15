@@ -1,5 +1,11 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  AttachButton,
+  ReferenceTray,
+  useReferences,
+} from "@/components/references/references";
 import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createProject } from "@/app/projects/actions";
@@ -18,6 +24,13 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
   const [pending, setPending] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const left = MAX_PROMPT - text.length;
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    createClient()
+      .auth.getSession()
+      .then(({ data }) => setUserId(data.session?.user.id ?? null));
+  }, []);
+  const refs = useReferences(userId ? `pending/${userId}` : null);
 
   function grow(el: HTMLTextAreaElement) {
     el.style.height = "auto";
@@ -33,13 +46,19 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
           if (nameFromPrompt(text).isPrompt)
             sessionStorage.setItem(
               START_PROMPT_KEY,
-              JSON.stringify({ prompt: text.trim(), at: Date.now() }),
+              JSON.stringify({
+                prompt: text.trim(),
+                at: Date.now(),
+                references: refs.ready,
+              }),
             );
         } catch {}
         await createProject(fd);
       }}
+      {...refs.handlers}
       className="glass mt-5 rounded-[1.75rem] p-2 transition-[box-shadow] focus-within:ring-4 focus-within:ring-raspberry-100"
     >
+      <ReferenceTray refs={refs} />
       <label htmlFor="new-prompt" className="sr-only">
         Describe a new prototype
       </label>
@@ -64,6 +83,7 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
         className="block max-h-80 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed outline-none placeholder:text-stone-400"
       />
       <div className="flex flex-wrap items-center gap-2 pl-1">
+        <AttachButton refs={refs} disabled={!userId || pending} />
         {controls}
         <div className="flex-1" />
         {left < 1000 && (
@@ -84,7 +104,7 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
           type="submit"
           size="lg"
           loading={pending}
-          disabled={!text.trim()}
+          disabled={!text.trim() || refs.uploading}
         >
           <ArrowUp />
           Create

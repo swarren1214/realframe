@@ -39,6 +39,7 @@ export type Message = {
   content: string;
   version_id: string | null;
   created_at: string;
+  attachments?: { path: string; name: string; type: string }[];
 };
 
 export type Member = {

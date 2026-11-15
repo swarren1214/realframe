@@ -12,11 +12,23 @@ import { useIsLarge } from "@/lib/use-media";
 import { FailureCard } from "@/components/builds/FailureCard";
 import { isFailureMessage } from "@/lib/failures";
 import { MAX_PROMPT, START_PROMPT_KEY } from "@/lib/prompt-shared";
+import {
+  CompareView,
+  type CompareContent,
+} from "@/components/compare/CompareView";
+import {
+  AttachButton,
+  MessageAttachments,
+  ReferenceTray,
+  useReferences,
+  type Reference,
+} from "@/components/references/references";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUp,
+  Columns2,
   Ellipsis,
   GitCommitHorizontal,
   Boxes,
@@ -353,6 +365,8 @@ export function Studio(props: {
   const [selectMode, setSelectMode] = useState(false);
   const [copying, setCopying] = useState(false);
   const [targets, setTargets] = useState<SelectedElement[]>([]);
+  const refs = useReferences(project.id);
+  const [compare, setCompare] = useState<{ before: string; after: string } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
@@ -386,6 +400,36 @@ export function Studio(props: {
   const src = selected && isImportedApp ? srcCache[selected.id] : undefined;
   const hasPreview = Boolean(html || src);
   const editor = useVisualEditor(editMode ? html : null);
+
+  /** Opens Compare: `after` against `before`, or the version just before it. */
+  function openCompare(after?: string, before?: string) {
+    const a = after ?? selected?.id;
+    const i = versions.findIndex((v) => v.id === a);
+    if (i < 0 || versions.length < 2) return;
+    const b = before ?? versions[i + 1]?.id ?? versions[i - 1]?.id;
+    if (!a || !b) return;
+    const [newer, older] =
+      versions.findIndex((v) => v.id === b) > i ? [a, b] : [b, a];
+    setSelectMode(false);
+    setCommentMode(false);
+    setPanelOpen(false);
+    setCompare({ before: older, after: newer });
+  }
+
+  async function loadForCompare(id: string): Promise<CompareContent> {
+    const v = versions.find((x) => x.id === id);
+    if (v?.kind === "bundle")
+      return { src: srcCache[id] ?? (await contentUrl(id)) };
+    if (htmlCache[id]) return { html: htmlCache[id] };
+    const { data, error } = await supabase
+      .from("versions")
+      .select("html")
+      .eq("id", id)
+      .single();
+    if (error || !data) throw new Error("Couldn't load it");
+    setHtmlCache((c) => ({ ...c, [id]: data.html }));
+    return { html: data.html as string };
+  }
 
   function exitEdit() {
     editor.reset();
@@ -462,6 +506,7 @@ export function Studio(props: {
   }
 
   function startSelecting() {
+    setCompare(null);
     setEditMode(false);
     setCommentMode(false);
     setDraft(null);
@@ -470,6 +515,7 @@ export function Studio(props: {
   }
 
   function startCommenting() {
+    setCompare(null);
     setSelectMode(false);
     setEditMode(false);
     setDraft(null);
@@ -608,7 +654,7 @@ export function Studio(props: {
     if (!new URLSearchParams(window.location.search).has("start")) return;
     started.current = true;
     window.history.replaceState(null, "", window.location.pathname);
-    let stash: { prompt?: string; at?: number } | null = null;
+    let stash: { prompt?: string; at?: number; references?: Reference[] } | null = null;
     try {
       stash = JSON.parse(sessionStorage.getItem(START_PROMPT_KEY) ?? "null");
       sessionStorage.removeItem(START_PROMPT_KEY);
@@ -617,18 +663,23 @@ export function Studio(props: {
     if (!text || Date.now() - (stash?.at ?? 0) > 5 * 60_000) return;
     if (versions.length > 0 || messages.length > 0) return;
     setPrompt(text);
-    void generate(undefined, text);
+    void generate(undefined, text, { references: stash?.references });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function generate(
     e?: React.FormEvent,
     override?: string,
-    opts: { smaller?: boolean } = {},
+    opts: { smaller?: boolean; references?: Reference[] } = {},
   ) {
     e?.preventDefault();
     const text = (override ?? prompt).trim();
     if (!text || busy || isImportedApp) return;
+    if (refs.uploading) {
+      notify.info("Still attaching references", "Try again in a moment.");
+      return;
+    }
+    const attached = opts.references ?? (override ? [] : refs.ready);
     setBusy(true);
     setElapsed(0);
     setError("");
@@ -638,8 +689,9 @@ export function Studio(props: {
     const startedAt = Date.now();
     const many = variantCount > 1;
     try {
-      if (many) await runVariants(text);
-      else await runPlanned(text, opts.smaller);
+      if (many) await runVariants(text, attached);
+      else await runPlanned(text, opts.smaller, attached);
+      if (!override) refs.clear();
       // Only worth a toast if they looked away while it built.
       if (document.hidden || Date.now() - startedAt > 20_000)
         notify.success(
@@ -658,7 +710,7 @@ export function Studio(props: {
     }
   }
 
-  async function runVariants(text: string) {
+  async function runVariants(text: string, references: Reference[] = []) {
     const res = await fetch(`/api/projects/${project.id}/variants`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -666,6 +718,7 @@ export function Studio(props: {
         prompt: text,
         baseVersionId: selected?.id ?? null,
         count: variantCount,
+        references,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -679,7 +732,11 @@ export function Studio(props: {
    * Plan, then build step by step: the server breaks the request into ordered steps and
    * each one is built on top of the last, one request per step.
    */
-  async function runPlanned(text: string, smaller = false) {
+  async function runPlanned(
+    text: string,
+    smaller = false,
+    references: Reference[] = [],
+  ) {
     setPlanning(true);
     const res = await fetch(`/api/projects/${project.id}/plan`, {
       method: "POST",
@@ -688,6 +745,7 @@ export function Studio(props: {
         prompt: text,
         baseVersionId: selected?.id ?? null,
         smaller,
+        references,
         targets: targets.map((t) => ({
           label: t.label,
           tag: t.tag,
@@ -1086,6 +1144,18 @@ export function Studio(props: {
                   {view.scale === "fit" ? `Fit · ${measure.percent}%` : "100%"}
                 </span>
               )}
+              {versions.length > 1 && !editMode && (
+                <Button
+                  size="sm"
+                  variant={compare ? "default" : "ghost"}
+                  aria-pressed={Boolean(compare)}
+                  title="Compare two versions"
+                  onClick={() => (compare ? setCompare(null) : openCompare())}
+                >
+                  <Columns2 />
+                  <span className="max-sm:sr-only">Compare</span>
+                </Button>
+              )}
               {hasPreview && !editMode && (
                 <Button
                   size="sm"
@@ -1140,7 +1210,7 @@ export function Studio(props: {
                 <Button
                   size="sm"
                   aria-pressed={editMode}
-                  onClick={() => (editMode ? exitEdit() : setEditMode(true))}
+                  onClick={() => (editMode ? exitEdit() : (setCompare(null), setEditMode(true)))}
                 >
                   {editMode ? <X /> : <PencilRuler />}
                   <span className="max-sm:sr-only">
@@ -1211,7 +1281,19 @@ export function Studio(props: {
                 presenting && hasPreview && PRESENT_FRAME_CLASS,
               )}
             >
-              {hasPreview ? (
+              {compare ? (
+                <CompareView
+                  versions={versions.map((v) => ({
+                    id: v.id,
+                    number: v.number,
+                    summary: v.summary,
+                  }))}
+                  initial={compare}
+                  load={loadForCompare}
+                  view={view}
+                  onClose={() => setCompare(null)}
+                />
+              ) : hasPreview ? (
                 <DeviceStage
                   view={view}
                   presenting={presenting}
@@ -1453,6 +1535,7 @@ export function Studio(props: {
                         key={m.id}
                         className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
                       >
+                        <MessageAttachments items={m.attachments ?? []} />
                         {m.content}
                       </div>
                     ) : (
@@ -1572,7 +1655,11 @@ export function Studio(props: {
                       ? `Describe a change to v${selected?.number ?? ""}`
                       : "Describe your prototype"}
                   </label>
-                  <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
+                  <div
+                    {...refs.handlers}
+                    className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100"
+                  >
+                    <ReferenceTray refs={refs} />
                     <textarea
                       id="prompt"
                       rows={3}
@@ -1591,6 +1678,11 @@ export function Studio(props: {
                       className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
                     />
                     <div className="flex items-center gap-1.5">
+                      <AttachButton
+                        refs={refs}
+                        disabled={busy || isImportedApp}
+                        className="size-8"
+                      />
                       {(props.designSystems?.length ?? 0) > 0 && (
                         <Select
                           value={dsId ?? "none"}
@@ -1806,6 +1898,11 @@ export function Studio(props: {
                                 restoring={isBusy(`restore-${v.id}`)}
                                 disabled={pending}
                                 onSelect={() => setSelectedId(v.id)}
+                                onCompare={
+                                  versions.length > 1
+                                    ? () => openCompare(v.id)
+                                    : undefined
+                                }
                                 onRestore={() =>
                                   run(
                                     () => restoreVersion(project.id, v.id),
@@ -2906,6 +3003,7 @@ function VersionItem({
   disabled,
   onSelect,
   onRestore,
+  onCompare,
   designSystem,
 }: {
   /** The design system this version was built with, if any. */
@@ -2918,6 +3016,7 @@ function VersionItem({
   disabled: boolean;
   onSelect: () => void;
   onRestore: () => void;
+  onCompare?: () => void;
 }) {
   const summary = v.summary ?? "";
   const long = summary.length > 90;
@@ -2994,17 +3093,25 @@ function VersionItem({
           )
         )}
       </button>
-      {selected && canRestore && (
-        <div className="px-3 pb-3">
-          <Button
-            size="sm"
-            loading={restoring}
-            disabled={disabled}
-            onClick={onRestore}
-          >
-            <RotateCcw />
-            Restore as new version
-          </Button>
+      {selected && (canRestore || onCompare) && (
+        <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+          {onCompare && (
+            <Button size="sm" variant="outline" onClick={onCompare}>
+              <Columns2 />
+              Compare
+            </Button>
+          )}
+          {canRestore && (
+            <Button
+              size="sm"
+              loading={restoring}
+              disabled={disabled}
+              onClick={onRestore}
+            >
+              <RotateCcw />
+              Restore as new version
+            </Button>
+          )}
         </div>
       )}
     </motion.li>

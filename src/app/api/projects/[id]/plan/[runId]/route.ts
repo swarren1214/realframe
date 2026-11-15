@@ -1,3 +1,4 @@
+import { readReferences, referenceBlocks } from "@/lib/references";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -99,8 +100,12 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const currentHtml = run.working_html ?? current?.html ?? null;
 
   try {
+    const references = await referenceBlocks(
+      readReferences(run.references, run.project_id, run.user_id),
+    );
     const result = await generatePrototype({
       prompt: stepPrompt(run.prompt, steps, index),
+      references,
       context,
       currentHtml,
       history,

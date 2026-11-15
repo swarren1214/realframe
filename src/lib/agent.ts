@@ -81,7 +81,20 @@ export const AGENT_SCRIPT = `(function(){
         if (m.styles) Object.keys(m.styles).forEach(function(k){ el.style[k] = m.styles[k]; });
         if (typeof m.text === 'string') el.textContent = m.text; });
       if (selected) { place(selBox, selected); post(describe(selected)); } }
+    if (m.type === 'rf:scroll-to' && typeof m.y === 'number') { syncUntil = Date.now() + 200;
+      var se = m.path ? byPath(m.path) : (document.scrollingElement || document.documentElement);
+      if (se) se.scrollTop = m.y * Math.max(0, se.scrollHeight - se.clientHeight); }
     if (m.type === 'rf:route' && typeof m.hash === 'string' && location.hash !== m.hash) { location.hash = m.hash; } });
+  // Compare view: report scrolling (as a fraction of the scrollable height) so the other side can follow.
+  var syncUntil = 0, scrollQueued = false;
+  function pathOf(el){ var parts = []; while (el && el !== document.body && el.parentElement) { parts.unshift(Array.prototype.indexOf.call(el.parentElement.children, el)); el = el.parentElement; } return parts.join('.'); }
+  function byPath(path){ var el = document.body; var parts = path.split('.'); for (var i = 0; i < parts.length && el; i++) el = el.children[+parts[i]]; return el || null; }
+  document.addEventListener('scroll', function(e){ if (Date.now() < syncUntil || scrollQueued) return; scrollQueued = true; var t = e.target;
+    requestAnimationFrame(function(){ scrollQueued = false;
+      var whole = t === document || t === document.documentElement || t === document.body;
+      var el = whole ? (document.scrollingElement || document.documentElement) : t;
+      var max = el.scrollHeight - el.clientHeight;
+      post({ type: 'rf:scroll', path: whole ? '' : pathOf(t), y: max > 0 ? el.scrollTop / max : 0 }); }); }, true);
   window.addEventListener('hashchange', function(){ post({ type: 'rf:route-changed', hash: location.hash }); });
   window.addEventListener('resize', function(){ draw(); if (editing) place(selBox, selected); });
   function ready(){ post({ type: 'rf:ready', hash: location.hash }); }

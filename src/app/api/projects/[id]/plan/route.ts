@@ -1,3 +1,4 @@
+import { readReferences } from "@/lib/references";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   messageWithPointed,
@@ -46,12 +47,14 @@ export async function POST(
     baseVersionId?: string | null;
     smaller?: boolean;
     targets?: unknown;
+    references?: unknown;
   };
   const read = readPrompt(body);
   if ("error" in read)
     return NextResponse.json({ error: read.error }, { status: 400 });
   const { prompt } = read;
   const targets = readPointed(body.targets);
+  const references = readReferences(body.references, id, user.id);
 
   const { current, context } = await loadBuildContext(
     supabase,
@@ -73,10 +76,13 @@ export async function POST(
     role: "user",
     content: messageWithPointed(prompt, targets),
     created_by: user.id,
+    attachments: references,
   });
 
   const { steps, usage } = await planBuild({
-    prompt: promptWithPointed(prompt, targets),
+    prompt: references.length
+      ? `${promptWithPointed(prompt, targets)}\n\n(The person attached ${references.length} reference ${references.length === 1 ? "image" : "images"}; every step will see ${references.length === 1 ? "it" : "them"}.)`
+      : promptWithPointed(prompt, targets),
     focused: targets.length > 0,
     context,
     currentHtml: current?.html ?? null,
@@ -92,6 +98,7 @@ export async function POST(
       base_version_id: current?.id ?? null,
       prompt,
       steps,
+      references,
       input_tokens: usage.input,
       output_tokens: usage.output,
       cost_micros: usage.costMicros,
