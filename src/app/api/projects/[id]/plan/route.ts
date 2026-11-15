@@ -8,6 +8,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { planBuild } from "@/lib/plan";
+import { startRunStep } from "@/lib/plan-runner";
 import {
   IMPORTED_APP_MESSAGE,
   finishBuild,
@@ -19,8 +20,9 @@ import {
 export const maxDuration = 60;
 
 /**
- * Start a planned build: claim one build, break the request into ordered steps, and
- * return them. The client then runs each step in turn with POST ./plan/[runId].
+ * Start a planned build: claim one build, break the request into ordered steps, start the
+ * first step on the server and return the steps. The steps run in the background, one after
+ * another (see lib/plan-runner); the page watches the run's row for progress.
  */
 export async function POST(
   request: NextRequest,
@@ -113,8 +115,14 @@ export async function POST(
     );
   }
 
+  const runId = (run as { id: string }).id;
+  // If this call is lost, the page asks for the step again (POST ./plan/[runId]).
+  await startRunStep(runId, request.nextUrl.origin).catch((e) =>
+    console.error("plan start", e),
+  );
+
   return NextResponse.json({
-    runId: (run as { id: string }).id,
+    runId,
     steps: steps.map((s) => ({ title: s.title })),
   });
 }

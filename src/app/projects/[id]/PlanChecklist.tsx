@@ -12,42 +12,6 @@ export type PlanProgress = {
   chars?: number;
 };
 
-/**
- * Reads a step's answer: progress lines while it builds, then the result. Falls back to a plain
- * JSON answer if the server sent one.
- */
-export async function readStep(
-  res: Response,
-  onProgress: (chars: number) => void,
-): Promise<{ status: number; body: Record<string, unknown> }> {
-  if (!res.body || !res.headers.get("content-type")?.includes("ndjson"))
-    return { status: res.status, body: await res.json().catch(() => ({})) };
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (value) buf += decoder.decode(value, { stream: true });
-    let nl;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line) continue;
-      const msg = JSON.parse(line) as {
-        type: string;
-        chars?: number;
-        status?: number;
-        body?: Record<string, unknown>;
-      };
-      if (msg.type === "progress" && msg.chars != null) onProgress(msg.chars);
-      if (msg.type === "result")
-        return { status: msg.status ?? 500, body: msg.body ?? {} };
-    }
-    if (done) break;
-  }
-  return { status: 500, body: { error: "The build stopped answering." } };
-}
-
 const formatKb = (chars: number) =>
   chars < 1024 ? `${chars} characters` : `${Math.round(chars / 1024)} KB`;
 

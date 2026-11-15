@@ -1,5 +1,4 @@
 import "server-only";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { finishBuild } from "@/lib/builds";
 import type { PlanStep } from "@/lib/plan";
@@ -23,6 +22,8 @@ export type BuildRun = {
   version_id: string | null;
   error: string | null;
   updated_at: string;
+  cancel_requested_at?: string | null;
+  progress_chars?: number | null;
 };
 
 /** A run belonging to this user and project, or null. */
@@ -68,9 +69,9 @@ function chatSummary(steps: PlanStep[], note?: string) {
 /**
  * Save the run's document as a version, settle the build's cost and post the summary.
  * Used when the last step lands, and when a run stops early with some steps done.
+ * Runs with the service role: steps build in background calls with no signed-in user.
  */
 export async function finalizeRun(
-  supabase: SupabaseClient,
   run: BuildRun,
   opts: {
     html: string;
@@ -82,18 +83,17 @@ export async function finalizeRun(
     error?: string;
   },
 ) {
-  const { data: version, error } = await supabase.rpc("create_version", {
-    p_project: run.project_id,
+  const admin = createAdminClient();
+  const { data: version, error } = await admin.rpc("create_run_version", {
+    p_run: run.id,
     p_html: opts.html,
-    p_prompt: run.prompt,
     p_summary: versionSummary(opts.steps),
-    p_source: "ai",
   });
   if (error || !version)
     throw new Error(error?.message ?? "Could not save the version.");
   const v = version as { id: string; number: number };
   if (opts.designSystemId) {
-    await createAdminClient()
+    await admin
       .from("versions")
       .update({ design_system_id: opts.designSystemId })
       .eq("id", v.id);
@@ -104,7 +104,7 @@ export async function finalizeRun(
     output: run.output_tokens,
     cost: run.cost_micros,
   });
-  await supabase.from("messages").insert({
+  await admin.from("messages").insert({
     project_id: run.project_id,
     role: "assistant",
     content: chatSummary(opts.steps, opts.note),
@@ -116,6 +116,7 @@ export async function finalizeRun(
     status: opts.status,
     version_id: v.id,
     running_step: null,
+    progress_chars: null,
     working_html: null,
     ...(opts.error ? { error: opts.error } : {}),
   });
@@ -124,7 +125,6 @@ export async function finalizeRun(
 
 /** End a run that produced nothing worth keeping: no charge, and say what went wrong. */
 export async function failRun(
-  supabase: SupabaseClient,
   run: BuildRun,
   opts: {
     steps: PlanStep[];
@@ -139,7 +139,7 @@ export async function failRun(
     error: opts.message,
     ...(opts.usage ?? {}),
   });
-  await supabase.from("messages").insert({
+  await createAdminClient().from("messages").insert({
     project_id: run.project_id,
     role: "assistant",
     content: opts.message,
@@ -149,6 +149,7 @@ export async function failRun(
     steps: opts.steps,
     status: opts.status,
     running_step: null,
+    progress_chars: null,
     working_html: null,
     error: opts.message,
   });

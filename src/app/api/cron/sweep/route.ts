@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BUILD_STALE_MS, appOrigin, startRunner } from "@/lib/builds/run";
+import { needsRestart, startRunStep } from "@/lib/plan-runner";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,6 +16,8 @@ const QUEUED_STALE_MS = 3 * 60_000;
  * - Repo builds still "building" after their function's limit are failed and their sandbox
  *   is stopped; the next queued build for that prototype is started.
  * - Queued repo builds that never started (their runner call was lost) are started.
+ * - Planned builds whose next step was never picked up (the hand-off was lost, or the step's
+ *   call died) are started again, before the 15-minute cut-off settles them.
  * Vercel sends `Authorization: Bearer $CRON_SECRET`.
  */
 export async function GET(request: NextRequest) {
@@ -72,6 +75,21 @@ export async function GET(request: NextRequest) {
       .catch((e) => console.error("sweep start", q.id, e));
   }
 
+  // Planned builds that lost a step hand-off: start the step again.
+  let resumed = 0;
+  const { data: runs } = await admin
+    .from("build_runs")
+    .select("id, status, running_step, updated_at")
+    .eq("status", "running")
+    .gt("updated_at", new Date(now - 14 * 60_000).toISOString())
+    .limit(50);
+  for (const r of runs ?? []) {
+    if (!needsRestart(r, now)) continue;
+    await startRunStep(r.id, appOrigin())
+      .then(() => resumed++)
+      .catch((e) => console.error("sweep resume", r.id, e));
+  }
+
   // Storage: files of failed or abandoned uploads, and of old versions nobody can reach.
   let pruned = 0;
   const { data: prune, error: pruneError } = await admin.rpc(
@@ -121,6 +139,7 @@ export async function GET(request: NextRequest) {
     ...((swept as Record<string, number>[] | null)?.[0] ?? {}),
     repo_builds_failed: stuck?.length ?? 0,
     repo_builds_started: started,
+    plan_runs_resumed: resumed,
     files_pruned: pruned,
     error: Boolean(error),
   });

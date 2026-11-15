@@ -178,7 +178,7 @@ import type { Team } from "@/lib/team-shared";
 import { ShareDialog } from "./SharePanel";
 import type { Done } from "./studio-types";
 import { VariantCompare, VersionItem } from "./VersionList";
-import { PlanChecklist, readStep, type PlanProgress } from "./PlanChecklist";
+import { PlanChecklist, type PlanProgress } from "./PlanChecklist";
 
 const contentUrl = unwrapped(raw_contentUrl);
 const deleteProject = unwrapped(raw_deleteProject);
@@ -860,8 +860,9 @@ export function Studio(props: {
   }
 
   /**
-   * Plan, then build step by step: the server breaks the request into ordered steps and
-   * each one is built on top of the last, one request per step.
+   * Plan, then build step by step. The server breaks the request into ordered steps and builds
+   * them one after another in the background; the page only watches. Closing the page or
+   * locking the phone doesn't stop the build, and coming back picks the progress up again.
    */
   async function runPlanned(
     text: string,
@@ -892,77 +893,138 @@ export function Studio(props: {
     setTargets([]);
     setSelectMode(false);
     router.refresh(); // shows the prompt in the chat
-    const runId = data.runId as string;
-    const steps: PlanProgress[] = (data.steps as { title: string }[]).map(
-      (s) => ({ title: s.title, status: "pending" }),
+    setPlan(
+      (data.steps as { title: string }[]).map((s) => ({
+        title: s.title,
+        status: "pending",
+      })),
     );
-    const mark = (i: number, patch: Partial<PlanProgress>) => {
-      steps[i] = { ...steps[i], ...patch };
-      setPlan([...steps]);
-    };
-    setPlan([...steps]);
+    await watchRun(data.runId as string);
+  }
 
-    for (let i = 0; i < steps.length; i++) {
-      if (stopRequested.current) {
-        const stop = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
-          method: "DELETE",
-        });
-        const out = await stop.json().catch(() => ({}));
-        if (out.versionId) setSelectedId(out.versionId);
-        router.refresh();
-        return;
+  // The planned run being watched, so Stop can reach it.
+  const runningRun = useRef<string | null>(null);
+  // Stops the watcher when the page goes away.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  /**
+   * Follow a planned run until it settles, from its row in the database. A failed read (the
+   * phone slept, the network dropped) is retried, never fatal. If the run stops moving, ask the
+   * server to pick it up again: the step's hand-off may have been lost.
+   */
+  async function watchRun(runId: string) {
+    runningRun.current = runId;
+    let seen = "";
+    let changedAt = Date.now();
+    let nudgedAt = 0;
+    try {
+      while (mounted.current) {
+        const { data: run } = await supabase
+          .from("build_runs")
+          .select(
+            "status, steps, running_step, progress_chars, version_id, error, updated_at",
+          )
+          .eq("id", runId)
+          .maybeSingle()
+          .then(
+            (r) => r,
+            () => ({ data: null }),
+          );
+        if (run) {
+          const steps = (
+            run.steps as { title: string; status: string; summary?: string }[]
+          ).map(
+            (s, i): PlanProgress => ({
+              title: s.title,
+              status:
+                run.status === "running" && run.running_step === i
+                  ? "running"
+                  : s.status === "done" || s.status === "failed"
+                    ? s.status
+                    : "pending",
+              summary: s.summary,
+              chars:
+                run.running_step === i
+                  ? ((run.progress_chars as number | null) ?? undefined)
+                  : undefined,
+            }),
+          );
+          setPlan(steps);
+          if (run.status !== "running") {
+            if (run.version_id) setSelectedId(run.version_id as string);
+            router.refresh();
+            if (run.status === "failed")
+              throw new Error(
+                run.version_id
+                  ? `A step didn't work, so the finished steps were saved. ${run.error ?? ""}`.trim()
+                  : (run.error as string) || "The build didn't finish.",
+              );
+            return;
+          }
+          if (run.updated_at !== seen) {
+            seen = run.updated_at as string;
+            changedAt = Date.now();
+          } else if (
+            Date.now() - changedAt > 45_000 &&
+            Date.now() - nudgedAt > 60_000
+          ) {
+            nudgedAt = Date.now();
+            void fetch(`/api/projects/${project.id}/plan/${runId}`, {
+              method: "POST",
+            }).catch(() => {});
+          }
+        }
+        await new Promise((r) => setTimeout(r, document.hidden ? 5000 : 1500));
       }
-      mark(i, { status: "running" });
-      runningRun.current = runId;
-      const res = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/x-ndjson",
-        },
-        body: JSON.stringify({ index: i }),
-      });
-      const { status, body: out } = await readStep(res, (chars) =>
-        mark(i, { chars }),
-      );
+    } finally {
       runningRun.current = null;
-      const step = { ok: status >= 200 && status < 300, status };
-      if (out.stopped) {
-        mark(i, { status: "pending", chars: undefined });
-        if (out.versionId) setSelectedId(out.versionId as string);
-        router.refresh();
-        return;
-      }
-      if (!step.ok) {
-        mark(i, { status: "failed" });
-        // Earlier steps are saved as a version even when a later one fails.
-        if (out.versionId) setSelectedId(out.versionId as string);
-        router.refresh();
-        throw new Error(
-          out.partial
-            ? `Step ${i + 1} failed, so the first ${i} step${i === 1 ? " was" : "s were"} saved as v${out.number}. ${(out.error as string) ?? ""}`.trim()
-            : (out.error as string) || `Request failed (${step.status})`,
-        );
-      }
-      mark(i, {
-        status: "done",
-        summary: out.summary as string,
-        chars: undefined,
-      });
-      if (out.done) {
-        setSelectedId(out.versionId as string);
-        router.refresh();
-        return;
-      }
     }
   }
 
-  // The planned run whose step is building right now, so Stop can end it mid-step.
-  const runningRun = useRef<string | null>(null);
+  // Coming back to a prototype with a planned build still running: show its progress.
+  useEffect(() => {
+    if (started.current || isImportedApp) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("build_runs")
+        .select("id")
+        .eq("project_id", project.id)
+        .eq("status", "running")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || !data || runningRun.current) return;
+      setBusy(true);
+      setElapsed(0);
+      setError("");
+      setStopping(false);
+      try {
+        await watchRun(data.id as string);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong.");
+      } finally {
+        setBusy(false);
+        setStopping(false);
+        setPlan(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function requestStop() {
     stopRequested.current = true;
     setStopping(true);
-    // A step is building: ask it to stop now. It answers with what was saved.
+    // The server stops the run (between steps, or the step in progress) and the watcher sees it settle.
     if (runningRun.current)
       void fetch(`/api/projects/${project.id}/plan/${runningRun.current}`, {
         method: "DELETE",
