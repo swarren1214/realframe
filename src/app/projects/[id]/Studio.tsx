@@ -1,11 +1,45 @@
 "use client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { MAX_POINTED, pointedName } from "@/lib/pointing";
+import { useIsLarge } from "@/lib/use-media";
+import { FailureCard } from "@/components/builds/FailureCard";
+import { isFailureMessage } from "@/lib/failures";
 import { MAX_PROMPT, START_PROMPT_KEY } from "@/lib/prompt-shared";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useDrawerSwipe, useSwipeUp } from "@/lib/use-drawer-swipe";
+import {
+  CompareView,
+  type CompareContent,
+} from "@/components/compare/CompareView";
+import {
+  AttachButton,
+  MessageAttachments,
+  ReferenceTray,
+  useReferences,
+  type Reference,
+} from "@/components/references/references";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  Archive,
   ArrowUp,
+  Columns2,
   Ellipsis,
+  FileDown,
   GitCommitHorizontal,
   Boxes,
   Expand,
@@ -15,11 +49,15 @@ import {
   Copy,
   ExternalLink,
   Globe,
+  GitFork,
   History,
   KeyRound,
   LayoutGrid,
   Layers,
   MessageSquare,
+  MessageSquarePlus,
+  MousePointer2,
+  Code,
   Monitor,
   PencilRuler,
   RotateCcw,
@@ -70,7 +108,16 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, listItem, motion } from "@/components/motion";
 import { copyWithToast, notify } from "@/lib/toast";
-import { PrototypeFrame } from "@/components/PrototypeFrame";
+import {
+  PrototypeFrame,
+  type FrameHandle,
+  type Pin,
+  type SelectedElement,
+} from "@/components/PrototypeFrame";
+import { ExportDialog } from "@/components/export/ExportDialog";
+import { DevPanel, selectorForPath } from "@/components/dev/DevPanel";
+import { useVoiceInput } from "@/components/voice/useVoiceInput";
+import { annotateSource, type Inspected } from "@/lib/inspect";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -101,7 +148,8 @@ import {
 import { Inspector, useVisualEditor } from "@/components/Inspector";
 import { createClient } from "@/lib/supabase/client";
 import { reviewUrlFor } from "@/lib/hosts";
-import { RequestReviewDialog } from "@/components/reviews/RequestReviewDialog";
+import { splitEmails } from "@/components/reviews/RequestReviewDialog";
+import { requestReviewRound as raw_requestReviewRound } from "@/app/projects/review-actions";
 import { RoundCard } from "@/components/reviews/RoundCard";
 import { MAX_FIX_THREADS } from "@/lib/feedback";
 import type { ReviewRound } from "@/lib/types";
@@ -128,6 +176,7 @@ import {
   restoreVersion as raw_restoreVersion,
   setAccessMode as raw_setAccessMode,
   setGuestComments as raw_setGuestComments,
+  setGuestInspect as raw_setGuestInspect,
   updateDeviceSettings as raw_updateDeviceSettings,
   setProjectPassword as raw_setProjectPassword,
   updateSlug as raw_updateSlug,
@@ -162,11 +211,13 @@ const inviteMember = unwrapped(raw_inviteMember);
 const keepVariant = unwrapped(raw_keepVariant);
 const saveVisualEdit = unwrapped(raw_saveVisualEdit);
 const publishVersion = unwrapped(raw_publishVersion);
+const requestReviewRound = unwrapped(raw_requestReviewRound);
 const removeMember = unwrapped(raw_removeMember);
 const renameProject = unwrapped(raw_renameProject);
 const restoreVersion = unwrapped(raw_restoreVersion);
 const setAccessMode = unwrapped(raw_setAccessMode);
 const setGuestComments = unwrapped(raw_setGuestComments);
+const setGuestInspect = unwrapped(raw_setGuestInspect);
 const updateDeviceSettings = unwrapped(raw_updateDeviceSettings);
 const setProjectDesignSystem = unwrapped(raw_setProjectDesignSystem);
 const setProjectPassword = unwrapped(raw_setProjectPassword);
@@ -174,6 +225,12 @@ const updateSlug = unwrapped(raw_updateSlug);
 const unpublish = unwrapped(raw_unpublish);
 
 type Tab = "chat" | "versions" | "share" | "comments";
+
+type PlanProgress = {
+  title: string;
+  status: "pending" | "running" | "done" | "failed";
+  summary?: string;
+};
 /** What a successful action says: a message, or a message with Undo or another action. */
 type Done =
   | string
@@ -211,6 +268,12 @@ export function Studio(props: {
     limit: number;
     remaining: number;
   } | null;
+  /** Set when this period's spend cap has been reached, so new builds are refused. */
+  spendCap?: {
+    capMicros: number;
+    billingHref: string;
+    canChange: boolean;
+  } | null;
   variants: Variant[];
   /** The GitHub repository this prototype builds from, and its recent builds. */
   source?: Source | null;
@@ -239,7 +302,18 @@ export function Studio(props: {
     quota,
     variants,
   } = props;
-  const outOfQuota = quota !== null && quota.remaining <= 0;
+  // A build refused for the spend cap during this visit counts too, until the page reloads.
+  const [capHit, setCapHit] = useState(false);
+  const capBlocked = !!props.spendCap || capHit;
+  const outOfQuota = (quota !== null && quota.remaining <= 0) || capBlocked;
+  /** The error a failed build request should show; notes a reached spend cap. */
+  function requestError(
+    res: Response,
+    data: { error?: string; code?: string },
+  ) {
+    if (data.code === "spend_cap") setCapHit(true);
+    return new Error(data.error || `Request failed (${res.status})`);
+  }
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -273,9 +347,72 @@ export function Studio(props: {
   const [deviceSettingsOpen, setDeviceSettingsOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
+  // Phones only: whether the panel drawer is open.
+  // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
+  const large = useIsLarge();
+  const [panelOpen, setPanelOpen] = useState(versions.length === 0);
+  const drawerSwipe = useDrawerSwipe(() => setPanelOpen(false));
+  const barSwipe = useSwipeUp(() => setPanelOpen(true));
+  const [sharing, setSharing] = useState(false);
+  // Export: which version the dialog is for (null = closed).
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const previewFrame = useRef<FrameHandle>(null);
+  // Dev mode: inspecting the preview, and the element picked in it.
+  const [inspecting, setInspecting] = useState(false);
+  const [inspected, setInspected] = useState<Inspected | null>(null);
+  // Links from the Inbox open a version (?v=) and a panel tab (?tab=).
+  const fromLink = useRef(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const v = url.searchParams.get("v");
+    const t = url.searchParams.get("tab");
+    if (!v && !t) return;
+    if (v && versions.some((x) => x.id === v)) setSelectedId(v);
+    if (t === "comments" || t === "versions" || t === "chat") {
+      setTab(t);
+      setPanelOpen(true);
+      fromLink.current = Boolean(v && v !== selectedId);
+    }
+    url.searchParams.delete("v");
+    url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // A new or picked version closes the drawer so the preview shows it.
+  const shownVersion = useRef(selectedId);
+  useEffect(() => {
+    if (shownVersion.current === selectedId) return;
+    shownVersion.current = selectedId;
+    if (fromLink.current) {
+      fromLink.current = false;
+      return;
+    }
+    setPanelOpen(false);
+  }, [selectedId]);
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setPanelOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
   const [prompt, setPrompt] = useState("");
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
+  // Commenting from the studio: pin mode on the version on screen.
+  const [commentMode, setCommentMode] = useState(false);
+  const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
+  const [draftText, setDraftText] = useState("");
+  const [posting, setPosting] = useState(false);
+  // Point and prompt: elements picked in the preview go out with the next request.
+  const [selectMode, setSelectMode] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [targets, setTargets] = useState<SelectedElement[]>([]);
+  const refs = useReferences(project.id);
+  const [compare, setCompare] = useState<{
+    before: string;
+    after: string;
+  } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
@@ -291,6 +428,11 @@ export function Studio(props: {
   );
   const [savingEdit, setSavingEdit] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Planned builds: the steps of the build in progress, shown as a live checklist.
+  const [plan, setPlan] = useState<PlanProgress[] | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const stopRequested = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -303,7 +445,70 @@ export function Studio(props: {
   const html = selected && !isImportedApp ? htmlCache[selected.id] : undefined;
   const src = selected && isImportedApp ? srcCache[selected.id] : undefined;
   const hasPreview = Boolean(html || src);
+  // In dev mode the preview runs a copy of the source where each element carries its source index.
+  const annotated = useMemo(
+    () => (inspecting && html ? annotateSource(html) : null),
+    [inspecting, html],
+  );
+  useEffect(() => setInspected(null), [selected?.id, inspecting]);
+  // Voice: dictated words land in the chat box; "send" or Auto-send starts the build.
+  const voice = useVoiceInput({
+    value: prompt,
+    onChange: setPrompt,
+    onSubmit: () => void generate(),
+    onCommand: (cmd) => {
+      if (cmd.kind === "inspect") startInspecting();
+      if (cmd.kind === "version") {
+        const v = versions.find((x) => x.number === cmd.number);
+        if (v) setSelectedId(v.id);
+        else notify.info(`There's no v${cmd.number}`);
+      }
+    },
+    disabled: busy || isImportedApp || outOfQuota,
+    hotkey: !editMode,
+    context: targets.length
+      ? targets.map((t) => pointedName(t)).join(" and ")
+      : null,
+  });
   const editor = useVisualEditor(editMode ? html : null);
+
+  /** Opens Compare: `after` against `before`, or the version just before it. */
+  function openCompare(after?: string, before?: string) {
+    const a = after ?? selected?.id;
+    const i = versions.findIndex((v) => v.id === a);
+    if (i < 0 || versions.length < 2) return;
+    const b = before ?? versions[i + 1]?.id ?? versions[i - 1]?.id;
+    if (!a || !b) return;
+    const [newer, older] =
+      versions.findIndex((v) => v.id === b) > i ? [a, b] : [b, a];
+    setSelectMode(false);
+    setCommentMode(false);
+    setPanelOpen(false);
+    setInspecting(false);
+    setCompare({ before: older, after: newer });
+  }
+
+  async function loadForCompare(id: string): Promise<CompareContent> {
+    const v = versions.find((x) => x.id === id);
+    if (v?.kind === "bundle")
+      return { src: srcCache[id] ?? (await contentUrl(id)) };
+    if (htmlCache[id]) return { html: htmlCache[id] };
+    const { data, error } = await supabase
+      .from("versions")
+      .select("html")
+      .eq("id", id)
+      .single();
+    if (error || !data) throw new Error("Couldn't load it");
+    setHtmlCache((c) => ({ ...c, [id]: data.html }));
+    return { html: data.html as string };
+  }
+
+  /** A version's stored HTML, for dev mode's diff. */
+  const loadSourceHtml = useCallback(
+    async (id: string) => (await loadForCompare(id)).html ?? "",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [htmlCache],
+  );
 
   function exitEdit() {
     editor.reset();
@@ -332,6 +537,160 @@ export function Studio(props: {
     }
   }
   const openThreads = threads.filter((t) => t.status === "open").length;
+  const pins: Pin[] = threads
+    .map((t, i) => ({ t, n: i + 1 }))
+    .filter(({ t }) => t.version_id === selected?.id && t.status === "open")
+    .map(({ t, n }) => ({ id: t.id, n, x: t.x, y: t.y, status: t.status }));
+
+  function pickElement(el: SelectedElement) {
+    setTargets((cur) =>
+      el.shift
+        ? cur.some((t) => t.selector === el.selector)
+          ? cur
+          : [...cur, el].slice(0, MAX_POINTED)
+        : [el],
+    );
+    setTab("chat");
+    if (!large) {
+      // Phones: one tap picks it and opens the chat.
+      setSelectMode(false);
+      setPanelOpen(true);
+    }
+    requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+  }
+
+  // GitHub and uploaded builds can't take prompts; an AI copy of one can.
+  async function makeAiCopy() {
+    if (!selected || copying) return;
+    setCopying(true);
+    setBusy(true);
+    setElapsed(0);
+    setTab("chat");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/ai-copy`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ versionId: selected.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.versionId) {
+        setSelectedId(data.versionId);
+        notify.success(`v${data.number} is ready to change with prompts`);
+      }
+    } finally {
+      setCopying(false);
+      setBusy(false);
+      router.refresh();
+    }
+  }
+
+  function startInspecting() {
+    setCompare(null);
+    setEditMode(false);
+    setCommentMode(false);
+    setSelectMode(false);
+    setDraft(null);
+    setInspecting(true);
+  }
+
+  function startSelecting() {
+    setInspecting(false);
+    setCompare(null);
+    setEditMode(false);
+    setCommentMode(false);
+    setDraft(null);
+    setSelectMode(true);
+    setPanelOpen(false);
+  }
+
+  function startCommenting() {
+    setInspecting(false);
+    setCompare(null);
+    setSelectMode(false);
+    setEditMode(false);
+    setDraft(null);
+    setCommentMode(true);
+    setPanelOpen(false);
+  }
+
+  async function postComment(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!draft || !draftText.trim() || !selected) return;
+    setPosting(true);
+    const { error: err } = await supabase.rpc("create_thread", {
+      p_project: project.id,
+      p_version: selected.id,
+      p_x: draft.x,
+      p_y: draft.y,
+      p_body: draftText.trim(),
+    });
+    setPosting(false);
+    if (err)
+      return notify.error("Couldn't post the comment.", {
+        description: err.message,
+      });
+    setDraft(null);
+    setDraftText("");
+    notify.success(`Comment added to v${selected.number}`);
+    setTab("comments");
+    router.refresh();
+  }
+
+  // C starts commenting, Esc stops it, unless someone is typing.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      const typing =
+        t &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (
+        e.key === "Escape" &&
+        (commentMode || draft || selectMode || inspecting)
+      ) {
+        setCommentMode(false);
+        setDraft(null);
+        setSelectMode(false);
+        setInspecting(false);
+      } else if (
+        (e.key === "d" || e.key === "D") &&
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        selected &&
+        !editMode &&
+        window.matchMedia("(min-width: 1024px)").matches
+      ) {
+        e.preventDefault();
+        if (inspecting) setInspecting(false);
+        else startInspecting();
+      } else if (inspecting && e.key === "Alt") {
+        previewFrame.current?.inspectAlt(true);
+      } else if (
+        (e.key === "c" || e.key === "C") &&
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        selected &&
+        !editMode
+      ) {
+        e.preventDefault();
+        setDraft(null);
+        setCommentMode((m) => !m);
+      }
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Alt") previewFrame.current?.inspectAlt(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentMode, draft, selected, editMode, selectMode, inspecting]);
   const isOwner = role === "owner";
 
   useEffect(() => {
@@ -412,7 +771,11 @@ export function Studio(props: {
     if (!new URLSearchParams(window.location.search).has("start")) return;
     started.current = true;
     window.history.replaceState(null, "", window.location.pathname);
-    let stash: { prompt?: string; at?: number } | null = null;
+    let stash: {
+      prompt?: string;
+      at?: number;
+      references?: Reference[];
+    } | null = null;
     try {
       stash = JSON.parse(sessionStorage.getItem(START_PROMPT_KEY) ?? "null");
       sessionStorage.removeItem(START_PROMPT_KEY);
@@ -421,38 +784,35 @@ export function Studio(props: {
     if (!text || Date.now() - (stash?.at ?? 0) > 5 * 60_000) return;
     if (versions.length > 0 || messages.length > 0) return;
     setPrompt(text);
-    void generate(undefined, text);
+    void generate(undefined, text, { references: stash?.references });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function generate(e?: React.FormEvent, override?: string) {
+  async function generate(
+    e?: React.FormEvent,
+    override?: string,
+    opts: { smaller?: boolean; references?: Reference[] } = {},
+  ) {
     e?.preventDefault();
     const text = (override ?? prompt).trim();
     if (!text || busy || isImportedApp) return;
+    if (refs.uploading) {
+      notify.info("Still attaching references", "Try again in a moment.");
+      return;
+    }
+    const attached = opts.references ?? (override ? [] : refs.ready);
     setBusy(true);
     setElapsed(0);
     setError("");
+    setPlan(null);
+    setStopping(false);
+    stopRequested.current = false;
     const startedAt = Date.now();
+    const many = variantCount > 1;
     try {
-      const many = variantCount > 1;
-      const res = await fetch(
-        `/api/projects/${project.id}/${many ? "variants" : "generate"}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            prompt: text,
-            baseVersionId: selected?.id ?? null,
-            count: variantCount,
-          }),
-        },
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.error || `Request failed (${res.status})`);
-      setPrompt("");
-      if (!many) setSelectedId(data.versionId);
-      router.refresh();
+      if (many) await runVariants(text, attached);
+      else await runPlanned(text, opts.smaller, attached);
+      if (!override) refs.clear();
       // Only worth a toast if they looked away while it built.
       if (document.hidden || Date.now() - startedAt > 20_000)
         notify.success(
@@ -465,7 +825,112 @@ export function Studio(props: {
       router.refresh();
     } finally {
       setBusy(false);
+      setPlanning(false);
+      setStopping(false);
+      setPlan(null);
     }
+  }
+
+  async function runVariants(text: string, references: Reference[] = []) {
+    const res = await fetch(`/api/projects/${project.id}/variants`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: text,
+        baseVersionId: selected?.id ?? null,
+        count: variantCount,
+        references,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw requestError(res, data);
+    setPrompt("");
+    router.refresh();
+  }
+
+  /**
+   * Plan, then build step by step: the server breaks the request into ordered steps and
+   * each one is built on top of the last, one request per step.
+   */
+  async function runPlanned(
+    text: string,
+    smaller = false,
+    references: Reference[] = [],
+  ) {
+    setPlanning(true);
+    const res = await fetch(`/api/projects/${project.id}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: text,
+        baseVersionId: selected?.id ?? null,
+        smaller,
+        references,
+        targets: targets.map((t) => ({
+          label: t.label,
+          tag: t.tag,
+          selector: t.selector,
+          html: t.html ?? "",
+        })),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setPlanning(false);
+    if (!res.ok) throw requestError(res, data);
+    setPrompt("");
+    setTargets([]);
+    setSelectMode(false);
+    router.refresh(); // shows the prompt in the chat
+    const runId = data.runId as string;
+    const steps: PlanProgress[] = (data.steps as { title: string }[]).map(
+      (s) => ({ title: s.title, status: "pending" }),
+    );
+    const mark = (i: number, patch: Partial<PlanProgress>) => {
+      steps[i] = { ...steps[i], ...patch };
+      setPlan([...steps]);
+    };
+    setPlan([...steps]);
+
+    for (let i = 0; i < steps.length; i++) {
+      if (stopRequested.current) {
+        const stop = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
+          method: "DELETE",
+        });
+        const out = await stop.json().catch(() => ({}));
+        if (out.versionId) setSelectedId(out.versionId);
+        router.refresh();
+        return;
+      }
+      mark(i, { status: "running" });
+      const step = await fetch(`/api/projects/${project.id}/plan/${runId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ index: i }),
+      });
+      const out = await step.json().catch(() => ({}));
+      if (!step.ok) {
+        mark(i, { status: "failed" });
+        // Earlier steps are saved as a version even when a later one fails.
+        if (out.versionId) setSelectedId(out.versionId);
+        router.refresh();
+        throw new Error(
+          out.partial
+            ? `Step ${i + 1} failed, so the first ${i} step${i === 1 ? " was" : "s were"} saved as v${out.number}. ${out.error ?? ""}`.trim()
+            : out.error || `Request failed (${step.status})`,
+        );
+      }
+      mark(i, { status: "done", summary: out.summary });
+      if (out.done) {
+        setSelectedId(out.versionId);
+        router.refresh();
+        return;
+      }
+    }
+  }
+
+  function requestStop() {
+    stopRequested.current = true;
+    setStopping(true);
   }
 
   // Fix from feedback: one build from the selected open comment threads.
@@ -487,8 +952,7 @@ export function Studio(props: {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.error || `Request failed (${res.status})`);
+      if (!res.ok) throw requestError(res, data);
       setSelectedId(data.versionId);
       setFixPick([]);
       setFixNote("");
@@ -544,8 +1008,8 @@ export function Studio(props: {
     project.published && selected && project.live_version_id === selected.id;
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
+    <div className="flex h-dvh flex-col">
+      <header className="glass mx-2 mt-2 flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 lg:mx-3 lg:mt-3 lg:gap-2 lg:pl-3">
         <Link
           href="/projects"
           aria-label="All prototypes"
@@ -578,17 +1042,29 @@ export function Studio(props: {
             });
           }}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-          className="h-8 min-w-0 max-w-56 rounded-full border border-transparent px-2.5 text-sm font-semibold hover:border-stone-200 focus:border-raspberry-600 focus:outline-none"
+          className="h-8 min-w-0 flex-1 rounded-full border border-transparent px-2 text-sm font-semibold lg:max-w-56 lg:flex-none lg:px-2.5 hover:border-stone-200 focus:border-raspberry-600 focus:outline-none"
         />
         {project.published && live ? (
-          <Badge variant="success">
-            <BadgeDot />
-            Live v{live.number}
+          <Badge variant="success" className="max-lg:hidden">
+            <BadgeDot />v{live.number} live
+            {selected &&
+            selected.id !== live.id &&
+            selected.number > live.number
+              ? ` · v${selected.number} draft`
+              : ""}
+          </Badge>
+        ) : project.archived_at ? (
+          <Badge
+            className="max-lg:hidden"
+            title="Archived prototypes are offline. Publishing a version brings it back."
+          >
+            <Archive />
+            Archived
           </Badge>
         ) : (
-          <Badge>Not published</Badge>
+          <Badge className="max-lg:hidden">Not published</Badge>
         )}
-        <div className="flex-1" />
+        <div className="flex-1 max-lg:hidden" />
         <DevicePicker
           view={view}
           measure={measure}
@@ -610,7 +1086,7 @@ export function Studio(props: {
             }}
           />
         )}
-        <Button asChild variant="ghost">
+        <Button asChild variant="ghost" className="max-lg:hidden">
           <Link href={`/projects/${project.id}/canvas`}>
             <LayoutGrid />
             Canvas
@@ -621,51 +1097,17 @@ export function Studio(props: {
             )}
           </Link>
         </Button>
-        {project.published && (
-          <Button asChild variant="ghost">
-            <a href={reviewUrl} target="_blank" rel="noreferrer">
-              <ExternalLink />
-              Review link
-            </a>
-          </Button>
-        )}
-        {isOwner && selected && (
+        {(role === "owner" || role === "editor") && (
           <Button
             variant="default"
-            loading={isBusy("publish")}
-            disabled={pending || Boolean(isLive)}
-            onClick={() =>
-              run(() => publishVersion(project.id, selected.id), "publish", {
-                title: `v${selected.number} is live`,
-                action: {
-                  label: "Copy link",
-                  onClick: () => copyWithToast(reviewUrl),
-                },
-              })
-            }
+            onClick={() => setSharing(true)}
+            disabled={!selected}
           >
-            {isLive ? <Check /> : <Rocket />}
-            {isLive
-              ? `v${selected.number} is live`
-              : `Publish v${selected.number}`}
+            <Share2 />
+            <span className="max-sm:sr-only">Share</span>
           </Button>
         )}
-        {(role === "owner" || role === "editor") && selected && (
-          <RequestReviewDialog
-            projectId={project.id}
-            version={{ id: selected.id, number: selected.number }}
-            suggested={members
-              .filter((m) => m.role !== "editor")
-              .map((m) => m.email)}
-            trigger={
-              <Button variant="outline">
-                <Send />
-                Request review
-              </Button>
-            }
-          />
-        )}
-        {isOwner && (
+        {(isOwner || role === "editor" || project.published) && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button
@@ -678,37 +1120,105 @@ export function Studio(props: {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => copyWithToast(reviewUrl)}
-                disabled={!project.published}
-              >
-                <Copy />
-                Copy review link
-              </DropdownMenuItem>
-              {(props.teams?.length ?? 0) > 1 && (
-                <DropdownMenuItem onSelect={() => setMoving(true)}>
-                  <Users />
-                  Move to team…
+              <div className="lg:hidden">
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${project.id}/canvas`}>
+                    <LayoutGrid />
+                    Canvas
+                  </Link>
                 </DropdownMenuItem>
+                {project.published && (
+                  <DropdownMenuItem asChild>
+                    <a href={reviewUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink />
+                      Open review page
+                    </a>
+                  </DropdownMenuItem>
+                )}
+                {isOwner && <DropdownMenuSeparator />}
+              </div>
+              {(isOwner || role === "editor") && selected && (
+                <>
+                  <DropdownMenuItem
+                    onSelect={() => setExportingId(selected.id)}
+                  >
+                    <FileDown />
+                    Export…
+                  </DropdownMenuItem>
+                  {isOwner && <DropdownMenuSeparator />}
+                </>
               )}
-              {props.teammates && (
-                <DropdownMenuItem onSelect={() => setTransferring(true)}>
-                  <UserRoundCheck />
-                  Transfer ownership…
-                </DropdownMenuItem>
+              {isOwner && (
+                <>
+                  <DropdownMenuItem
+                    onSelect={() => copyWithToast(reviewUrl)}
+                    disabled={!project.published}
+                  >
+                    <Copy />
+                    Copy review link
+                  </DropdownMenuItem>
+                  {(props.teams?.length ?? 0) > 1 && (
+                    <DropdownMenuItem onSelect={() => setMoving(true)}>
+                      <Users />
+                      Move to team…
+                    </DropdownMenuItem>
+                  )}
+                  {props.teammates && (
+                    <DropdownMenuItem onSelect={() => setTransferring(true)}>
+                      <UserRoundCheck />
+                      Transfer ownership…
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 />
+                    Delete prototype
+                  </DropdownMenuItem>
+                </>
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setConfirmDelete(true)}
-              >
-                <Trash2 />
-                Delete prototype
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {props.accountMenu}
+        <div className="max-lg:hidden">{props.accountMenu}</div>
+        {(() => {
+          const v = versions.find((x) => x.id === exportingId);
+          if (!v) return null;
+          const here = v.id === selected?.id && !editMode && !compare;
+          return (
+            <ExportDialog
+              open
+              onOpenChange={(o) => !o && setExportingId(null)}
+              projectId={project.id}
+              projectName={project.name}
+              version={{ id: v.id, number: v.number, kind: v.kind }}
+              loadHtml={async () => (await loadForCompare(v.id)).html ?? ""}
+              targets={here ? targets : []}
+              canUseAi={quota?.plan === "pro" || quota?.plan === "team"}
+              extract={
+                here && previewFrame.current
+                  ? (t) => previewFrame.current!.extract(t)
+                  : null
+              }
+            />
+          );
+        })()}
+        <ShareDialog
+          open={sharing}
+          onOpenChange={setSharing}
+          project={project}
+          selected={selected}
+          live={live}
+          isOwner={isOwner}
+          canBuild={role === "owner" || role === "editor"}
+          members={members}
+          reviewUrl={reviewUrl}
+          pending={pending}
+          isBusy={isBusy}
+          run={run}
+        />
       </header>
       {props.teammates && (
         <TransferDialog
@@ -749,7 +1259,7 @@ export function Studio(props: {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="flex min-h-0 flex-1 gap-3 p-3">
+      <div className="flex min-h-0 flex-1 gap-3 p-2 lg:p-3">
         {variants.length > 0 ? (
           <VariantCompare
             variants={variants}
@@ -770,8 +1280,8 @@ export function Studio(props: {
             }
           />
         ) : (
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4">
-            <div className="mb-3 flex items-center gap-2">
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-2 lg:p-4">
+            <div className="mb-2 flex items-center gap-2 lg:mb-3">
               {selected && (
                 <Badge>
                   {editMode
@@ -779,15 +1289,31 @@ export function Studio(props: {
                     : `v${selected.number}`}
                 </Badge>
               )}
-              <span className="min-w-0 flex-1 truncate text-xs text-stone-500">
+              <span className="min-w-0 flex-1 truncate text-xs text-stone-500 max-sm:invisible">
                 {editMode
                   ? "Click an element to edit it. Links and buttons are paused while editing."
-                  : selected?.summary}
+                  : commentMode
+                    ? `Click anywhere on v${selected?.number} to pin a comment. Esc to cancel.`
+                    : selectMode
+                      ? "Click an element to point at it. Shift-click to add more."
+                      : selected?.summary}
               </span>
               {hasPreview && view.scale !== "dynamic" && (
                 <span className="hidden text-xs tabular-nums text-stone-500 md:inline">
                   {view.scale === "fit" ? `Fit · ${measure.percent}%` : "100%"}
                 </span>
+              )}
+              {versions.length > 1 && !editMode && (
+                <Button
+                  size="sm"
+                  variant={compare ? "default" : "ghost"}
+                  aria-pressed={Boolean(compare)}
+                  title="Compare two versions"
+                  onClick={() => (compare ? setCompare(null) : openCompare())}
+                >
+                  <Columns2 />
+                  <span className="max-sm:sr-only">Compare</span>
+                </Button>
               )}
               {hasPreview && !editMode && (
                 <Button
@@ -800,22 +1326,137 @@ export function Studio(props: {
                   }}
                 >
                   <Expand />
-                  Full screen
+                  <span className="max-sm:sr-only">Full screen</span>
+                </Button>
+              )}
+              {html && !editMode && !isImportedApp && (
+                <Button
+                  size="sm"
+                  variant={selectMode ? "default" : "ghost"}
+                  aria-pressed={selectMode}
+                  title={
+                    selectMode
+                      ? "Stop selecting (Esc)"
+                      : "Point at an element, then describe the change"
+                  }
+                  onClick={() =>
+                    selectMode ? setSelectMode(false) : startSelecting()
+                  }
+                >
+                  {selectMode ? <X /> : <MousePointer2 />}
+                  <span className="max-sm:sr-only">
+                    {selectMode ? "Done selecting" : "Select"}
+                  </span>
+                </Button>
+              )}
+              {hasPreview && !editMode && (
+                <Button
+                  size="sm"
+                  variant={commentMode ? "default" : "ghost"}
+                  aria-pressed={commentMode}
+                  aria-keyshortcuts="C"
+                  title={commentMode ? "Stop commenting (Esc)" : "Comment (C)"}
+                  onClick={() =>
+                    commentMode ? setCommentMode(false) : startCommenting()
+                  }
+                  className="max-lg:hidden"
+                >
+                  {commentMode ? <X /> : <MessageSquarePlus />}
+                  {commentMode ? "Click to pin" : "Comment"}
+                </Button>
+              )}
+              {hasPreview && !editMode && (
+                <Button
+                  size="sm"
+                  variant={inspecting ? "default" : "ghost"}
+                  aria-pressed={inspecting}
+                  aria-keyshortcuts="D"
+                  title={
+                    inspecting
+                      ? "Stop inspecting (Esc)"
+                      : "Inspect: code, measurements and tokens (D)"
+                  }
+                  onClick={() =>
+                    inspecting ? setInspecting(false) : startInspecting()
+                  }
+                  className="max-lg:hidden"
+                >
+                  {inspecting ? <X /> : <Code />}
+                  {inspecting ? "Stop inspecting" : "Inspect"}
                 </Button>
               )}
               {html && (
                 <Button
                   size="sm"
                   aria-pressed={editMode}
-                  onClick={() => (editMode ? exitEdit() : setEditMode(true))}
+                  onClick={() =>
+                    editMode
+                      ? exitEdit()
+                      : (setCompare(null),
+                        setInspecting(false),
+                        setEditMode(true))
+                  }
                 >
                   {editMode ? <X /> : <PencilRuler />}
-                  {editMode ? "Exit editing" : "Edit visually"}
+                  <span className="max-sm:sr-only">
+                    {editMode ? "Exit editing" : "Edit visually"}
+                  </span>
                 </Button>
               )}
             </div>
             {presenting && hasPreview && (
               <PresentControls onExit={() => setPresenting(false)} />
+            )}
+            {draft && selected && (
+              <form
+                onSubmit={postComment}
+                className="absolute bottom-6 left-1/2 z-20 w-[min(420px,92%)] -translate-x-1/2 space-y-2.5 rounded-3xl border border-border bg-card p-3.5 shadow-[0_30px_70px_-30px_rgba(28,25,23,.45)]"
+              >
+                <label
+                  htmlFor="studio-comment"
+                  className="block text-[13px] font-semibold"
+                >
+                  New comment on v{selected.number}
+                  <span className="font-normal text-muted-foreground">
+                    {" "}
+                    · the version on screen
+                  </span>
+                </label>
+                <Textarea
+                  id="studio-comment"
+                  autoFocus
+                  rows={3}
+                  maxLength={5000}
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                      postComment(e);
+                  }}
+                  placeholder="What should change here?"
+                  className="field-sizing-fixed resize-none"
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="mr-auto text-[11px] text-muted-foreground">
+                    Shows on the review link too
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setDraft(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    loading={posting}
+                    disabled={!draftText.trim()}
+                  >
+                    <Send />
+                    Post
+                  </Button>
+                </div>
+              </form>
             )}
             <div
               className={cn(
@@ -825,7 +1466,19 @@ export function Studio(props: {
                 presenting && hasPreview && PRESENT_FRAME_CLASS,
               )}
             >
-              {hasPreview ? (
+              {compare ? (
+                <CompareView
+                  versions={versions.map((v) => ({
+                    id: v.id,
+                    number: v.number,
+                    summary: v.summary,
+                  }))}
+                  initial={compare}
+                  load={loadForCompare}
+                  view={view}
+                  onClose={() => setCompare(null)}
+                />
+              ) : hasPreview ? (
                 <DeviceStage
                   view={view}
                   presenting={presenting}
@@ -833,8 +1486,21 @@ export function Studio(props: {
                 >
                   {src ? (
                     <PrototypeFrame
+                      ref={previewFrame}
                       src={src}
                       title={`${project.name} v${selected?.number}`}
+                      inspect={inspecting}
+                      onInspect={setInspected}
+                      commentMode={commentMode}
+                      pins={pins}
+                      onPick={(x, y) => {
+                        setDraft({ x, y });
+                        setCommentMode(false);
+                      }}
+                      onSelectPin={() => {
+                        setTab("comments");
+                        setPanelOpen(true);
+                      }}
                     />
                   ) : html ? (
                     editMode && editor.editableHtml ? (
@@ -847,8 +1513,23 @@ export function Studio(props: {
                       />
                     ) : (
                       <PrototypeFrame
-                        html={html}
+                        ref={previewFrame}
+                        html={annotated?.html ?? html}
                         title={`${project.name} v${selected?.number}`}
+                        inspect={inspecting}
+                        onInspect={setInspected}
+                        editMode={selectMode}
+                        onSelectElement={pickElement}
+                        commentMode={commentMode}
+                        pins={pins}
+                        onPick={(x, y) => {
+                          setDraft({ x, y });
+                          setCommentMode(false);
+                        }}
+                        onSelectPin={() => {
+                          setTab("comments");
+                          setPanelOpen(true);
+                        }}
                       />
                     )
                   ) : null}
@@ -867,7 +1548,7 @@ export function Studio(props: {
                       </div>
                       {buildRunning
                         ? "Building from GitHub. v1 appears here when it's done."
-                        : "Your prototype will appear here. Describe it on the left to build v1."}
+                        : "Your prototype will appear here. Describe it in Chat to build v1."}
                     </>
                   )}
                 </div>
@@ -887,7 +1568,7 @@ export function Studio(props: {
         {editMode ? (
           <aside
             aria-label="Visual editor"
-            className="glass flex w-[320px] shrink-0 xl:w-[360px] flex-col overflow-hidden rounded-[1.75rem]"
+            className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:fixed max-lg:inset-x-2 max-lg:bottom-2 max-lg:z-40 max-lg:h-[45dvh] lg:w-[320px] xl:w-[360px]"
           >
             <Inspector
               selected={editor.selected}
@@ -899,604 +1580,898 @@ export function Studio(props: {
               saveLabel={`Save as v${(versions[0]?.number ?? 0) + 1}`}
             />
           </aside>
-        ) : (
-          <Tabs
-            value={tab}
-            onValueChange={(v) => setTab(v as Tab)}
-            aria-label="Project panel"
-            className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem] xl:w-[380px]"
+        ) : inspecting && selected ? (
+          <aside
+            aria-label="Dev mode"
+            className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:hidden lg:w-[440px] xl:w-[500px]"
           >
-            <div className="border-b border-stone-100 p-3">
-              <TabsList>
-                {(
-                  [
-                    ["chat", "Chat", Sparkles, 0],
-                    ["versions", "Versions", History, versions.length],
-                    ["comments", "Comments", MessageSquare, openThreads],
-                    ["share", "Share", Share2, 0],
-                  ] as const
-                ).map(([id, label, Icon, count]) => (
-                  <TabsTrigger key={id} value={id} className="gap-1 px-1.5">
-                    <Icon />
-                    {label}
-                    {id === "chat" && busy && tab !== "chat" && (
-                      <span
-                        className="size-1.5 animate-pulse rounded-full bg-raspberry-600"
-                        aria-label="Building"
-                      />
-                    )}
-                    {count > 0 && (
-                      <span className="grid h-4 min-w-4 place-items-center rounded-full bg-foreground/8 px-1 text-[10px] font-semibold tabular-nums text-stone-600">
-                        {count}
+            <DevPanel
+              frame={previewFrame}
+              source={isImportedApp ? null : (html ?? null)}
+              spans={annotated?.spans ?? []}
+              selected={inspected}
+              frameKey={`${selected.id}:${inspecting}`}
+              versions={versions.map((v) => ({ id: v.id, number: v.number }))}
+              versionId={selected.id}
+              loadHtml={loadSourceHtml}
+              onCompare={(before) => openCompare(selected.id, before)}
+              onExportPart={(el) => {
+                setTargets([
+                  {
+                    rf: null,
+                    selector: selectorForPath(el.path),
+                    tag: el.tag,
+                    label: el.text.slice(0, 60),
+                    text: null,
+                    styles: {},
+                    rect: { w: el.rect.w, h: el.rect.h },
+                  },
+                ]);
+                setExportingId(selected.id);
+              }}
+            />
+          </aside>
+        ) : (
+          <>
+            {/* Phones: the panel is a drawer over the preview. */}
+            <div
+              aria-hidden="true"
+              onClick={() => setPanelOpen(false)}
+              className={cn(
+                "fixed inset-0 z-30 bg-stone-950/30 backdrop-blur-[2px] transition-opacity duration-(--duration-base) lg:hidden dark:bg-black/60",
+                panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
+              )}
+            />
+            <Tabs
+              ref={(el: HTMLDivElement | null) => {
+                drawerSwipe.panel.current = el;
+              }}
+              value={tab}
+              onValueChange={(v) => setTab(v as Tab)}
+              aria-label="Project panel"
+              className={cn(
+                "glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] lg:w-[340px] xl:w-[380px]",
+                "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[88dvh] max-lg:rounded-b-none max-lg:pb-[env(safe-area-inset-bottom)] max-lg:shadow-[0_-24px_60px_-30px_rgba(0,0,0,.5)] max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-(--ease-out)",
+                !panelOpen &&
+                  "max-lg:pointer-events-none max-lg:translate-y-full",
+              )}
+              {...(!panelOpen && !large ? { inert: true } : {})}
+            >
+              <div
+                {...drawerSwipe.handle}
+                className="relative flex items-center gap-2 border-b border-stone-100 pb-2 pl-4 pr-2 pt-3.5 lg:hidden"
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-stone-300"
+                />
+                <h2 className="flex-1 text-[15px] font-semibold">
+                  {
+                    {
+                      chat: "Chat",
+                      versions: "Versions",
+                      comments: "Comments",
+                      share: "Share",
+                    }[tab]
+                  }
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPanelOpen(false)}
+                  aria-label="Close"
+                  className="lg:hidden"
+                >
+                  <X />
+                </Button>
+              </div>
+              <div className="border-b border-stone-100 p-3 max-lg:hidden">
+                <TabsList>
+                  {(
+                    [
+                      ["chat", "Chat", Sparkles, 0],
+                      ["versions", "Versions", History, versions.length],
+                      ["comments", "Comments", MessageSquare, openThreads],
+                    ] as const
+                  ).map(([id, label, Icon, count]) => (
+                    <TabsTrigger key={id} value={id} className="gap-1 px-1.5">
+                      <Icon />
+                      {label}
+                      {id === "chat" && busy && tab !== "chat" && (
+                        <span
+                          className="size-1.5 animate-pulse rounded-full bg-raspberry-600"
+                          aria-label="Building"
+                        />
+                      )}
+                      {count > 0 && (
+                        <span className="grid h-4 min-w-4 place-items-center rounded-full bg-foreground/8 px-1 text-[10px] font-semibold tabular-nums text-stone-600">
+                          {count}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+
+              <TabsContent
+                value="chat"
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                {(quota?.plan === "free" || quota?.plan === "team") && (
+                  <div className="flex items-center gap-2 px-4 pt-3 text-[11px] text-stone-500">
+                    {quota.plan === "free" ? (
+                      <span>
+                        {quota.remaining}/{quota.limit} free builds left
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-raspberry-50 px-2 py-0.5 font-medium text-raspberry-800">
+                        Team Pro
                       </span>
                     )}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-
-            <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
-              {(quota?.plan === "free" || quota?.plan === "team") && (
-                <div className="flex items-center gap-2 px-4 pt-3 text-[11px] text-stone-500">
-                  {quota.plan === "free" ? (
-                    <span>
-                      {quota.remaining}/{quota.limit} free builds left
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-raspberry-50 px-2 py-0.5 font-medium text-raspberry-800">
-                      Team Pro
-                    </span>
-                  )}
-                </div>
-              )}
-              <div className="flex-1 space-y-4 overflow-y-auto p-4">
-                {messages.length === 0 && !busy && (
-                  <div className="space-y-2">
-                    <p className="text-[13px] text-stone-600">
-                      Describe what to build, or start from one of these:
-                    </p>
-                    {STARTERS.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setPrompt(s)}
-                        className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
-                      >
-                        <Sparkles
-                          className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
-                          aria-hidden="true"
-                        />
-                        {s}
-                      </button>
-                    ))}
                   </div>
                 )}
-                {messages.map((m) => {
-                  const v = m.version_id
-                    ? versions.find((x) => x.id === m.version_id)
-                    : null;
-                  return m.role === "user" ? (
-                    <div
-                      key={m.id}
-                      className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
-                    >
-                      {m.content}
+                <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                  {messages.length === 0 && !busy && (
+                    <div className="space-y-2">
+                      <p className="text-[13px] text-stone-600">
+                        Describe what to build, or start from one of these:
+                      </p>
+                      {STARTERS.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setPrompt(s)}
+                          className="flex w-full gap-2.5 rounded-2xl border border-stone-200 bg-card p-3 text-left text-[13px] leading-snug text-stone-700 transition-colors hover:border-raspberry-200 hover:bg-raspberry-50/50 active:scale-[.99]"
+                        >
+                          <Sparkles
+                            className="mt-0.5 size-3.5 shrink-0 text-raspberry-700"
+                            aria-hidden="true"
+                          />
+                          {s}
+                        </button>
+                      ))}
                     </div>
-                  ) : (
+                  )}
+                  {messages.map((m, i) => {
+                    const v = m.version_id
+                      ? versions.find((x) => x.id === m.version_id)
+                      : null;
+                    if (m.role !== "user" && isFailureMessage(m.content)) {
+                      const asked =
+                        messages
+                          .slice(0, i)
+                          .reverse()
+                          .find((x) => x.role === "user")?.content ?? null;
+                      return (
+                        <FailureCard
+                          key={m.id}
+                          content={m.content}
+                          prompt={asked}
+                          latest={i === messages.length - 1}
+                          busy={busy}
+                          onRetry={({ smaller }) =>
+                            asked && generate(undefined, asked, { smaller })
+                          }
+                          onEdit={() => {
+                            if (!asked) return;
+                            setPrompt(asked);
+                            requestAnimationFrame(() =>
+                              document.getElementById("prompt")?.focus(),
+                            );
+                          }}
+                        />
+                      );
+                    }
+                    return m.role === "user" ? (
+                      <div
+                        key={m.id}
+                        className="ml-8 rounded-3xl rounded-br-md border border-raspberry-100 bg-glow-soft px-3.5 py-2.5 text-[13px] leading-relaxed"
+                      >
+                        <MessageAttachments items={m.attachments ?? []} />
+                        {m.content}
+                      </div>
+                    ) : (
+                      <div
+                        key={m.id}
+                        className="space-y-2 text-[13px] leading-relaxed text-stone-800"
+                      >
+                        <p className="whitespace-pre-line">{m.content}</p>
+                        {v && (
+                          <Button size="sm" onClick={() => setSelectedId(v.id)}>
+                            <History />v{v.number}
+                            {v.id === project.live_version_id ? " · Live" : ""}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {busy && plan && plan.length > 1 && (
+                    <PlanChecklist
+                      steps={plan}
+                      elapsed={elapsed}
+                      stopping={stopping}
+                      onStop={requestStop}
+                    />
+                  )}
+                  {busy && !(plan && plan.length > 1) && (
                     <div
-                      key={m.id}
-                      className="space-y-2 text-[13px] leading-relaxed text-stone-800"
+                      role="status"
+                      className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
                     >
-                      <p>{m.content}</p>
-                      {v && (
-                        <Button size="sm" onClick={() => setSelectedId(v.id)}>
-                          <History />v{v.number}
-                          {v.id === project.live_version_id ? " · Live" : ""}
-                        </Button>
+                      <Spinner className="mt-0.5 shrink-0" />
+                      <span>
+                        {copying
+                          ? `Making an AI copy of v${selected?.number}`
+                          : planning
+                            ? "Planning the build"
+                            : variantCount > 1
+                              ? `Building ${variantCount} variants`
+                              : `Building ${selected ? `on v${selected.number}` : "v1"}`}
+                        … {elapsed}s
+                        <span className="block text-xs text-raspberry-800/70">
+                          Larger prototypes can take a minute or two.
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                  <div ref={chatEnd} />
+                </div>
+                <form
+                  onSubmit={generate}
+                  className="border-t border-stone-100 p-3"
+                >
+                  {isImportedApp && (
+                    <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
+                      <Boxes
+                        className="mt-px size-3.5 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 space-y-2">
+                        <span className="block">
+                          {selected?.source === "github" && props.source
+                            ? `v${selected?.number} came from GitHub, so prompts change a copy of it. Pushes to ${props.source.branch} still arrive as their own versions.`
+                            : `v${selected?.number} is an uploaded build, so prompts change a copy of it.`}
+                        </span>
+                        {(role === "owner" || role === "editor") && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            loading={copying}
+                            disabled={busy}
+                            onClick={makeAiCopy}
+                          >
+                            <GitFork />
+                            Make an AI copy of v{selected?.number}
+                          </Button>
+                        )}
+                      </span>
+                    </p>
+                  )}
+                  {targets.length > 0 && (
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                      {targets.map((t) => (
+                        <span
+                          key={t.selector}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-raspberry-200 bg-raspberry-50 pl-2.5 pr-1 text-xs font-semibold text-raspberry-800"
+                        >
+                          <MousePointer2
+                            className="size-3"
+                            aria-hidden="true"
+                          />
+                          <span className="max-w-40 truncate">
+                            {pointedName(t)}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Stop pointing at ${pointedName(t)}`}
+                            onClick={() =>
+                              setTargets((cur) =>
+                                cur.filter((x) => x.selector !== t.selector),
+                              )
+                            }
+                            className="grid size-5 place-items-center rounded-full hover:bg-raspberry-100"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </span>
+                      ))}
+                      {selectMode && targets.length < MAX_POINTED && (
+                        <span className="text-[11px] text-muted-foreground max-lg:hidden">
+                          Shift-click to add more
+                        </span>
                       )}
                     </div>
-                  );
-                })}
-                {busy && (
+                  )}
+                  {voice.bar}
+                  <label htmlFor="prompt" className="sr-only">
+                    {versions.length
+                      ? `Describe a change to v${selected?.number ?? ""}`
+                      : "Describe your prototype"}
+                  </label>
                   <div
-                    role="status"
-                    className="flex items-start gap-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
+                    {...refs.handlers}
+                    className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100"
                   >
-                    <Spinner className="mt-0.5 shrink-0" />
-                    <span>
-                      {variantCount > 1
-                        ? `Building ${variantCount} variants`
-                        : `Building ${selected ? `on v${selected.number}` : "v1"}`}
-                      … {elapsed}s
-                      <span className="block text-xs text-raspberry-800/70">
-                        Larger prototypes can take a minute or two.
-                      </span>
-                    </span>
-                  </div>
-                )}
-                <div ref={chatEnd} />
-              </div>
-              <form
-                onSubmit={generate}
-                className="border-t border-stone-100 p-3"
-              >
-                {isImportedApp && (
-                  <p className="mb-2 flex gap-2 rounded-2xl bg-secondary p-3 text-xs text-stone-700">
-                    <Boxes
-                      className="mt-px size-3.5 shrink-0"
-                      aria-hidden="true"
+                    <ReferenceTray refs={refs} />
+                    <textarea
+                      id="prompt"
+                      rows={3}
+                      maxLength={MAX_PROMPT}
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                          generate();
+                      }}
+                      placeholder={
+                        versions.length
+                          ? `Describe a change to v${selected?.number ?? ""}…`
+                          : "A dispatch board for field techs…"
+                      }
+                      className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
                     />
-                    {selected?.source === "github" && props.source
-                      ? `v${selected?.number} was built from GitHub, so prompts can't change it yet. Push to ${props.source.branch} for the next version, or pick a prompt-built version to keep working with AI.`
-                      : `v${selected?.number} is an imported app, so prompts can't change it yet. Import a new zip for the next version, or pick a generated version to build on.`}
-                  </p>
-                )}
-                <label htmlFor="prompt" className="sr-only">
-                  {versions.length
-                    ? `Describe a change to v${selected?.number ?? ""}`
-                    : "Describe your prototype"}
-                </label>
-                <div className="rounded-3xl border border-stone-200 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-raspberry-600 focus-within:ring-4 focus-within:ring-raspberry-100">
-                  <textarea
-                    id="prompt"
-                    rows={3}
-                    maxLength={MAX_PROMPT}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                        generate();
-                    }}
-                    placeholder={
-                      versions.length
-                        ? `Describe a change to v${selected?.number ?? ""}…`
-                        : "A dispatch board for field techs…"
-                    }
-                    className="block w-full resize-none bg-transparent px-2.5 pt-1.5 text-[13px] leading-relaxed outline-none placeholder:text-stone-400"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    {(props.designSystems?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <AttachButton
+                        refs={refs}
+                        disabled={busy || isImportedApp}
+                        className="size-8"
+                      />
+                      {voice.button}
+                      {(props.designSystems?.length ?? 0) > 0 && (
+                        <Select
+                          value={dsId ?? "none"}
+                          disabled={busy}
+                          onValueChange={async (v) => {
+                            const next = v === "none" ? null : v;
+                            const prev = dsId;
+                            setDsId(next);
+                            try {
+                              await setProjectDesignSystem(project.id, next);
+                              notify.info(
+                                next
+                                  ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
+                                  : "Next build uses no design system",
+                                "Earlier versions keep their look.",
+                              );
+                            } catch (e) {
+                              setDsId(prev);
+                              notify.error(
+                                e instanceof Error
+                                  ? e.message
+                                  : "Couldn't change it.",
+                              );
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            aria-label="Design system"
+                            title="The design system builds follow"
+                            className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {props.designSystems!.map((d) => (
+                              <SelectItem key={d.id} value={d.id}>
+                                <Dots colors={d.colors} />
+                                {d.name}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="none">
+                              <Sparkles className="size-4 text-stone-500" />
+                              No design system
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Select
-                        value={dsId ?? "none"}
+                        value={String(variantCount)}
+                        onValueChange={(v) =>
+                          setVariantCount(Number(v) as 1 | 2 | 3)
+                        }
                         disabled={busy}
-                        onValueChange={async (v) => {
-                          const next = v === "none" ? null : v;
-                          const prev = dsId;
-                          setDsId(next);
-                          try {
-                            await setProjectDesignSystem(project.id, next);
-                            notify.info(
-                              next
-                                ? `Next build uses ${props.designSystems!.find((d) => d.id === next)?.name}`
-                                : "Next build uses no design system",
-                              "Earlier versions keep their look.",
-                            );
-                          } catch (e) {
-                            setDsId(prev);
-                            notify.error(
-                              e instanceof Error
-                                ? e.message
-                                : "Couldn't change it.",
-                            );
-                          }
-                        }}
                       >
                         <SelectTrigger
                           size="sm"
-                          aria-label="Design system"
-                          title="The design system builds follow"
-                          className="max-w-40 border-transparent bg-secondary shadow-none hover:border-transparent"
+                          aria-label="Number of variants"
+                          title="Generate alternatives to compare. Each variant counts as one build."
+                          className="border-transparent bg-secondary shadow-none hover:border-transparent"
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {props.designSystems!.map((d) => (
-                            <SelectItem key={d.id} value={d.id}>
-                              <Dots colors={d.colors} />
-                              {d.name}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="none">
-                            <Sparkles className="size-4 text-stone-500" />
-                            No design system
-                          </SelectItem>
+                          <SelectItem value="1">1 version</SelectItem>
+                          <SelectItem value="2">2 variants</SelectItem>
+                          <SelectItem value="3">3 variants</SelectItem>
                         </SelectContent>
                       </Select>
-                    )}
-                    <Select
-                      value={String(variantCount)}
-                      onValueChange={(v) =>
-                        setVariantCount(Number(v) as 1 | 2 | 3)
-                      }
-                      disabled={busy}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        aria-label="Number of variants"
-                        title="Generate alternatives to compare. Each variant counts as one build."
-                        className="border-transparent bg-secondary shadow-none hover:border-transparent"
+                      <Kbd className="ml-auto max-lg:invisible">⌘↵</Kbd>
+                      <Button
+                        variant="default"
+                        size="icon"
+                        aria-label={
+                          variantCount > 1
+                            ? "Generate variants"
+                            : versions.length
+                              ? "Update prototype"
+                              : "Build prototype"
+                        }
+                        title={
+                          variantCount > 1
+                            ? "Generate variants"
+                            : versions.length
+                              ? "Update prototype"
+                              : "Build prototype"
+                        }
+                        type="submit"
+                        loading={busy}
+                        disabled={!prompt.trim() || outOfQuota || isImportedApp}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 version</SelectItem>
-                        <SelectItem value="2">2 variants</SelectItem>
-                        <SelectItem value="3">3 variants</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Kbd className="ml-auto">⌘↵</Kbd>
-                    <Button
-                      variant="default"
-                      size="icon"
-                      aria-label={
-                        variantCount > 1
-                          ? "Generate variants"
-                          : versions.length
-                            ? "Update prototype"
-                            : "Build prototype"
-                      }
-                      title={
-                        variantCount > 1
-                          ? "Generate variants"
-                          : versions.length
-                            ? "Update prototype"
-                            : "Build prototype"
-                      }
-                      type="submit"
-                      loading={busy}
-                      disabled={!prompt.trim() || outOfQuota || isImportedApp}
-                    >
-                      <ArrowUp />
-                    </Button>
-                  </div>
-                </div>
-                {outOfQuota && quota?.plan === "free" && (
-                  <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
-                    <p className="font-semibold">
-                      You&apos;ve used this month&apos;s free builds.
-                    </p>
-                    <p className="mt-0.5 text-xs text-stone-700">
-                      Pro is $20/month with $10 of AI usage included.
-                    </p>
-                    <form
-                      action="/api/billing/checkout"
-                      method="post"
-                      className="mt-2"
-                    >
-                      <Button variant="default" size="sm" type="submit">
-                        <Sparkles />
-                        Upgrade to Pro
+                        <ArrowUp />
                       </Button>
-                    </form>
+                    </div>
                   </div>
-                )}
-                {outOfQuota &&
-                  (quota?.plan === "pro" || quota?.plan === "team") &&
-                  !error && (
-                    <p className="mt-2 text-xs text-stone-600">
-                      You&apos;ve hit the daily safety limit of {quota.limit}{" "}
-                      builds. It frees up on a rolling 24-hour basis.
-                    </p>
+                  {capBlocked && (
+                    <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
+                      <p className="font-semibold">
+                        This period&apos;s spend cap is reached.
+                      </p>
+                      <p className="mt-0.5 text-xs text-stone-700">
+                        {props.spendCap?.canChange === false
+                          ? "New builds are paused until a team admin raises the cap or the period resets."
+                          : "New builds are paused until you raise the cap or the period resets."}
+                      </p>
+                      {props.spendCap?.canChange !== false && (
+                        <Button
+                          asChild
+                          variant="default"
+                          size="sm"
+                          className="mt-2"
+                        >
+                          <Link
+                            href={`${props.spendCap?.billingHref ?? "/billing"}?tab=billing#spend-controls`}
+                          >
+                            Raise cap
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
                   )}
-                {error && (
-                  <p role="alert" className="mt-2 text-xs text-red-700">
-                    {error}
-                  </p>
-                )}
-              </form>
-            </TabsContent>
-            {tab !== "chat" && (
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <TabsContent value="versions" className="space-y-5 p-4">
-                  {(props.source || builds.length > 0) && (
-                    <div className="space-y-2">
-                      {props.source && (
-                        <SourceCard
-                          source={props.source}
-                          isOwner={isOwner}
-                          running={buildRunning}
-                          latest={builds[0]}
+                  {outOfQuota && !capBlocked && quota?.plan === "free" && (
+                    <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
+                      <p className="font-semibold">
+                        You&apos;ve used this month&apos;s free builds.
+                      </p>
+                      <p className="mt-0.5 text-xs text-stone-700">
+                        Pro is $20/month with $10 of AI usage included.
+                      </p>
+                      <form
+                        action="/api/billing/checkout"
+                        method="post"
+                        className="mt-2"
+                      >
+                        <Button variant="default" size="sm" type="submit">
+                          <Sparkles />
+                          Upgrade to Pro
+                        </Button>
+                      </form>
+                    </div>
+                  )}
+                  {outOfQuota &&
+                    !capBlocked &&
+                    (quota?.plan === "pro" || quota?.plan === "team") &&
+                    !error && (
+                      <p className="mt-2 text-xs text-stone-600">
+                        You&apos;ve hit the daily safety limit of {quota.limit}{" "}
+                        builds. It frees up on a rolling 24-hour basis.
+                      </p>
+                    )}
+                  {error &&
+                    !(
+                      messages.length > 0 &&
+                      isFailureMessage(messages[messages.length - 1].content)
+                    ) && (
+                      <p role="alert" className="mt-2 text-xs text-red-700">
+                        {error}
+                      </p>
+                    )}
+                </form>
+              </TabsContent>
+              {tab !== "chat" && (
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <TabsContent value="versions" className="space-y-5 p-4">
+                    {(props.source || builds.length > 0) && (
+                      <div className="space-y-2">
+                        {props.source && (
+                          <SourceCard
+                            source={props.source}
+                            isOwner={isOwner}
+                            running={buildRunning}
+                            latest={builds[0]}
+                            now={now}
+                            onBuilt={setLogBuildId}
+                          />
+                        )}
+                        <BuildList
+                          projectId={project.id}
+                          builds={builds}
                           now={now}
+                          onShowLog={setLogBuildId}
                           onBuilt={setLogBuildId}
                         />
-                      )}
-                      <BuildList
-                        projectId={project.id}
-                        builds={builds}
-                        now={now}
-                        onShowLog={setLogBuildId}
-                        onBuilt={setLogBuildId}
-                      />
-                    </div>
-                  )}
+                      </div>
+                    )}
 
-                  <section aria-label="Versions" className="space-y-2">
-                    <div className="flex items-center gap-2 px-1">
-                      <Eyebrow>Versions</Eyebrow>
-                      <ImportDialog
-                        projectId={project.id}
-                        onImported={(id) => setSelectedId(id)}
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="-mr-2 ml-auto h-7 text-stone-600"
+                    <section aria-label="Versions" className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <Eyebrow>Versions</Eyebrow>
+                        <ImportDialog
+                          projectId={project.id}
+                          onImported={(id) => setSelectedId(id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="-mr-2 ml-auto h-7 text-stone-600"
+                            >
+                              <Upload />
+                              Import
+                            </Button>
+                          }
+                        />
+                      </div>
+                      {versions.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
+                          <span
+                            aria-hidden="true"
+                            className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
                           >
-                            <Upload />
-                            Import
-                          </Button>
-                        }
-                      />
-                    </div>
-                    {versions.length === 0 ? (
+                            <History className="size-5" />
+                          </span>
+                          <p className="text-[13px] font-medium">
+                            No versions yet
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {buildRunning
+                              ? "Your first build is running."
+                              : "Describe a prototype in the chat, or import one."}
+                          </p>
+                        </div>
+                      ) : (
+                        <ul className="space-y-1">
+                          <AnimatePresence initial={false}>
+                            {versions.map((v) => (
+                              <VersionItem
+                                key={v.id}
+                                version={v}
+                                designSystem={
+                                  v.design_system_id
+                                    ? dsNames[v.design_system_id]
+                                    : undefined
+                                }
+                                selected={v.id === selected?.id}
+                                live={
+                                  v.id === project.live_version_id &&
+                                  project.published
+                                }
+                                canRestore={v.id !== versions[0]?.id}
+                                restoring={isBusy(`restore-${v.id}`)}
+                                disabled={pending}
+                                onSelect={() => setSelectedId(v.id)}
+                                onCompare={
+                                  versions.length > 1
+                                    ? () => openCompare(v.id)
+                                    : undefined
+                                }
+                                onExport={
+                                  isOwner || role === "editor"
+                                    ? () => setExportingId(v.id)
+                                    : undefined
+                                }
+                                onRestore={() =>
+                                  run(
+                                    () => restoreVersion(project.id, v.id),
+                                    `restore-${v.id}`,
+                                    `Restored v${v.number} as a new version`,
+                                  )
+                                }
+                              />
+                            ))}
+                          </AnimatePresence>
+                        </ul>
+                      )}
+                    </section>
+                  </TabsContent>
+
+                  <TabsContent value="comments" className="space-y-1 p-3">
+                    {versions.length > 0 && (
+                      <Button
+                        variant="outline"
+                        className="mb-2 w-full"
+                        onClick={startCommenting}
+                        disabled={!selected}
+                      >
+                        <MessageSquarePlus />
+                        Add a comment on v{selected?.number}
+                      </Button>
+                    )}
+                    {props.round && (
+                      <div className="mb-2">
+                        <RoundCard
+                          round={props.round}
+                          projectId={project.id}
+                          canClose={role === "owner" || role === "editor"}
+                        />
+                      </div>
+                    )}
+                    {threads.some((t) => t.status === "open") &&
+                      !isImportedApp && (
+                        <div className="flex items-center gap-2 px-1 pb-1 text-xs text-stone-600">
+                          <span className="flex-1">
+                            Pick comments to fix them in one build.
+                          </span>
+                          <button
+                            type="button"
+                            className="min-h-8 font-medium text-raspberry-700 hover:underline"
+                            onClick={() => {
+                              const open = threads
+                                .filter((t) => t.status === "open")
+                                .map((t) => t.id);
+                              setFixPick(
+                                fixPick.length === open.length
+                                  ? []
+                                  : open.slice(0, MAX_FIX_THREADS),
+                              );
+                            }}
+                          >
+                            {fixPick.length &&
+                            fixPick.length ===
+                              threads.filter((t) => t.status === "open").length
+                              ? "Clear"
+                              : "Select all open"}
+                          </button>
+                        </div>
+                      )}
+                    {threads.length === 0 && (
                       <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
                         <span
                           aria-hidden="true"
                           className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
                         >
-                          <History className="size-5" />
+                          <MessageSquare className="size-5" />
                         </span>
                         <p className="text-[13px] font-medium">
-                          No versions yet
+                          No comments yet
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {buildRunning
-                            ? "Your first build is running."
-                            : "Describe a prototype in the chat, or import one."}
+                          Add a comment to pin one on the version on screen.
+                          Reviewers do the same from the review link.
                         </p>
                       </div>
-                    ) : (
-                      <ul className="space-y-1">
-                        <AnimatePresence initial={false}>
-                          {versions.map((v) => (
-                            <VersionItem
-                              key={v.id}
-                              version={v}
-                              designSystem={
-                                v.design_system_id
-                                  ? dsNames[v.design_system_id]
-                                  : undefined
-                              }
-                              selected={v.id === selected?.id}
-                              live={
-                                v.id === project.live_version_id &&
-                                project.published
-                              }
-                              canRestore={v.id !== versions[0]?.id}
-                              restoring={isBusy(`restore-${v.id}`)}
-                              disabled={pending}
-                              onSelect={() => setSelectedId(v.id)}
-                              onRestore={() =>
-                                run(
-                                  () => restoreVersion(project.id, v.id),
-                                  `restore-${v.id}`,
-                                  `Restored v${v.number} as a new version`,
-                                )
-                              }
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </ul>
                     )}
-                  </section>
-                </TabsContent>
-
-                <TabsContent value="share">
-                  <SharePanel
-                    project={project}
-                    isOwner={isOwner}
-                    members={members}
-                    reviewUrl={reviewUrl}
-                    pending={pending}
-                    isBusy={isBusy}
-                    run={run}
-                  />
-                </TabsContent>
-
-                <TabsContent value="comments" className="space-y-1 p-3">
-                  {props.round && (
-                    <div className="mb-2">
-                      <RoundCard
-                        round={props.round}
-                        projectId={project.id}
-                        canClose={role === "owner" || role === "editor"}
-                      />
-                    </div>
-                  )}
-                  {threads.some((t) => t.status === "open") &&
-                    !isImportedApp && (
-                      <div className="flex items-center gap-2 px-1 pb-1 text-xs text-stone-600">
-                        <span className="flex-1">
-                          Pick comments to fix them in one build.
-                        </span>
-                        <button
-                          type="button"
-                          className="min-h-8 font-medium text-raspberry-700 hover:underline"
-                          onClick={() => {
-                            const open = threads
-                              .filter((t) => t.status === "open")
-                              .map((t) => t.id);
-                            setFixPick(
-                              fixPick.length === open.length
-                                ? []
-                                : open.slice(0, MAX_FIX_THREADS),
-                            );
-                          }}
+                    <AnimatePresence initial={false}>
+                      {threads
+                        .slice()
+                        .reverse()
+                        .map((t, i) => {
+                          const v = versions.find((x) => x.id === t.version_id);
+                          return (
+                            <motion.article
+                              key={t.id}
+                              {...listItem}
+                              className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
+                            >
+                              <div className="flex items-center gap-1.5 text-xs">
+                                {t.status === "open" && !isImportedApp && (
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Fix comment ${threads.length - i}`}
+                                    className="size-4 accent-raspberry-700"
+                                    checked={fixPick.includes(t.id)}
+                                    disabled={
+                                      !fixPick.includes(t.id) &&
+                                      fixPick.length >= MAX_FIX_THREADS
+                                    }
+                                    onChange={(e) =>
+                                      setFixPick((p) =>
+                                        e.target.checked
+                                          ? [...p, t.id]
+                                          : p.filter((x) => x !== t.id),
+                                      )
+                                    }
+                                  />
+                                )}
+                                <span
+                                  className={cn(
+                                    "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                                    t.status === "open"
+                                      ? "btn-glow"
+                                      : "bg-stone-400",
+                                  )}
+                                >
+                                  {threads.length - i}
+                                </span>
+                                {v && <Badge>v{v.number}</Badge>}
+                                {t.addressed_version_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedId(t.addressed_version_id!)
+                                    }
+                                    className="rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-semibold text-raspberry-800 hover:bg-raspberry-100"
+                                  >
+                                    Addressed in v
+                                    {versions.find(
+                                      (x) => x.id === t.addressed_version_id,
+                                    )?.number ?? "?"}
+                                  </button>
+                                )}
+                                <span className="text-stone-500">
+                                  {t.status === "resolved"
+                                    ? "Resolved"
+                                    : "Open"}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="ml-auto h-7"
+                                  onClick={async () => {
+                                    await supabase
+                                      .from("comment_threads")
+                                      .update({
+                                        status:
+                                          t.status === "open"
+                                            ? "resolved"
+                                            : "open",
+                                        resolved_at:
+                                          t.status === "open"
+                                            ? new Date().toISOString()
+                                            : null,
+                                      })
+                                      .eq("id", t.id);
+                                    router.refresh();
+                                  }}
+                                >
+                                  {t.status === "open" ? (
+                                    <CircleCheck />
+                                  ) : (
+                                    <Undo2 />
+                                  )}
+                                  {t.status === "open" ? "Resolve" : "Reopen"}
+                                </Button>
+                              </div>
+                              {t.comments
+                                .slice()
+                                .sort((a, b) =>
+                                  a.created_at.localeCompare(b.created_at),
+                                )
+                                .map((c) => (
+                                  <p
+                                    key={c.id}
+                                    className="text-[13px] leading-relaxed"
+                                  >
+                                    <strong className="font-semibold">
+                                      {authorLabel(c)}
+                                    </strong>{" "}
+                                    {c.body}
+                                  </p>
+                                ))}
+                            </motion.article>
+                          );
+                        })}
+                    </AnimatePresence>
+                    {fixPick.length > 0 && (
+                      <div className="sticky bottom-0 space-y-2 rounded-2xl border border-raspberry-200 bg-card p-3 shadow-lg">
+                        <label htmlFor="fix-note" className="sr-only">
+                          Anything else for this build
+                        </label>
+                        <Textarea
+                          id="fix-note"
+                          rows={2}
+                          value={fixNote}
+                          onChange={(e) => setFixNote(e.target.value)}
+                          placeholder="Anything else? (optional)"
+                          className="text-[13px]"
+                        />
+                        <Button
+                          className="w-full"
+                          loading={busy}
+                          disabled={busy || outOfQuota}
+                          onClick={fixFromFeedback}
                         >
-                          {fixPick.length &&
-                          fixPick.length ===
-                            threads.filter((t) => t.status === "open").length
-                            ? "Clear"
-                            : "Select all open"}
-                        </button>
+                          <WandSparkles />
+                          Fix {fixPick.length} comment
+                          {fixPick.length === 1 ? "" : "s"}
+                        </Button>
+                        <p className="text-center text-[11px] text-stone-500">
+                          One build. If it fails, it isn&apos;t billed.
+                        </p>
                       </div>
                     )}
-                  {threads.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-200 px-4 py-8 text-center">
-                      <span
-                        aria-hidden="true"
-                        className="grid size-10 place-items-center rounded-2xl bg-glow-soft text-raspberry-700"
-                      >
-                        <MessageSquare className="size-5" />
-                      </span>
-                      <p className="text-[13px] font-medium">No comments yet</p>
-                      <p className="text-xs text-muted-foreground">
-                        Reviewers pin comments on the published prototype from
-                        the review link.
-                      </p>
-                    </div>
-                  )}
-                  <AnimatePresence initial={false}>
-                    {threads
-                      .slice()
-                      .reverse()
-                      .map((t, i) => {
-                        const v = versions.find((x) => x.id === t.version_id);
-                        return (
-                          <motion.article
-                            key={t.id}
-                            {...listItem}
-                            className="space-y-2 rounded-2xl p-3 transition-colors hover:bg-stone-900/[.03]"
-                          >
-                            <div className="flex items-center gap-1.5 text-xs">
-                              {t.status === "open" && !isImportedApp && (
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Fix comment ${threads.length - i}`}
-                                  className="size-4 accent-raspberry-700"
-                                  checked={fixPick.includes(t.id)}
-                                  disabled={
-                                    !fixPick.includes(t.id) &&
-                                    fixPick.length >= MAX_FIX_THREADS
-                                  }
-                                  onChange={(e) =>
-                                    setFixPick((p) =>
-                                      e.target.checked
-                                        ? [...p, t.id]
-                                        : p.filter((x) => x !== t.id),
-                                    )
-                                  }
-                                />
-                              )}
-                              <span
-                                className={cn(
-                                  "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                                  t.status === "open"
-                                    ? "btn-glow"
-                                    : "bg-stone-400",
-                                )}
-                              >
-                                {threads.length - i}
-                              </span>
-                              {v && <Badge>v{v.number}</Badge>}
-                              {t.addressed_version_id && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedId(t.addressed_version_id!)
-                                  }
-                                  className="rounded-full bg-raspberry-50 px-2 py-0.5 text-[11px] font-semibold text-raspberry-800 hover:bg-raspberry-100"
-                                >
-                                  Addressed in v
-                                  {versions.find(
-                                    (x) => x.id === t.addressed_version_id,
-                                  )?.number ?? "?"}
-                                </button>
-                              )}
-                              <span className="text-stone-500">
-                                {t.status === "resolved" ? "Resolved" : "Open"}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="ml-auto h-7"
-                                onClick={async () => {
-                                  await supabase
-                                    .from("comment_threads")
-                                    .update({
-                                      status:
-                                        t.status === "open"
-                                          ? "resolved"
-                                          : "open",
-                                      resolved_at:
-                                        t.status === "open"
-                                          ? new Date().toISOString()
-                                          : null,
-                                    })
-                                    .eq("id", t.id);
-                                  router.refresh();
-                                }}
-                              >
-                                {t.status === "open" ? (
-                                  <CircleCheck />
-                                ) : (
-                                  <Undo2 />
-                                )}
-                                {t.status === "open" ? "Resolve" : "Reopen"}
-                              </Button>
-                            </div>
-                            {t.comments
-                              .slice()
-                              .sort((a, b) =>
-                                a.created_at.localeCompare(b.created_at),
-                              )
-                              .map((c) => (
-                                <p
-                                  key={c.id}
-                                  className="text-[13px] leading-relaxed"
-                                >
-                                  <strong className="font-semibold">
-                                    {authorLabel(c)}
-                                  </strong>{" "}
-                                  {c.body}
-                                </p>
-                              ))}
-                          </motion.article>
-                        );
-                      })}
-                  </AnimatePresence>
-                  {fixPick.length > 0 && (
-                    <div className="sticky bottom-0 space-y-2 rounded-2xl border border-raspberry-200 bg-card p-3 shadow-lg">
-                      <label htmlFor="fix-note" className="sr-only">
-                        Anything else for this build
-                      </label>
-                      <Textarea
-                        id="fix-note"
-                        rows={2}
-                        value={fixNote}
-                        onChange={(e) => setFixNote(e.target.value)}
-                        placeholder="Anything else? (optional)"
-                        className="text-[13px]"
-                      />
-                      <Button
-                        className="w-full"
-                        loading={busy}
-                        disabled={busy || outOfQuota}
-                        onClick={fixFromFeedback}
-                      >
-                        <WandSparkles />
-                        Fix {fixPick.length} comment
-                        {fixPick.length === 1 ? "" : "s"}
+                    {project.published && (
+                      <Button asChild variant="ghost" size="sm" className="m-1">
+                        <a href={reviewUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink />
+                          Open the review page to reply
+                        </a>
                       </Button>
-                      <p className="text-center text-[11px] text-stone-500">
-                        One build. If it fails, it isn&apos;t billed.
-                      </p>
-                    </div>
-                  )}
-                  {project.published && (
-                    <Button asChild variant="ghost" size="sm" className="m-1">
-                      <a href={reviewUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink />
-                        Open the review page to reply
-                      </a>
-                    </Button>
-                  )}
-                </TabsContent>
-              </div>
-            )}
-          </Tabs>
+                    )}
+                  </TabsContent>
+                </div>
+              )}
+            </Tabs>
+          </>
         )}
       </div>
+
+      {/* Phones: a tab bar that opens the panel drawer on that tab. */}
+      {commentMode && (
+        <div className="glass mx-2 mb-2 flex shrink-0 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden">
+          <Button
+            size="lg"
+            className="flex-1"
+            onClick={() => setCommentMode(false)}
+          >
+            <X />
+            Tap a spot to pin · Cancel
+          </Button>
+        </div>
+      )}
+      {selectMode && (
+        <div className="glass mx-2 mb-2 flex shrink-0 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden">
+          <Button
+            size="lg"
+            className="flex-1"
+            onClick={() => setSelectMode(false)}
+          >
+            <X />
+            Tap an element · Cancel
+          </Button>
+        </div>
+      )}
+      {!editMode && !commentMode && !selectMode && variants.length === 0 && (
+        <nav
+          aria-label="Project panel"
+          {...barSwipe}
+          className="glass mx-2 mb-2 flex shrink-0 items-center rounded-full p-1 pb-[max(.25rem,env(safe-area-inset-bottom))] lg:hidden"
+        >
+          {(
+            [
+              ["chat", "Chat", Sparkles, 0],
+              ["versions", "Versions", History, versions.length],
+              ["comments", "Comments", MessageSquare, openThreads],
+              ["share", "Share", Share2, 0],
+            ] as const
+          ).map(([id, label, Icon, count]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                if (id === "share") return setSharing(true);
+                setTab(id);
+                setPanelOpen(true);
+              }}
+              aria-pressed={panelOpen && tab === id}
+              className="relative flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[11px] font-medium text-stone-600 aria-pressed:bg-foreground/[.07] aria-pressed:text-foreground"
+            >
+              <Icon className="size-[18px]" />
+              {label}
+              {id === "chat" && busy && (
+                <span
+                  className="absolute right-[calc(50%-16px)] top-2 size-2 animate-pulse rounded-full bg-raspberry-600"
+                  aria-label="Building"
+                />
+              )}
+              {count > 0 && id !== "versions" && (
+                <span className="absolute right-[calc(50%-20px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-raspberry-600 px-1 text-[10px] font-semibold text-white">
+                  {count}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
@@ -1522,6 +2497,300 @@ const ACCESS = [
   },
 ] as const;
 
+/**
+ * One place to share: which version people see, who can open it, and whether
+ * to ask for approval, finished by a single action ("Publish v4 and send").
+ */
+function ShareDialog({
+  open,
+  onOpenChange,
+  project,
+  selected,
+  live,
+  isOwner,
+  canBuild,
+  members,
+  reviewUrl,
+  pending,
+  isBusy,
+  run,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: Project;
+  selected: VersionMeta | null;
+  live: VersionMeta | null;
+  isOwner: boolean;
+  canBuild: boolean;
+  members: Member[];
+  reviewUrl: string;
+  pending: boolean;
+  isBusy: (key: string) => boolean;
+  run: Run;
+}) {
+  const router = useRouter();
+  const selectedIsLive =
+    project.published && !!selected && selected.id === project.live_version_id;
+  const [makeLive, setMakeLive] = useState(true);
+  const [approval, setApproval] = useState(false);
+  const [emails, setEmails] = useState("");
+  const [due, setDue] = useState("");
+  const [rule, setRule] = useState<"all" | "any">("all");
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const list = splitEmails(emails);
+  const suggested = members
+    .filter((m) => m.role !== "editor")
+    .map((m) => m.email)
+    .filter((e) => !list.includes(e));
+
+  const publishing = isOwner && !!selected && !selectedIsLive && makeLive;
+  const asking = approval && list.length > 0 && !!selected;
+  const label =
+    publishing && asking
+      ? `Publish v${selected!.number} and send`
+      : publishing
+        ? `Publish v${selected!.number}`
+        : asking
+          ? `Send to ${list.length} reviewer${list.length === 1 ? "" : "s"}`
+          : "Done";
+
+  async function submit() {
+    if (!publishing && !asking) return onOpenChange(false);
+    setSending(true);
+    try {
+      if (publishing) await publishVersion(project.id, selected!.id);
+      if (asking) {
+        const res = await requestReviewRound({
+          projectId: project.id,
+          versionId: selected!.id,
+          emails: list,
+          note: note.trim() || undefined,
+          dueAt: due ? new Date(`${due}T23:59:00`).toISOString() : null,
+          rule,
+        });
+        notify.success(
+          `${publishing ? `v${selected!.number} is live. ` : ""}Asked ${res.reviewers} reviewer${res.reviewers === 1 ? "" : "s"} to approve it`,
+          {
+            description:
+              res.emailed === res.reviewers
+                ? "They've been emailed the link."
+                : "Email isn't set up for everyone, so send them the link too.",
+            action: {
+              label: "Copy link",
+              onClick: () => copyWithToast(reviewUrl),
+            },
+          },
+        );
+      } else {
+        notify.success(`v${selected!.number} is live`, {
+          action: {
+            label: "Copy link",
+            onClick: () => copyWithToast(reviewUrl),
+          },
+        });
+      }
+      setApproval(false);
+      setEmails("");
+      setNote("");
+      setDue("");
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : "That didn't work.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] gap-5 pb-0 [&>*]:min-w-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-w-full max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Share {project.name}</DialogTitle>
+          <DialogDescription>
+            Pick what people see, who can open it, and whether you want an
+            approval.
+          </DialogDescription>
+        </DialogHeader>
+
+        <section className="space-y-2">
+          <Eyebrow>What people see</Eyebrow>
+          {selected ? (
+            <div className="flex items-center gap-2.5 rounded-2xl border border-stone-200 bg-card px-3.5 py-2.5">
+              <span className="text-[13px] font-semibold">
+                v{selected.number}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs text-stone-600">
+                {selected.summary || "Selected version"}
+              </span>
+              {selectedIsLive ? (
+                <Badge variant="success">
+                  <BadgeDot />
+                  Live
+                </Badge>
+              ) : isOwner ? (
+                <SwitchRow
+                  id="share-make-live"
+                  label={<span className="text-xs">Make live</span>}
+                  checked={makeLive}
+                  onCheckedChange={setMakeLive}
+                  className="border-0 bg-transparent p-0"
+                />
+              ) : (
+                <Badge>Draft</Badge>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-stone-600">Build a version first.</p>
+          )}
+          <p className="text-[11px] text-stone-500">
+            {live
+              ? `Now live: v${live.number}. People on the link always see the live version.`
+              : "Nothing is live yet, so the link doesn't work until you publish."}
+            {!isOwner && " Only the owner can change what's live."}
+          </p>
+        </section>
+
+        {(project.published || publishing) && (
+          <section className="space-y-2">
+            <Eyebrow>Link</Eyebrow>
+            <div className="flex gap-1.5">
+              <Input
+                readOnly
+                value={reviewUrl}
+                aria-label="Review link"
+                className="text-xs text-stone-600"
+              />
+              <Button
+                variant="outline"
+                onClick={() => copyWithToast(reviewUrl)}
+              >
+                <Copy />
+                Copy
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {isOwner && (
+          <SharePanel
+            hideLink
+            project={project}
+            isOwner={isOwner}
+            members={members}
+            reviewUrl={reviewUrl}
+            pending={pending}
+            isBusy={isBusy}
+            run={run}
+          />
+        )}
+
+        {canBuild && selected && (
+          <section className="space-y-3 rounded-2xl bg-stone-50 p-3.5">
+            <SwitchRow
+              id="share-approval"
+              label="Ask for approval"
+              description="Reviewers get an email and approve or ask for changes. Reviewers are free."
+              checked={approval}
+              onCheckedChange={setApproval}
+              className="border-0 bg-transparent p-0"
+            />
+            {approval && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-reviewers">Reviewers</Label>
+                  <Textarea
+                    id="share-reviewers"
+                    rows={2}
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    placeholder="maya@company.com, client@example.com"
+                  />
+                  {suggested.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggested.slice(0, 8).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() =>
+                            setEmails((v) =>
+                              v.trim() ? `${v.trim()}, ${m}` : m,
+                            )
+                          }
+                          className="min-h-8 rounded-full bg-card px-3 text-xs text-stone-700 shadow-[inset_0_0_0_1px_var(--color-border)] hover:bg-stone-100"
+                        >
+                          + {m}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="share-due">Due (optional)</Label>
+                    <Input
+                      id="share-due"
+                      type="date"
+                      value={due}
+                      onChange={(e) => setDue(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="share-rule">Approved when</Label>
+                    <Select
+                      value={rule}
+                      onValueChange={(v) => setRule(v as "all" | "any")}
+                    >
+                      <SelectTrigger id="share-rule">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Everyone approves</SelectItem>
+                        <SelectItem value="any">Anyone approves</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-note">Note (optional)</Label>
+                  <Textarea
+                    id="share-note"
+                    rows={2}
+                    maxLength={2000}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="What should they look at?"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        <DialogFooter className="sticky bottom-0 -mx-5 border-t border-stone-100 bg-card px-5 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="mr-auto"
+          >
+            Close
+          </Button>
+          <Button
+            variant="default"
+            loading={sending}
+            disabled={approval && list.length === 0 && !publishing}
+            onClick={submit}
+          >
+            {asking ? <Send /> : publishing ? <Rocket /> : <Check />}
+            {label}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SharePanel({
   project,
   isOwner,
@@ -1530,7 +2799,9 @@ function SharePanel({
   pending,
   isBusy,
   run,
+  hideLink = false,
 }: {
+  hideLink?: boolean;
   project: Project;
   isOwner: boolean;
   members: Member[];
@@ -1558,60 +2829,62 @@ function SharePanel({
   }
 
   return (
-    <div className="space-y-6 p-4">
-      <section className="space-y-2">
-        <Eyebrow>Review link</Eyebrow>
-        {project.published ? (
-          <>
-            <div className="flex gap-1.5">
-              <Input
-                readOnly
-                value={reviewUrl}
-                aria-label="Review link"
-                className="text-xs text-stone-600"
-              />
+    <div className={cn("space-y-6", hideLink ? "" : "p-4")}>
+      {!hideLink && (
+        <section className="space-y-2">
+          <Eyebrow>Review link</Eyebrow>
+          {project.published ? (
+            <>
+              <div className="flex gap-1.5">
+                <Input
+                  readOnly
+                  value={reviewUrl}
+                  aria-label="Review link"
+                  className="text-xs text-stone-600"
+                />
+                <Button
+                  size="icon"
+                  aria-label={copied ? "Copied" : "Copy link"}
+                  title={copied ? "Copied" : "Copy link"}
+                  onClick={async () => {
+                    await copyWithToast(reviewUrl);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                >
+                  {copied ? <Check /> : <Copy />}
+                </Button>
+              </div>
               <Button
-                size="icon"
-                aria-label={copied ? "Copied" : "Copy link"}
-                title={copied ? "Copied" : "Copy link"}
-                onClick={async () => {
-                  await copyWithToast(reviewUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
+                variant="ghost"
+                size="sm"
+                loading={isBusy("unpublish")}
+                disabled={pending}
+                onClick={() =>
+                  run(() => unpublish(project.id), "unpublish", {
+                    title: "Review link turned off",
+                    undo: project.live_version_id
+                      ? async () => {
+                          await publishVersion(
+                            project.id,
+                            project.live_version_id!,
+                          );
+                          router.refresh();
+                        }
+                      : undefined,
+                  })
+                }
               >
-                {copied ? <Check /> : <Copy />}
+                Unpublish
               </Button>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              loading={isBusy("unpublish")}
-              disabled={pending}
-              onClick={() =>
-                run(() => unpublish(project.id), "unpublish", {
-                  title: "Review link turned off",
-                  undo: project.live_version_id
-                    ? async () => {
-                        await publishVersion(
-                          project.id,
-                          project.live_version_id!,
-                        );
-                        router.refresh();
-                      }
-                    : undefined,
-                })
-              }
-            >
-              Unpublish
-            </Button>
-          </>
-        ) : (
-          <p className="text-xs text-stone-600">
-            Publish a version (top right) to get a review link.
-          </p>
-        )}
-      </section>
+            </>
+          ) : (
+            <p className="text-xs text-stone-600">
+              Publish a version (top right) to get a review link.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="space-y-2">
         <Eyebrow>Address</Eyebrow>
@@ -1782,6 +3055,18 @@ function SharePanel({
             }
           />
         </div>
+        <SwitchRow
+          id="guest-inspect"
+          className="-mx-1"
+          label="Guests can inspect code"
+          description="Lets password guests and anyone with a public link open dev mode. People you invite always can."
+          checked={project.guest_inspect === true}
+          loading={isBusy("inspect")}
+          disabled={pending && !isBusy("inspect")}
+          onCheckedChange={(on) =>
+            run(() => setGuestInspect(project.id, on), "inspect")
+          }
+        />
       </section>
 
       <section className="space-y-2">
@@ -1997,6 +3282,8 @@ function VersionItem({
   disabled,
   onSelect,
   onRestore,
+  onCompare,
+  onExport,
   designSystem,
 }: {
   /** The design system this version was built with, if any. */
@@ -2009,6 +3296,8 @@ function VersionItem({
   disabled: boolean;
   onSelect: () => void;
   onRestore: () => void;
+  onCompare?: () => void;
+  onExport?: () => void;
 }) {
   const summary = v.summary ?? "";
   const long = summary.length > 90;
@@ -2085,19 +3374,115 @@ function VersionItem({
           )
         )}
       </button>
-      {selected && canRestore && (
-        <div className="px-3 pb-3">
-          <Button
-            size="sm"
-            loading={restoring}
-            disabled={disabled}
-            onClick={onRestore}
-          >
-            <RotateCcw />
-            Restore as new version
-          </Button>
+      {selected && (canRestore || onCompare || onExport) && (
+        <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+          {onCompare && (
+            <Button size="sm" variant="outline" onClick={onCompare}>
+              <Columns2 />
+              Compare
+            </Button>
+          )}
+          {onExport && (
+            <Button size="sm" variant="outline" onClick={onExport}>
+              <FileDown />
+              Export
+            </Button>
+          )}
+          {canRestore && (
+            <Button
+              size="sm"
+              loading={restoring}
+              disabled={disabled}
+              onClick={onRestore}
+            >
+              <RotateCcw />
+              Restore as new version
+            </Button>
+          )}
         </div>
       )}
     </motion.li>
+  );
+}
+
+/** Live checklist for a planned build: each step's state, with a way to stop between steps. */
+function PlanChecklist({
+  steps,
+  elapsed,
+  stopping,
+  onStop,
+}: {
+  steps: PlanProgress[];
+  elapsed: number;
+  stopping: boolean;
+  onStop: () => void;
+}) {
+  const done = steps.filter((s) => s.status === "done").length;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="space-y-2.5 rounded-2xl bg-glow-soft p-3 text-[13px] text-raspberry-800"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">
+          Step {Math.min(done + 1, steps.length)} of {steps.length} · {elapsed}s
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onStop}
+          disabled={stopping}
+          className="h-7 px-2 text-xs"
+        >
+          {stopping ? "Stopping after this step…" : "Stop"}
+        </Button>
+      </div>
+      <ol className="space-y-1.5">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+              {s.status === "done" ? (
+                <Check
+                  className="size-4 text-raspberry-700"
+                  aria-hidden="true"
+                />
+              ) : s.status === "running" ? (
+                <Spinner className="size-3.5" />
+              ) : s.status === "failed" ? (
+                <X className="size-4 text-red-700" aria-hidden="true" />
+              ) : (
+                <span
+                  className="size-2 rounded-full border border-raspberry-800/40"
+                  aria-hidden="true"
+                />
+              )}
+            </span>
+            <span
+              className={cn(
+                "leading-snug",
+                s.status === "pending" && "text-raspberry-800/60",
+              )}
+            >
+              {s.title}
+              {s.summary && (
+                <span className="block text-xs text-raspberry-800/70">
+                  {s.summary}
+                </span>
+              )}
+              <span className="sr-only">
+                {s.status === "done"
+                  ? " (done)"
+                  : s.status === "running"
+                    ? " (in progress)"
+                    : s.status === "failed"
+                      ? " (failed)"
+                      : ""}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +45,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import app.realframe.android.ui.voice.Dictation
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,6 +75,35 @@ fun StudioScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var building by remember { mutableStateOf(false) }
     var prompt by remember { mutableStateOf("") }
+    // Voice: spoken words land in the box; saying "send" sends.
+    val context = LocalContext.current
+    var listening by remember { mutableStateOf(false) }
+    var heard by remember { mutableStateOf("") }
+    var voiceError by remember { mutableStateOf<String?>(null) }
+    var sendSpoken by remember { mutableStateOf(false) }
+    val dictation = remember {
+        Dictation(
+            context,
+            onPartial = { heard = it },
+            onFinal = { spoken ->
+                if (Dictation.isSend(spoken)) sendSpoken = true
+                else prompt = Dictation.append(prompt, spoken)
+            },
+            onEnd = { err ->
+                listening = false
+                heard = ""
+                voiceError = err
+            },
+        )
+    }
+    DisposableEffect(Unit) { onDispose { dictation.cancel() } }
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            voiceError = null
+            listening = true
+            dictation.start()
+        } else voiceError = "Allow the microphone for Realframe in Settings to talk instead of type."
+    }
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
 
@@ -110,6 +146,14 @@ fun StudioScreen(
         }
     }
 
+    // "Send" said out loud sends what's in the box.
+    LaunchedEffect(sendSpoken) {
+        if (sendSpoken) {
+            sendSpoken = false
+            if (prompt.isNotBlank() && !building) send()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -129,6 +173,16 @@ fun StudioScreen(
         },
         bottomBar = {
             if (detail?.canBuild == true) {
+                Column(Modifier.fillMaxWidth()) {
+                if (listening || voiceError != null) {
+                    Text(
+                        text = voiceError ?: heard.ifBlank { if (dictation.onDevice) "Listening on this phone…" else "Listening…" },
+                        color = if (voiceError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 3,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
+                    )
+                }
                 Row(
                     Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -148,12 +202,28 @@ fun StudioScreen(
                         ),
                         modifier = Modifier.weight(1f),
                     )
+                    if (dictation.available) {
+                        IconButton(
+                            onClick = {
+                                if (listening) dictation.stop()
+                                else askMic.launch(android.Manifest.permission.RECORD_AUDIO)
+                            },
+                            enabled = listening || !building,
+                        ) {
+                            Icon(
+                                if (listening) Icons.Filled.Stop else Icons.Filled.Mic,
+                                if (listening) "Stop listening" else "Talk instead of typing",
+                                tint = if (listening) Raspberry else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     FilledIconButton(
                         onClick = ::send,
                         enabled = !building && prompt.isNotBlank(),
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier.size(56.dp),
                     ) { Icon(Icons.Filled.ArrowUpward, "Send") }
+                }
                 }
             }
         },

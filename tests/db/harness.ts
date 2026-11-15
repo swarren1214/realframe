@@ -56,7 +56,26 @@ create function storage.foldername(name text) returns text[] language sql immuta
 $$;
 
 create publication supabase_realtime;
+
+-- pg_cron and pg_net aren't in PGlite; scheduled jobs and HTTP calls become no-ops.
+create schema cron;
+create table cron.job (jobid bigserial primary key, jobname text unique, schedule text, command text);
+create function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $$
+  insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+  on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+  returning jobid
+$$;
+create function cron.unschedule(job_name text) returns boolean language sql as $$
+  with d as (delete from cron.job where jobname = job_name returning 1) select exists (select 1 from d)
+$$;
+create schema net;
+create function net.http_post(url text, headers jsonb default '{}', body jsonb default '{}') returns bigint
+  language sql as $$ select 0::bigint $$;
 `;
+
+// Extensions PGlite can't load; the stand-ins above take their place.
+const UNAVAILABLE_EXTENSIONS =
+  /create extension if not exists (pg_net|pg_cron)[^;]*;/gi;
 
 export type TestUser = { id: string; email: string };
 
@@ -71,7 +90,12 @@ export class TestDb {
       .sort();
     for (const f of files) {
       try {
-        await pg.exec(readFileSync(join(MIGRATIONS, f), "utf8"));
+        await pg.exec(
+          readFileSync(join(MIGRATIONS, f), "utf8").replace(
+            UNAVAILABLE_EXTENSIONS,
+            "",
+          ),
+        );
       } catch (e) {
         throw new Error(`migration ${f} failed: ${(e as Error).message}`);
       }

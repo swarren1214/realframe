@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
   outputFileTracingIncludes: {
     "/api/thumbnails/capture": ["./node_modules/@sparticuz/chromium/bin/**"],
+    "/api/projects/[id]/ai-copy": ["./node_modules/@sparticuz/chromium/bin/**"],
   },
   async headers() {
     return [

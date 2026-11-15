@@ -88,13 +88,13 @@ export function RoundBanner({
     <section
       aria-label="Review round"
       className={cn(
-        "mx-3 mt-2 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-2.5",
+        "mx-2 mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-3.5 py-2.5 lg:mx-3 lg:px-4",
         tone,
       )}
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-72">
         <p className="text-[13px] font-semibold text-stone-900">{title}</p>
-        <p className="text-xs text-stone-600">
+        <p className="text-xs text-stone-600 max-sm:line-clamp-2">
           {mine && mine.decision === "pending"
             ? round.note
               ? `“${round.note}” Leave comments on the screens, then approve or ask for changes.`
@@ -110,7 +110,7 @@ export function RoundBanner({
       </div>
       {mine &&
         (mine.decision === "pending" ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 max-sm:w-full max-sm:[&>*]:flex-1">
             <Button
               variant="outline"
               loading={busy === "changes_requested"}
@@ -121,7 +121,7 @@ export function RoundBanner({
               Request changes
             </Button>
             <Button
-              className="bg-emerald-700 text-white hover:bg-emerald-800"
+              className="bg-emerald-700 text-emerald-50 hover:bg-emerald-800"
               loading={busy === "approved"}
               disabled={Boolean(busy)}
               onClick={() => answer("approved")}

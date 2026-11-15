@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useIsLarge } from "@/lib/use-media";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   CircleCheck,
+  Code,
   Expand,
   LogIn,
   MessageSquare,
@@ -12,7 +14,10 @@ import {
   Send,
   Undo2,
   X,
+  Columns2,
+  Sparkles,
 } from "lucide-react";
+import { notify } from "@/lib/toast";
 import { Mark } from "@/components/Logo";
 import { Badge, BadgeDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,17 +33,30 @@ import {
   PresentControls,
   enterFullscreen,
 } from "@/components/PresentMode";
-import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
+import {
+  PrototypeFrame,
+  type FrameHandle,
+  type Pin,
+} from "@/components/PrototypeFrame";
+import { DevPanel } from "@/components/dev/DevPanel";
+import { annotateSource, type Inspected } from "@/lib/inspect";
 import { createClient } from "@/lib/supabase/client";
 import {
   authorLabel,
   canComment,
+  canInspect,
   type Project,
   type ReviewRound,
   type Role,
   type Thread,
 } from "@/lib/types";
 import { RoundBanner } from "@/components/reviews/RoundBanner";
+import { useDrawerSwipe, useSwipeUp } from "@/lib/use-drawer-swipe";
+import {
+  CompareView,
+  type CompareContent,
+  type CompareVersion,
+} from "@/components/compare/CompareView";
 import { readSettings, type Device } from "@/lib/devices";
 import {
   DevicePicker,
@@ -90,7 +108,146 @@ export function Review({
   const isGuest = role === "guest";
   const commenter =
     canComment(role) || (isGuest && project.guest_comments !== false);
+  // Opened with ?comment=1 (the studio's Add a comment): start pinning.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("comment")) return;
+    url.searchParams.delete("comment");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    if (commenter) setCommentMode(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Phones only: whether the comments drawer is open.
+  // Phones only: the closed drawer is hidden, so it must not take focus or clicks.
+  const large = useIsLarge();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const drawerSwipe = useDrawerSwipe(() => setPanelOpen(false));
+  const barSwipe = useSwipeUp(() => setPanelOpen(true));
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setPanelOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panelOpen]);
   const [commentMode, setCommentMode] = useState(false);
+
+  // Compare: the live version against anything before it.
+  const earlier = Object.entries(versionNumbers).filter(
+    ([, n]) => n < version.number,
+  );
+  const canCompare = role !== "public" && earlier.length > 0;
+  const [compareList, setCompareList] = useState<CompareVersion[] | null>(null);
+  const [compare, setCompare] = useState<{
+    before: string;
+    after: string;
+  } | null>(null);
+  const [changed, setChanged] = useState<{ id: string; number: number } | null>(
+    null,
+  );
+  const seenKey = `rf_seen_${project.id}`;
+  useEffect(() => {
+    if (!canCompare) return;
+    try {
+      const seen = Number(localStorage.getItem(seenKey) ?? 0);
+      const match = earlier.find(([, n]) => n === seen);
+      if (seen && seen < version.number && match)
+        setChanged({ id: match[0], number: seen });
+      localStorage.setItem(seenKey, String(version.number));
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version.number]);
+
+  // Dev mode: anyone with a role on the prototype, guests only if the owner allows it.
+  const inspectable = canInspect(role, project);
+  const frame = useRef<FrameHandle>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [inspected, setInspected] = useState<Inspected | null>(null);
+  const isBundle = Boolean(version.src);
+  const annotated = useMemo(
+    () => (inspecting && !isBundle ? annotateSource(version.html) : null),
+    [inspecting, isBundle, version.html],
+  );
+  useEffect(() => setInspected(null), [inspecting]);
+  // Dev mode is desktop only.
+  useEffect(() => {
+    if (!large) setInspecting(false);
+  }, [large]);
+  const loadSourceHtml = useCallback(
+    async (id: string) => (await loadForCompare(id)).html ?? "",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version.id],
+  );
+  function startInspecting() {
+    setCompare(null);
+    setCommentMode(false);
+    setDraft(null);
+    setInspecting(true);
+  }
+  useEffect(() => {
+    if (!inspectable) return;
+    const typing = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const down = (e: KeyboardEvent) => {
+      if (typing(e.target)) return;
+      if (
+        e.key.toLowerCase() === "d" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        window.matchMedia("(min-width: 1024px)").matches
+      ) {
+        e.preventDefault();
+        setInspecting((on) => {
+          if (!on) {
+            setCompare(null);
+            setCommentMode(false);
+            setDraft(null);
+          }
+          return !on;
+        });
+      } else if (e.key === "Escape") setInspecting(false);
+      else if (e.key === "Alt") frame.current?.inspectAlt(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Alt") frame.current?.inspectAlt(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [inspectable]);
+
+  async function openCompare(before?: string) {
+    setInspecting(false);
+    setCommentMode(false);
+    setDraft(null);
+    setPanelOpen(false);
+    let list = compareList;
+    if (!list) {
+      const res = await fetch(`/api/p/${project.slug}/versions`);
+      const data = await res.json().catch(() => ({}));
+      list = (data.versions ?? []) as CompareVersion[];
+      setCompareList(list);
+    }
+    const older = before ?? list.find((v) => v.number < version.number)?.id;
+    if (!older) {
+      notify.error("There's no earlier version to compare with.");
+      return;
+    }
+    setChanged(null);
+    setCompare({ before: older, after: version.id });
+  }
+
+  async function loadForCompare(id: string): Promise<CompareContent> {
+    if (id === version.id) return { html: version.html, src: version.src };
+    const res = await fetch(`/api/p/${project.slug}/versions?v=${id}`);
+    if (!res.ok) throw new Error("Couldn't load it");
+    return (await res.json()) as CompareContent;
+  }
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [draftText, setDraftText] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -268,8 +425,8 @@ export function Review({
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="glass mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5">
+    <div className="flex h-dvh flex-col">
+      <header className="glass mx-2 mt-2 flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-1.5 lg:mx-3 lg:mt-3 lg:gap-2 lg:pl-3">
         <Link
           href={userEmail ? "/projects" : "/"}
           aria-label="Realframe"
@@ -277,17 +434,17 @@ export function Review({
         >
           <Mark size={26} />
         </Link>
-        <h1 className="min-w-0 truncate text-sm font-semibold">
+        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold lg:flex-none">
           {project.name}
         </h1>
         {project.live_version_id === version.id ? (
-          <Badge variant="success">
+          <Badge variant="success" className="max-sm:hidden">
             <BadgeDot />v{version.number} · Live
           </Badge>
         ) : (
-          <Badge>v{version.number} · Draft</Badge>
+          <Badge className="max-sm:hidden">v{version.number} · Draft</Badge>
         )}
-        <div className="flex-1" />
+        <div className="flex-1 max-lg:hidden" />
         {view.list.length > 1 && <DevicePicker view={view} measure={measure} />}
         <RotateButton view={view} />
         <Button
@@ -301,21 +458,53 @@ export function Review({
           }}
         >
           <Expand />
-          Full screen
+          <span className="max-lg:sr-only">Full screen</span>
         </Button>
         {(role === "owner" || role === "editor") && (
-          <Button asChild variant="ghost">
+          <Button asChild variant="ghost" className="max-lg:hidden">
             <a href={`/projects/${project.id}`}>
               <PencilRuler />
               Open in studio
             </a>
           </Button>
         )}
+        {canCompare && !presenting && (
+          <Button
+            variant={compare ? "default" : "ghost"}
+            aria-pressed={Boolean(compare)}
+            title="Compare with an earlier version"
+            onClick={() => (compare ? setCompare(null) : openCompare())}
+          >
+            <Columns2 />
+            <span className="max-lg:sr-only">Compare</span>
+          </Button>
+        )}
+        {inspectable && !presenting && (
+          <Button
+            variant={inspecting ? "default" : "ghost"}
+            className="max-lg:hidden"
+            aria-pressed={inspecting}
+            title={
+              inspecting
+                ? "Stop inspecting (Esc)"
+                : "Inspect: code, measurements and tokens (D)"
+            }
+            onClick={() =>
+              inspecting ? setInspecting(false) : startInspecting()
+            }
+          >
+            {inspecting ? <X /> : <Code />}
+            {inspecting ? "Stop inspecting" : "Inspect"}
+          </Button>
+        )}
         {commenter && (
           <Button
             variant={commentMode ? "default" : "outline"}
+            className="max-lg:hidden"
             aria-pressed={commentMode}
             onClick={() => {
+              setCompare(null);
+              setInspecting(false);
               setCommentMode((m) => !m);
               setDraft(null);
             }}
@@ -325,16 +514,16 @@ export function Review({
           </Button>
         )}
         {isGuest ? (
-          <span className="px-2 text-xs text-muted-foreground">
+          <span className="px-2 text-xs text-muted-foreground max-lg:hidden">
             Viewing as {guestName}
           </span>
         ) : userEmail ? (
-          accountMenu
+          <div className="max-lg:hidden">{accountMenu}</div>
         ) : (
           <Button asChild variant="ghost">
             <a href={`/login?next=/p/${project.slug}`}>
               <LogIn />
-              Sign in
+              <span className="max-sm:sr-only">Sign in</span>
             </a>
           </Button>
         )}
@@ -349,9 +538,40 @@ export function Review({
         />
       )}
 
-      <div className="flex min-h-0 flex-1 gap-3 p-3">
+      {changed && !compare && !presenting && (
+        <div
+          role="status"
+          className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-3xl bg-glow-soft px-4 py-2.5 text-[13px] text-raspberry-900 lg:mx-3"
+        >
+          <Sparkles
+            className="size-4 shrink-0 text-raspberry-700"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1">
+            Updated since you last looked: <b>v{changed.number}</b> →{" "}
+            <b>v{version.number}</b>
+          </span>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => openCompare(changed.id)}
+          >
+            <Columns2 />
+            See what changed
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Dismiss"
+            onClick={() => setChanged(null)}
+          >
+            <X />
+          </Button>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1 gap-3 p-2 lg:p-3">
         <main
-          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-4"
+          className="relative min-w-0 flex-1 overflow-hidden rounded-[1.75rem] border border-card/80 bg-card/40 p-2 lg:p-4"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setCommentMode(false);
@@ -380,24 +600,40 @@ export function Review({
               presenting && PRESENT_FRAME_CLASS,
             )}
           >
-            <DeviceStage
-              view={view}
-              presenting={presenting}
-              onMeasure={setMeasure}
-            >
-              <PrototypeFrame
-                html={version.html}
-                src={version.src}
-                title={`${project.name} v${version.number}`}
-                commentMode={commentMode}
-                pins={pins}
-                onPick={(x, y) => {
-                  setDraft({ x, y });
-                  setCommentMode(false);
-                }}
-                onSelectPin={(id) => setSelected(id)}
+            {compare && compareList ? (
+              <CompareView
+                versions={compareList}
+                initial={compare}
+                load={loadForCompare}
+                view={view}
+                onClose={() => setCompare(null)}
               />
-            </DeviceStage>
+            ) : (
+              <DeviceStage
+                view={view}
+                presenting={presenting}
+                onMeasure={setMeasure}
+              >
+                <PrototypeFrame
+                  ref={frame}
+                  html={annotated?.html ?? version.html}
+                  src={version.src}
+                  inspect={inspecting}
+                  onInspect={setInspected}
+                  title={`${project.name} v${version.number}`}
+                  commentMode={commentMode}
+                  pins={pins}
+                  onPick={(x, y) => {
+                    setDraft({ x, y });
+                    setCommentMode(false);
+                  }}
+                  onSelectPin={(id) => {
+                    setSelected(id);
+                    setPanelOpen(true);
+                  }}
+                />
+              </DeviceStage>
+            )}
           </div>
           {draft && (
             <form
@@ -425,7 +661,7 @@ export function Review({
                 className="field-sizing-fixed resize-none"
               />
               <div className="flex items-center justify-end gap-1.5">
-                <Kbd className="mr-auto">⌘↵</Kbd>
+                <Kbd className="mr-auto max-lg:invisible">⌘↵</Kbd>
                 <Button variant="ghost" onClick={() => setDraft(null)}>
                   Cancel
                 </Button>
@@ -444,169 +680,276 @@ export function Review({
         </main>
 
         {role !== "public" && (
-          <aside
-            aria-label="Comments"
-            className="glass flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[1.75rem]"
-          >
-            <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-2.5">
-              <MessageSquare
-                className="size-4 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <h2 className="text-[13px] font-semibold">Comments</h2>
-              <span className="text-xs text-muted-foreground">
-                {openCount} open
-              </span>
-              <ToggleGroup
-                type="single"
-                aria-label="Filter comments"
-                value={filter}
-                onValueChange={(v) => v && setFilter(v as typeof filter)}
-                className="ml-auto"
-              >
-                <ToggleGroupItem value="open">Open</ToggleGroupItem>
-                <ToggleGroupItem value="resolved">Resolved</ToggleGroupItem>
-                <ToggleGroupItem value="all">All</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            {error && (
-              <p
-                role="alert"
-                className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800"
-              >
-                {error}
-              </p>
-            )}
-            <div className="flex-1 space-y-1 overflow-y-auto p-2">
-              {visible.length === 0 && (
-                <div className="flex flex-col items-center gap-2 p-6 text-center text-[13px] text-muted-foreground">
-                  <MessageSquare
-                    className="size-5 text-stone-400"
-                    aria-hidden="true"
-                  />
-                  {commenter
-                    ? "No comments here yet. Click “Add comment”, then click anywhere on the prototype."
-                    : "No comments yet."}
-                </div>
+          <>
+            {/* Phones: comments open as a drawer over the prototype. */}
+            <div
+              aria-hidden="true"
+              onClick={() => setPanelOpen(false)}
+              className={cn(
+                "fixed inset-0 z-30 bg-stone-950/30 backdrop-blur-[2px] transition-opacity duration-(--duration-base) lg:hidden dark:bg-black/60",
+                panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
               )}
-              <AnimatePresence initial={false}>
-                {visible.map((t) => (
-                  <motion.article
-                    key={t.id}
-                    {...listItem}
-                    onClick={() => setSelected(t.id)}
-                    className={cn(
-                      "cursor-default space-y-2 rounded-2xl p-3 transition-colors",
-                      t.id === selected
-                        ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
-                        : "hover:bg-foreground/[.03]",
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span
-                        className={cn(
-                          "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
-                          t.status === "open" ? "btn-glow" : "bg-stone-400",
-                        )}
-                      >
-                        {t.n}
-                      </span>
-                      <Badge>v{versionNumbers[t.version_id] ?? "?"}</Badge>
-                      {t.version_id !== version.id && (
-                        <span className="text-muted-foreground">
-                          earlier version
-                        </span>
-                      )}
-                      {t.addressed_version_id && (
-                        <Badge className="bg-raspberry-50 text-raspberry-800">
-                          Addressed in v
-                          {versionNumbers[t.addressed_version_id] ?? "?"}
-                        </Badge>
-                      )}
-                      {commenter && !isGuest && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto h-7"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleResolved(t);
-                          }}
-                        >
-                          {t.status === "open" ? <CircleCheck /> : <Undo2 />}
-                          {t.status === "open" ? "Resolve" : "Reopen"}
-                        </Button>
-                      )}
-                    </div>
-                    {t.comments
-                      .slice()
-                      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-                      .map((c) => (
-                        <div key={c.id} className="text-[13px] leading-relaxed">
-                          <span className="font-semibold">
-                            {authorLabel(c)}
-                          </span>{" "}
-                          <span
-                            suppressHydrationWarning
-                            className="text-[11px] text-muted-foreground"
-                          >
-                            {new Date(c.created_at).toLocaleString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                          <p className="whitespace-pre-wrap">{c.body}</p>
-                        </div>
-                      ))}
-                    {commenter && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          reply(t.id);
-                        }}
-                        className="flex gap-1.5"
-                      >
-                        <label htmlFor={`r-${t.id}`} className="sr-only">
-                          Reply
-                        </label>
-                        <Input
-                          id={`r-${t.id}`}
-                          value={replies[t.id] ?? ""}
-                          onChange={(e) =>
-                            setReplies((r) => ({
-                              ...r,
-                              [t.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Reply…"
-                          className="h-8 text-xs"
-                        />
-                        <Button
-                          type="submit"
-                          variant="secondary"
-                          size="icon-sm"
-                          aria-label="Send reply"
-                          title="Send reply"
-                          disabled={busy || !(replies[t.id] ?? "").trim()}
-                        >
-                          <Send />
-                        </Button>
-                      </form>
-                    )}
-                  </motion.article>
-                ))}
-              </AnimatePresence>
-            </div>
-            {!commenter && (
-              <p className="border-t border-stone-100 p-3 text-xs text-muted-foreground">
-                You have view access. Ask the owner for comment access.
-              </p>
+            />
+            {inspecting && (
+              <aside
+                aria-label="Dev mode"
+                className="glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] max-lg:hidden lg:w-[440px] xl:w-[500px]"
+              >
+                <DevPanel
+                  frame={frame}
+                  source={isBundle ? null : version.html}
+                  spans={annotated?.spans ?? []}
+                  selected={inspected}
+                  frameKey={`${version.id}:${inspecting}`}
+                  versions={[
+                    ...(canCompare
+                      ? earlier.map(([id, number]) => ({ id, number }))
+                      : []),
+                    { id: version.id, number: version.number },
+                  ].sort((a, b) => a.number - b.number)}
+                  versionId={version.id}
+                  loadHtml={loadSourceHtml}
+                  onCompare={(before) => void openCompare(before)}
+                />
+              </aside>
             )}
-          </aside>
+            <aside
+              ref={(el) => {
+                drawerSwipe.panel.current = el;
+              }}
+              aria-label="Comments"
+              {...(!panelOpen && !large ? { inert: true } : {})}
+              className={cn(
+                "glass flex shrink-0 flex-col overflow-hidden rounded-[1.75rem] lg:w-[340px]",
+                "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[80dvh] max-lg:rounded-b-none max-lg:pb-[env(safe-area-inset-bottom)] max-lg:shadow-[0_-24px_60px_-30px_rgba(0,0,0,.5)] max-lg:transition-transform max-lg:duration-(--duration-slow) max-lg:ease-(--ease-out)",
+                !panelOpen &&
+                  "max-lg:pointer-events-none max-lg:translate-y-full",
+                inspecting && "lg:hidden",
+              )}
+            >
+              <div
+                {...drawerSwipe.handle}
+                style={large ? undefined : drawerSwipe.handle.style}
+                className="relative flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-2.5 max-lg:pt-4"
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-stone-300 lg:hidden"
+                />
+                <MessageSquare
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <h2 className="text-[13px] font-semibold max-lg:text-[15px]">
+                  Comments
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {openCount} open
+                </span>
+                <div className="flex-1 lg:hidden" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPanelOpen(false)}
+                  aria-label="Close"
+                  className="-my-1 -mr-2 lg:hidden"
+                >
+                  <X />
+                </Button>
+                <ToggleGroup
+                  type="single"
+                  aria-label="Filter comments"
+                  value={filter}
+                  onValueChange={(v) => v && setFilter(v as typeof filter)}
+                  className="ml-auto max-lg:ml-0 max-lg:basis-full"
+                >
+                  <ToggleGroupItem value="open">Open</ToggleGroupItem>
+                  <ToggleGroupItem value="resolved">Resolved</ToggleGroupItem>
+                  <ToggleGroupItem value="all">All</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              {error && (
+                <p
+                  role="alert"
+                  className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800"
+                >
+                  {error}
+                </p>
+              )}
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
+                {visible.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 p-6 text-center text-[13px] text-muted-foreground">
+                    <MessageSquare
+                      className="size-5 text-stone-400"
+                      aria-hidden="true"
+                    />
+                    {commenter
+                      ? "No comments here yet. Click “Add comment”, then click anywhere on the prototype."
+                      : "No comments yet."}
+                  </div>
+                )}
+                <AnimatePresence initial={false}>
+                  {visible.map((t) => (
+                    <motion.article
+                      key={t.id}
+                      {...listItem}
+                      onClick={() => setSelected(t.id)}
+                      className={cn(
+                        "cursor-default space-y-2 rounded-2xl p-3 transition-colors",
+                        t.id === selected
+                          ? "bg-glow-soft shadow-[inset_0_0_0_1px_var(--color-raspberry-200)]"
+                          : "hover:bg-foreground/[.03]",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span
+                          className={cn(
+                            "grid size-5 place-items-center rounded-full text-[10px] font-bold text-white",
+                            t.status === "open" ? "btn-glow" : "bg-stone-400",
+                          )}
+                        >
+                          {t.n}
+                        </span>
+                        <Badge>v{versionNumbers[t.version_id] ?? "?"}</Badge>
+                        {t.version_id !== version.id && (
+                          <span className="text-muted-foreground">
+                            earlier version
+                          </span>
+                        )}
+                        {t.addressed_version_id && (
+                          <Badge className="bg-raspberry-50 text-raspberry-800">
+                            Addressed in v
+                            {versionNumbers[t.addressed_version_id] ?? "?"}
+                          </Badge>
+                        )}
+                        {commenter && !isGuest && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto h-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleResolved(t);
+                            }}
+                          >
+                            {t.status === "open" ? <CircleCheck /> : <Undo2 />}
+                            {t.status === "open" ? "Resolve" : "Reopen"}
+                          </Button>
+                        )}
+                      </div>
+                      {t.comments
+                        .slice()
+                        .sort((a, b) =>
+                          a.created_at.localeCompare(b.created_at),
+                        )
+                        .map((c) => (
+                          <div
+                            key={c.id}
+                            className="text-[13px] leading-relaxed"
+                          >
+                            <span className="font-semibold">
+                              {authorLabel(c)}
+                            </span>{" "}
+                            <span
+                              suppressHydrationWarning
+                              className="text-[11px] text-muted-foreground"
+                            >
+                              {new Date(c.created_at).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                            <p className="whitespace-pre-wrap">{c.body}</p>
+                          </div>
+                        ))}
+                      {commenter && (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            reply(t.id);
+                          }}
+                          className="flex gap-1.5"
+                        >
+                          <label htmlFor={`r-${t.id}`} className="sr-only">
+                            Reply
+                          </label>
+                          <Input
+                            id={`r-${t.id}`}
+                            value={replies[t.id] ?? ""}
+                            onChange={(e) =>
+                              setReplies((r) => ({
+                                ...r,
+                                [t.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Reply…"
+                            className="h-8 text-xs"
+                          />
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            size="icon-sm"
+                            aria-label="Send reply"
+                            title="Send reply"
+                            disabled={busy || !(replies[t.id] ?? "").trim()}
+                          >
+                            <Send />
+                          </Button>
+                        </form>
+                      )}
+                    </motion.article>
+                  ))}
+                </AnimatePresence>
+              </div>
+              {!commenter && (
+                <p className="border-t border-stone-100 p-3 text-xs text-muted-foreground">
+                  You have view access. Ask the owner for comment access.
+                </p>
+              )}
+            </aside>
+          </>
         )}
       </div>
+
+      {/* Phones: comment actions live in a bottom bar. */}
+      {role !== "public" && !presenting && (
+        <div
+          {...barSwipe}
+          className="glass mx-2 mb-2 flex shrink-0 items-center gap-2 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden"
+        >
+          {commenter && (
+            <Button
+              size="lg"
+              variant={commentMode ? "default" : "outline"}
+              aria-pressed={commentMode}
+              className="flex-1"
+              onClick={() => {
+                setCommentMode((m) => !m);
+                setDraft(null);
+              }}
+            >
+              {commentMode ? <X /> : <MessageSquarePlus />}
+              {commentMode ? "Tap the spot · Cancel" : "Add comment"}
+            </Button>
+          )}
+          <Button
+            size="lg"
+            variant="ghost"
+            className={commenter ? "" : "flex-1"}
+            onClick={() => setPanelOpen(true)}
+          >
+            <MessageSquare />
+            Comments
+            {openCount > 0 && (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-raspberry-600 px-1 text-[11px] font-semibold text-white">
+                {openCount}
+              </span>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

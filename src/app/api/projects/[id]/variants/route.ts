@@ -1,3 +1,4 @@
+import { readReferences, referenceBlocks } from "@/lib/references";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { GenerationError, generatePrototype } from "@/lib/ai";
@@ -42,11 +43,13 @@ export async function POST(
     prompt?: string;
     baseVersionId?: string | null;
     count?: number;
+    references?: unknown;
   };
   const read = readPrompt(body);
   if ("error" in read)
     return NextResponse.json({ error: read.error }, { status: 400 });
   const { prompt } = read;
+  const attached = readReferences(body.references, id, user.id);
   const count = Math.min(3, Math.max(2, Math.round(Number(body.count) || 3)));
 
   const { current, history, context } = await loadBuildContext(
@@ -63,6 +66,7 @@ export async function POST(
   for (let i = 0; i < count; i++) {
     const { data, error } = await supabase.rpc("claim_generation", {
       p_project: id,
+      p_kind: "variant",
     });
     if (error || !data) {
       lastError = error?.message;
@@ -88,7 +92,9 @@ export async function POST(
     role: "user",
     content: `${prompt}\n\n(${claims.length} variants)`,
     created_by: user.id,
+    attachments: attached,
   });
+  const references = await referenceBlocks(attached);
 
   const groupId = crypto.randomUUID();
   const results = await Promise.allSettled(
@@ -99,6 +105,7 @@ export async function POST(
         currentHtml: current?.html ?? null,
         history,
         variantHint: DIRECTIONS[i],
+        references,
       }),
     ),
   );

@@ -1,3 +1,4 @@
+import type { ReferenceBlock } from "@/lib/references";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const SYSTEM_PROMPT = `You are Realframe, an expert product designer and front-end engineer.
@@ -37,6 +38,8 @@ export type GenerateInput = {
   /** Seconds the caller can wait; continuations stop well inside it. */
   timeBudgetSeconds?: number;
   history: { role: "user" | "assistant"; content: string }[];
+  /** Reference images and PDFs the person attached, shown to the model first. */
+  references?: ReferenceBlock[];
 };
 
 export type GenerateResult = { html: string; summary: string };
@@ -105,7 +108,19 @@ export async function generatePrototype(
   const system = input.context
     ? `${SYSTEM_PROMPT}\n\nAbout this project:\n${input.context}`
     : SYSTEM_PROMPT;
-  const first = { role: "user" as const, content: directed };
+  const refs = input.references ?? [];
+  const first = {
+    role: "user" as const,
+    content: refs.length
+      ? [
+          ...refs,
+          {
+            type: "text" as const,
+            text: `${refs.length === 1 ? "The attachment above is a reference" : `The ${refs.length} attachments above are references`} the person provided. Use ${refs.length === 1 ? "it" : "them"} for layout, content and visual style as the request describes.\n\n${directed}`,
+          },
+        ]
+      : directed,
+  };
   const started = Date.now();
   let text = "";
   let inTokens = 0;

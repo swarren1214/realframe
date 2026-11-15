@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { requestThumbnails, thumbnailsFor } from "@/lib/thumbnails";
-import { ProjectThumb, ThumbRefresher } from "@/components/ProjectThumb";
+import { ThumbRefresher } from "@/components/ProjectThumb";
+import { ProjectBrowser, type BrowserProject } from "@/components/projects/ProjectBrowser";
 import { defaultDevice, readSettings } from "@/lib/devices";
 import { Clock, FolderOpen, Plus, Upload, Users } from "lucide-react";
 import { ImportDialog } from "@/components/ImportDialog";
@@ -37,8 +38,9 @@ export default async function ProjectsPage() {
     supabase
       .from("projects")
       .select(
-        "id, name, slug, owner_id, team_id, published, updated_at, devices, thumbnail_path, thumbnail_version_id, thumbnail_requested_at",
+        "id, name, slug, owner_id, team_id, published, updated_at, created_at, archived_at, devices, thumbnail_path, thumbnail_version_id, thumbnail_requested_at, comment_threads(count)",
       )
+      .eq("comment_threads.status", "open")
       .order("updated_at", { ascending: false }),
     loadTeams(supabase, user.id),
     loadInvites(supabase),
@@ -77,6 +79,22 @@ export default async function ProjectsPage() {
   );
   // Reviewers open, comment on and approve the team's prototypes; they don't create them.
   const reviewer = current?.role === "reviewer";
+  const isShared = new Set(shared.map((p) => p.id));
+  const browserItems: BrowserProject[] = [...inTeam, ...shared].map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    published: p.published,
+    updated_at: p.updated_at,
+    created_at: p.created_at,
+    archived_at: p.archived_at,
+    scope: isShared.has(p.id) ? "shared" : p.owner_id === user.id ? "mine" : "team",
+    href: isShared.has(p.id) ? `/p/${p.slug}` : `/projects/${p.id}`,
+    canManage: p.owner_id === user.id,
+    openComments:
+      (p.comment_threads as unknown as { count: number }[] | null)?.[0]?.count ?? 0,
+    portrait: isPortrait(p.devices),
+  }));
 
   return (
     <div>
@@ -127,12 +145,10 @@ export default async function ProjectsPage() {
           />
         )}
 
-        <ProjectList
-          title={
-            current && !current.personal ? "Team prototypes" : "Created by you"
-          }
-          items={inTeam}
+        <ProjectBrowser
+          projects={browserItems}
           thumbs={thumbs}
+          showMine={Boolean(current && !current.personal)}
           empty={
             current && !current.personal
               ? reviewer
@@ -141,93 +157,9 @@ export default async function ProjectsPage() {
               : "No prototypes yet. Name one above to start."
           }
         />
-        {shared.length > 0 && (
-          <ProjectList
-            title="Shared with you"
-            items={shared}
-            thumbs={thumbs}
-            shared
-          />
-        )}
       </main>
       <ThumbRefresher pending={thumbs.pending.length} />
     </div>
-  );
-}
-
-function ProjectList({
-  title,
-  items,
-  empty,
-  shared,
-  thumbs,
-}: {
-  title: string;
-  thumbs: { urls: Record<string, string>; pending: string[] };
-  items: {
-    id: string;
-    name: string;
-    slug: string;
-    published: boolean;
-    updated_at: string;
-    devices?: unknown;
-  }[];
-  empty?: string;
-  shared?: boolean;
-}) {
-  return (
-    <section className="mt-10">
-      <Eyebrow>{title}</Eyebrow>
-      {items.length === 0 ? (
-        <div className="mt-3 flex items-center gap-3 rounded-3xl border border-dashed border-stone-300 bg-card/50 p-6 text-[13px] text-stone-600">
-          <FolderOpen className="size-5 text-stone-400" aria-hidden="true" />
-          {empty}
-        </div>
-      ) : (
-        <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((p) => (
-            <li key={p.id}>
-              <Link
-                href={shared ? `/p/${p.slug}` : `/projects/${p.id}`}
-                className="group block rounded-3xl border border-stone-200/80 bg-card p-4 no-underline shadow-[0_12px_32px_-24px_rgba(28,25,23,.35)] transition-[transform,box-shadow,border-color] hover:-translate-y-0.5 hover:border-raspberry-200 hover:shadow-[0_20px_40px_-24px_rgba(190,24,93,.4)]"
-              >
-                <ProjectThumb
-                  src={thumbs.urls[p.id]}
-                  name={p.name}
-                  portrait={isPortrait(p.devices)}
-                  capturing={thumbs.pending.includes(p.id)}
-                />
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-semibold text-stone-900">
-                    {p.name}
-                  </span>
-                  {p.published && (
-                    <Badge variant="success">
-                      <BadgeDot />
-                      Live
-                    </Badge>
-                  )}
-                  {shared && (
-                    <Badge className="ml-auto">
-                      <Users />
-                      Shared
-                    </Badge>
-                  )}
-                </div>
-                <p className="mt-1 flex items-center gap-1 text-xs text-stone-500">
-                  <Clock className="size-3" aria-hidden="true" />
-                  Updated{" "}
-                  {new Date(p.updated_at).toLocaleString("en-US", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
 

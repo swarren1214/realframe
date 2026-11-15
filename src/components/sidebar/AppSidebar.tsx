@@ -23,6 +23,10 @@ export async function AppSidebar() {
       .maybeSingle(),
   ]);
   if (!current) return null;
+  const { count: unread } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
 
   let plan: "free" | "pro" | "team" = profile?.plan === "pro" ? "pro" : "free";
   let members = 1;
@@ -44,6 +48,8 @@ export async function AppSidebar() {
       teams={teams}
       currentId={current.id}
       invites={invites.length}
+      inbox={unread ?? 0}
+      userId={user.id}
       plan={plan}
       members={members}
       ownerName={profile?.display_name ?? null}

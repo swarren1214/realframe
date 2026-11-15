@@ -33,25 +33,25 @@ export function MarketingHeader() {
         >
           <a
             href="/#how"
-            className="hidden rounded-full px-3.5 py-3 text-stone-600 hover:text-stone-900 sm:inline"
+            className="hidden min-h-11 items-center rounded-full px-3.5 text-stone-600 hover:text-stone-900 sm:inline-flex"
           >
             How it works
           </a>
           <Link
             href="/faq"
-            className="hidden rounded-full px-3.5 py-3 text-stone-600 hover:text-stone-900 sm:inline"
+            className="hidden min-h-11 items-center rounded-full px-3.5 text-stone-600 hover:text-stone-900 sm:inline-flex"
           >
             FAQ
           </Link>
           <Link
             href="/pricing"
-            className="rounded-full px-3.5 py-3 text-stone-600 hover:text-stone-900"
+            className="inline-flex min-h-11 items-center rounded-full px-3.5 text-stone-600 hover:text-stone-900"
           >
             Pricing
           </Link>
           <Link
             href="/login"
-            className="rounded-full px-3.5 py-3 font-semibold text-stone-900"
+            className="inline-flex min-h-11 items-center rounded-full px-3.5 font-semibold text-stone-900"
           >
             Sign in
           </Link>
@@ -430,17 +430,29 @@ export function MarketingFooter() {
     <footer className="border-t border-stone-200">
       <div className="mx-auto flex max-w-6xl flex-wrap justify-between gap-4 px-6 py-8 text-sm text-stone-500">
         <span>© {new Date().getFullYear()} Hearth Software LLC</span>
-        <nav aria-label="Footer" className="flex flex-wrap gap-5">
-          <Link href="/pricing" className="hover:text-stone-900">
+        <nav aria-label="Footer" className="-my-2 flex flex-wrap gap-x-3">
+          <Link
+            href="/pricing"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
             Pricing
           </Link>
-          <Link href="/faq" className="hover:text-stone-900">
+          <Link
+            href="/faq"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
             FAQ
           </Link>
-          <Link href="/privacy" className="hover:text-stone-900">
+          <Link
+            href="/privacy"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
             Privacy
           </Link>
-          <Link href="/terms" className="hover:text-stone-900">
+          <Link
+            href="/terms"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
             Terms
           </Link>
           <a
@@ -449,7 +461,10 @@ export function MarketingFooter() {
           >
             Contact
           </a>
-          <Link href="/login" className="hover:text-stone-900">
+          <Link
+            href="/login"
+            className="inline-flex min-h-11 items-center px-2 hover:text-stone-900"
+          >
             Sign in
           </Link>
         </nav>

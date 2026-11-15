@@ -86,6 +86,7 @@ const PLAN_LIST: Plan[] = [
 export function Pricing({ heading = "h2" }: { heading?: "h1" | "h2" }) {
   const [interval, setPeriod] = useState<BillingInterval>("year");
   const H = heading;
+  const PlanHeading = heading === "h1" ? "h2" : "h3";
   const save = annualSavingsPercent(PLANS.pro.monthlyUsd, PLANS.pro.annualUsd);
   return (
     <section
@@ -146,7 +147,7 @@ export function Pricing({ heading = "h2" }: { heading?: "h1" | "h2" }) {
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-display text-xl font-bold">{p.name}</h3>
+              <PlanHeading className="font-display text-xl font-bold">{p.name}</PlanHeading>
               {p.popular && (
                 <span className="rounded-full bg-raspberry-50 px-2.5 py-1 text-xs font-bold text-raspberry-800">
                   Most popular
