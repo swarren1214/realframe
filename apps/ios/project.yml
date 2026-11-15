@@ -40,3 +40,5 @@ targets:
         RFAPIBaseURL: $(RF_API_BASE_URL)
         RFReviewDomain: $(RF_REVIEW_DOMAIN)
         UILaunchScreen: {}
+        NSMicrophoneUsageDescription: Realframe listens while you hold the mic so you can describe changes out loud.
+        NSSpeechRecognitionUsageDescription: Your words are turned into text, on this iPhone when it can, so you can talk instead of type.

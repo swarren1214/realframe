@@ -8,6 +8,7 @@ import {
 } from "@/components/references/references";
 import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useVoiceInput } from "@/components/voice/useVoiceInput";
 import { createProject } from "@/app/projects/actions";
 import {
   MAX_PROMPT,
@@ -36,6 +37,18 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
   }
+  // Voice: speak the description; "send" or Auto-send creates it.
+  const voice = useVoiceInput({
+    value: text,
+    onChange: (next) => {
+      setText(next);
+      const el = form.current?.querySelector("textarea");
+      if (el) requestAnimationFrame(() => grow(el));
+    },
+    onSubmit: () => form.current?.requestSubmit(),
+    disabled: !userId || pending,
+    hotkey: true,
+  });
 
   return (
     <form
@@ -59,6 +72,7 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
       className="glass mt-5 rounded-[1.75rem] p-2 transition-[box-shadow] focus-within:ring-4 focus-within:ring-raspberry-100"
     >
       <ReferenceTray refs={refs} />
+      {voice.bar}
       <label htmlFor="new-prompt" className="sr-only">
         Describe a new prototype
       </label>
@@ -84,6 +98,7 @@ export function NewPrototypeForm({ controls }: { controls: React.ReactNode }) {
       />
       <div className="flex flex-wrap items-center gap-2 pl-1">
         <AttachButton refs={refs} disabled={!userId || pending} />
+        {voice.button}
         {controls}
         <div className="flex-1" />
         {left < 1000 && (
