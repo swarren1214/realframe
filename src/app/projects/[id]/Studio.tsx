@@ -35,6 +35,7 @@ import {
   FileDown,
   Boxes,
   Expand,
+  RotateCcw,
   Upload,
   CircleCheck,
   Copy,
@@ -575,6 +576,13 @@ export function Studio(props: {
     setPanelOpen(false);
   }
 
+  /** Reload the prototype from its starting state: first screen, no saved data. */
+  function restartPreview() {
+    setDraft(null);
+    setInspected(null);
+    previewFrame.current?.restart();
+  }
+
   function startCommenting() {
     setInspecting(false);
     setCompare(null);
@@ -638,6 +646,17 @@ export function Studio(props: {
         else startInspecting();
       } else if (inspecting && e.key === "Alt") {
         previewFrame.current?.inspectAlt(true);
+      } else if (
+        (e.key === "r" || e.key === "R") &&
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        selected &&
+        !editMode
+      ) {
+        e.preventDefault();
+        restartPreview();
       } else if (
         (e.key === "c" || e.key === "C") &&
         !typing &&
@@ -1431,6 +1450,18 @@ export function Studio(props: {
                   <span className="max-sm:sr-only">Full screen</span>
                 </Button>
               )}
+              {hasPreview && !editMode && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-keyshortcuts="R"
+                  title="Restart from the first screen (R)"
+                  onClick={restartPreview}
+                >
+                  <RotateCcw />
+                  <span className="max-sm:sr-only">Restart</span>
+                </Button>
+              )}
               {html && !editMode && !isImportedApp && (
                 <Button
                   size="sm"
@@ -1507,7 +1538,10 @@ export function Studio(props: {
               )}
             </div>
             {presenting && hasPreview && (
-              <PresentControls onExit={() => setPresenting(false)} />
+              <PresentControls
+                onExit={() => setPresenting(false)}
+                onRestart={restartPreview}
+              />
             )}
             {draft && selected && (
               <form
