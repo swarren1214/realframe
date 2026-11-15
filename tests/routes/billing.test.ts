@@ -266,6 +266,33 @@ describe("Stripe webhook", () => {
     expect(upd.filters).toContainEqual(["eq", "stripe_customer_id", "cus_1"]);
   });
 
+  it("saves the subscription as it is now, not as an older event said", async () => {
+    const older = {
+      id: "sub_1",
+      status: "past_due",
+      customer: "cus_1",
+      metadata: {},
+      items: { data: [{ price: { recurring: { interval: "month" } } }] },
+    };
+    state.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...older,
+      status: "active",
+    });
+    state.stripe.webhooks.constructEvent.mockReturnValue(
+      event("customer.subscription.updated", older),
+    );
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    await POST(req());
+    expect(state.stripe.subscriptions.retrieve).toHaveBeenCalledWith("sub_1");
+    const upd = state.admin.calls.find(
+      (c) => c.table === "profiles" && c.op === "update",
+    )!;
+    expect(upd.values).toMatchObject({
+      plan: "pro",
+      subscription_status: "active",
+    });
+  });
+
   const invoice = {
     id: "in_1",
     customer: "cus_1",

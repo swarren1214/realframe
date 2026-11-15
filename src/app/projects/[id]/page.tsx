@@ -18,6 +18,8 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { contentUrlFor } from "@/lib/content";
 import { BUILD_COLUMNS, type Build, type Source } from "@/lib/builds/types";
 
+/** Chat messages loaded with the page; older ones load from the Studio. */
+const CHAT_PAGE = 200;
 export const dynamic = "force-dynamic";
 
 export default async function StudioPage({
@@ -63,7 +65,9 @@ export default async function StudioPage({
       .from("messages")
       .select("id, role, content, version_id, created_at, attachments")
       .eq("project_id", id)
-      .order("created_at"),
+      // The newest first, so a long chat shows its latest messages; older ones load on request.
+      .order("created_at", { ascending: false })
+      .limit(CHAT_PAGE + 1),
     role === "owner"
       ? supabase
           .from("project_members")
@@ -179,7 +183,10 @@ export default async function StudioPage({
       role={role as Role}
       userEmail={user.email ?? ""}
       versions={(versions.data ?? []) as VersionMeta[]}
-      messages={(messages.data ?? []) as Message[]}
+      messages={((messages.data ?? []) as Message[])
+        .slice(0, CHAT_PAGE)
+        .reverse()}
+      hasEarlierMessages={(messages.data?.length ?? 0) > CHAT_PAGE}
       members={(members.data ?? []) as Member[]}
       threads={(threads.data ?? []) as Thread[]}
       initialHtml={latest.data?.[0]?.html ?? null}

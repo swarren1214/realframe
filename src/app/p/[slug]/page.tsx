@@ -347,7 +347,9 @@ function PasswordGate({
           <p role="alert" className="text-xs text-red-700">
             {error === "name"
               ? "Enter your name."
-              : "That password isn't right."}
+              : error === "rate"
+                ? "Too many tries. Wait a few minutes, then try again."
+                : "That password isn't right."}
           </p>
         )}
         <Button variant="default" size="lg" type="submit" className="w-full">

@@ -135,6 +135,25 @@ describe("spend cap", () => {
     expect(await claim(u, p.id)).toBeTruthy();
   });
 
+  it("counts builds still running toward the cap", async () => {
+    const u = await pro("capinflight@acme.co");
+    const a = await project(db, u);
+    const b = await project(db, u);
+    await db.as(u);
+    await db.rows(
+      `update public.profiles set spend_cap_micros = 2000000 where id = $1`,
+      [u.id],
+    );
+    await build(u, a.id, 1_000_000);
+    // $1 billed + two running at an estimated $0.50 each reaches the $2 cap, so a third is refused.
+    expect(await claim(u, a.id)).toBeTruthy();
+    expect(await claim(u, b.id)).toBeTruthy();
+    await db.as(u);
+    expect(
+      await db.error(`select public.claim_generation($1, 'export')`, [a.id]),
+    ).toMatch(/spend_cap_reached/);
+  });
+
   it("doesn't count failed builds toward the cap", async () => {
     const u = await pro("capfail@acme.co");
     const p = await project(db, u);

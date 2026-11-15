@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { guestCookieName, verifyGuest } from "@/lib/guest";
+import { allow, clientIp } from "@/lib/rate-limit";
 
 // Guest comments on password-protected prototypes. JSON body:
 //   { threadId, body }              → reply to a thread
@@ -19,6 +20,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const guest = verifyGuest(request.cookies.get(guestCookieName(project.id))?.value, project.id);
   if (!guest) return NextResponse.json({ error: "Enter the password again." }, { status: 401 });
   if (!project.guest_comments) return NextResponse.json({ error: "Comments are turned off for guests." }, { status: 403 });
+  // At most 20 comments a minute per guest (by name and address) on a prototype.
+  if (!(await allow(`comment:${project.id}:${guest.name}:${clientIp(request)}`, 20, 60)))
+    return NextResponse.json({ error: "That's a lot of comments at once. Wait a minute, then try again." }, { status: 429 });
 
   const input = (await request.json().catch(() => ({}))) as {
     threadId?: string;

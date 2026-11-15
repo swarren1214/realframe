@@ -380,11 +380,15 @@ export async function runBuild(buildId: string) {
     const v = version as { id: string; number: number };
 
     if (build.trigger === "push" && source.publish_on_push) {
-      await admin
-        .from("projects")
-        .update({ live_version_id: v.id, published: true })
-        .eq("id", build.project_id);
-      say(`Published v${v.number}.`);
+      // Record the version first: publishing compares it with newer pushes' versions.
+      await admin.from("builds").update({ version_id: v.id }).eq("id", buildId);
+      const { data: published, error: pubError } = await admin.rpc(
+        "publish_push_build",
+        { p_build: buildId },
+      );
+      if (pubError) say(`Couldn't publish: ${pubError.message}`);
+      else if (published) say(`Published v${v.number}.`);
+      else say(`Not published: a newer commit is already live.`);
     }
     say(`Done: v${v.number}.`);
     await finish({ status: "succeeded", version_id: v.id });

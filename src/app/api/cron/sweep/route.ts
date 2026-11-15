@@ -72,6 +72,18 @@ export async function GET(request: NextRequest) {
       .catch((e) => console.error("sweep start", q.id, e));
   }
 
+  // Housekeeping: 30 days of errors, a day of rate-limit windows.
+  await Promise.all([
+    admin
+      .from("app_errors")
+      .delete()
+      .lt("created_at", new Date(now - 30 * 86_400_000).toISOString()),
+    admin
+      .from("rate_limits")
+      .delete()
+      .lt("window_start", new Date(now - 86_400_000).toISOString()),
+  ]);
+
   return NextResponse.json({
     ...((swept as Record<string, number>[] | null)?.[0] ?? {}),
     repo_builds_failed: stuck?.length ?? 0,
