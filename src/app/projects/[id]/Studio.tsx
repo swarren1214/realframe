@@ -821,11 +821,12 @@ export function Studio(props: {
     const startedAt = Date.now();
     const many = variantCount > 1;
     try {
-      if (many) await runVariants(text, attached);
-      else await runPlanned(text, opts.smaller, attached);
+      const built = many
+        ? (await runVariants(text, attached), true)
+        : await runPlanned(text, opts.smaller, attached);
       if (!override) refs.clear();
       // Only worth a toast if they looked away while it built.
-      if (document.hidden || Date.now() - startedAt > 20_000)
+      if (built && (document.hidden || Date.now() - startedAt > 20_000))
         notify.success(
           many
             ? `${variantCount} variants ready to compare`
@@ -892,7 +893,9 @@ export function Studio(props: {
     setPrompt("");
     setTargets([]);
     setSelectMode(false);
-    router.refresh(); // shows the prompt in the chat
+    router.refresh(); // shows the prompt (and an answer) in the chat
+    // A question or a discussion: answered in the chat, nothing to build.
+    if (typeof data.reply === "string") return false;
     setPlan(
       (data.steps as { title: string }[]).map((s) => ({
         title: s.title,
@@ -900,6 +903,7 @@ export function Studio(props: {
       })),
     );
     await watchRun(data.runId as string);
+    return true;
   }
 
   // The planned run being watched, so Stop can reach it.
@@ -1913,7 +1917,7 @@ export function Studio(props: {
                         {copying
                           ? `Making an AI copy of v${selected?.number}`
                           : planning
-                            ? "Planning the build"
+                            ? "Thinking"
                             : variantCount > 1
                               ? `Building ${variantCount} variants`
                               : `Building ${selected ? `on v${selected.number}` : "v1"}`}

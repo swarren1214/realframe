@@ -7,7 +7,8 @@ import {
 } from "@/lib/pointing";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { planBuild } from "@/lib/plan";
+import { qaStep, respondOrPlan } from "@/lib/plan";
+import { qaEnabled } from "@/lib/qa";
 import { startRunStep } from "@/lib/plan-runner";
 import {
   IMPORTED_APP_MESSAGE,
@@ -20,8 +21,9 @@ import {
 export const maxDuration = 60;
 
 /**
- * Start a planned build: claim one build, break the request into ordered steps, start the
- * first step on the server and return the steps. The steps run in the background, one after
+ * A chat message. One fast model call decides: answer it (questions, ideas, discussion: no
+ * build is used and nothing changes), or plan a build. For a build: claim one, break the
+ * request into ordered steps, start the first step on the server and return the steps. The steps run in the background, one after
  * another (see lib/plan-runner); the page watches the run's row for progress.
  */
 export async function POST(
@@ -58,13 +60,48 @@ export async function POST(
   const targets = readPointed(body.targets);
   const references = readReferences(body.references, id, user.id);
 
-  const { current, context } = await loadBuildContext(
+  const { current, context, history } = await loadBuildContext(
     supabase,
     id,
     body.baseVersionId,
   );
   if (current?.kind === "bundle")
     return NextResponse.json({ error: IMPORTED_APP_MESSAGE }, { status: 400 });
+
+  const asked = references.length
+      ? `${promptWithPointed(prompt, targets)}\n\n(The person attached ${references.length} reference ${references.length === 1 ? "image" : "images"}; every step will see ${references.length === 1 ? "it" : "them"}.)`
+      : promptWithPointed(prompt, targets);
+  const decision = await respondOrPlan({
+    prompt: asked,
+    focused: targets.length > 0,
+    context,
+    history,
+    currentHtml: current?.html ?? null,
+    smaller: body.smaller === true,
+  });
+
+  const userMessage = {
+    project_id: id,
+    role: "user",
+    content: messageWithPointed(prompt, targets),
+    created_by: user.id,
+    attachments: references,
+  };
+
+  // An answer: nothing is built, and no build is used.
+  if (decision.kind === "reply") {
+    await supabase.from("messages").insert(userMessage);
+    await createAdminClient().from("messages").insert({
+      project_id: id,
+      role: "assistant",
+      content: decision.text,
+      created_by: user.id,
+    });
+    return NextResponse.json({ reply: decision.text });
+  }
+  const { usage } = decision;
+  // Every build ends by checking the result in a browser and fixing what breaks.
+  const steps = qaEnabled() ? [...decision.steps, qaStep()] : decision.steps;
 
   // The whole run is one build against the caller's plan.
   const { data: claimId, error: claimError } = await supabase.rpc(
@@ -73,23 +110,7 @@ export async function POST(
   );
   if (claimError || !claimId) return limitResponse(claimError?.message);
 
-  await supabase.from("messages").insert({
-    project_id: id,
-    role: "user",
-    content: messageWithPointed(prompt, targets),
-    created_by: user.id,
-    attachments: references,
-  });
-
-  const { steps, usage } = await planBuild({
-    prompt: references.length
-      ? `${promptWithPointed(prompt, targets)}\n\n(The person attached ${references.length} reference ${references.length === 1 ? "image" : "images"}; every step will see ${references.length === 1 ? "it" : "them"}.)`
-      : promptWithPointed(prompt, targets),
-    focused: targets.length > 0,
-    context,
-    currentHtml: current?.html ?? null,
-    smaller: body.smaller === true,
-  });
+  await supabase.from("messages").insert(userMessage);
 
   const { data: run, error } = await createAdminClient()
     .from("build_runs")
@@ -98,7 +119,8 @@ export async function POST(
       user_id: user.id,
       generation_id: claimId as string,
       base_version_id: current?.id ?? null,
-      prompt,
+      // When the message leans on the chat ("yes, do that"), the run gets the restated request.
+      prompt: decision.request === asked ? prompt : decision.request,
       steps,
       references,
       input_tokens: usage.input,

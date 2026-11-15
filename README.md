@@ -141,3 +141,21 @@ If a hand-off between steps is lost, the run is started again: by the Studio whe
 If a step fails after earlier ones succeeded, the finished steps are saved as a version. **Stop** in the Studio (`DELETE` on the same route) settles the run between steps, or asks the building step to stop; finished steps are kept and the step in progress isn't charged. Variants still use the single-pass `/variants` route.
 
 - **Setup:** apply `supabase/migrations/0020_build_plans.sql` and `0033_background_plan_runs.sql`. On preview deployments with Vercel deployment protection, set `VERCEL_AUTOMATION_BYPASS_SECRET` so steps can call the next one.
+
+### Chat
+
+Every chat message goes through one fast model call (`respondOrPlan` in `src/lib/plan.ts`, the planner model) that sees the current prototype and the recent chat, and either **answers** (questions, ideas, feedback, discussion: posted to the chat, nothing changes, no build is used) or **plans a build**. When a build request leans on the chat ("yes, do that"), the run gets the request restated so it stands on its own. If the call fails, the message is treated as a build.
+
+### Check and fix
+
+Every planned build ends with a **Check and fix** step (`src/lib/qa`). The result is opened in real Chromium inside a Vercel Sandbox (the prototype's code never runs on our servers), phone-sized and framed exactly as the Studio shows it. Every `#/` screen is visited and every control tapped. Reported problems:
+- errors, failed loads and blank screens
+- links that leave the prototype
+- controls that do nothing
+- sideways scrolling
+
+If anything turns up, the builder gets one pass to fix it, and the chat summary says what was checked and fixed. If the sandbox can't run, or the fix doesn't land, the build is saved as built with a note.
+
+- `REALFRAME_QA=off` turns the step off.
+- `REALFRAME_QA_SNAPSHOT_ID` (from `npx tsx scripts/qa-snapshot.mts`) starts checks from a snapshot with the browser installed. Without it, each check installs the browser first, which takes about 15 s.
+
