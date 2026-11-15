@@ -270,18 +270,54 @@ export const STORAGE_SHIM = `(function(){
       get: function(){ return jar; }, set: function(v){ var c = String(v).split(';')[0]; jar = jar ? jar + '; ' + c : c; } }); } catch (_) {} }
 })();`;
 
-export function withAgent(html: string) {
+/**
+ * In a srcdoc frame, relative URLs resolve against the page that holds the frame (Realframe),
+ * not the prototype. So a tab link like href="#/library", or location.href = "#/stats", leaves
+ * the prototype and loads Realframe's own page in the frame, which refuses to be framed: a blank
+ * white screen. A base of about:srcdoc keeps them in the prototype. The click guard covers
+ * browsers that ignore that base, and a form with no handler no longer reloads the page.
+ */
+const SRCDOC_BASE = `<base href="about:srcdoc">`;
+const SRCDOC_GUARD = `(function(){
+  window.addEventListener('click', function(e){
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || (a.target && a.target !== '_self')) return;
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) !== '#') return;
+    e.preventDefault();
+    if (href === '#') { window.scrollTo(0, 0); return; }
+    if (location.hash !== href) location.hash = href;
+  });
+  window.addEventListener('submit', function(e){
+    var f = e.target;
+    if (e.defaultPrevented || !f || f.getAttribute('target')) return;
+    var action = f.getAttribute('action') || '';
+    if (action === '' || action.charAt(0) === '#') e.preventDefault();
+  });
+})();`;
+
+/**
+ * Adds Realframe's agent to a prototype document. `srcdoc`: the document is shown in a srcdoc
+ * frame (the Studio, share links), so links and forms are kept inside it.
+ */
+export function withAgent(html: string, opts: { srcdoc?: boolean } = {}) {
   const tag = `<script>${AGENT_SCRIPT}</script>`;
   const at = html.toLowerCase().lastIndexOf("</body>");
   let out = at >= 0 ? html.slice(0, at) + tag + html.slice(at) : html + tag;
-  // The stand-in must run before the app's own scripts: first thing in <head>.
-  const shim = `<script>${STORAGE_SHIM}</script>`;
+  // The stand-in must run before the app's own scripts: first thing in <head>. In a srcdoc
+  // frame the base goes first of all, so every URL after it resolves inside the prototype.
+  let first = `<script>${STORAGE_SHIM}</script>`;
+  if (opts.srcdoc) {
+    first = `<script>${SRCDOC_GUARD}</script>` + first;
+    if (!/<base\s[^>]*href=/i.test(html)) first = SRCDOC_BASE + first;
+  }
   const head = /<head(\s[^>]*)?>/i.exec(out);
   if (head) {
     const end = head.index + head[0].length;
-    out = out.slice(0, end) + shim + out.slice(end);
+    out = out.slice(0, end) + first + out.slice(end);
   } else {
-    out = shim + out;
+    out = first + out;
   }
   return out;
 }
