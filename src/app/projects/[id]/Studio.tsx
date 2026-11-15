@@ -74,7 +74,7 @@ import { Eyebrow } from "@/components/Eyebrow";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, listItem, motion } from "@/components/motion";
 import { copyWithToast, notify } from "@/lib/toast";
-import { PrototypeFrame } from "@/components/PrototypeFrame";
+import { PrototypeFrame, type Pin } from "@/components/PrototypeFrame";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportDialog } from "@/components/ImportDialog";
 import {
@@ -305,6 +305,11 @@ export function Studio(props: {
   const [prompt, setPrompt] = useState("");
   const [variantCount, setVariantCount] = useState<1 | 2 | 3>(1);
   const [editMode, setEditMode] = useState(false);
+  // Commenting from the studio: pin mode on the version on screen.
+  const [commentMode, setCommentMode] = useState(false);
+  const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
+  const [draftText, setDraftText] = useState("");
+  const [posting, setPosting] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { builds, now } = useBuilds(project.id, props.builds ?? []);
@@ -366,6 +371,65 @@ export function Studio(props: {
     }
   }
   const openThreads = threads.filter((t) => t.status === "open").length;
+  const pins: Pin[] = threads
+    .map((t, i) => ({ t, n: i + 1 }))
+    .filter(({ t }) => t.version_id === selected?.id && t.status === "open")
+    .map(({ t, n }) => ({ id: t.id, n, x: t.x, y: t.y, status: t.status }));
+
+  function startCommenting() {
+    setEditMode(false);
+    setDraft(null);
+    setCommentMode(true);
+    setPanelOpen(false);
+  }
+
+  async function postComment(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!draft || !draftText.trim() || !selected) return;
+    setPosting(true);
+    const { error: err } = await supabase.rpc("create_thread", {
+      p_project: project.id,
+      p_version: selected.id,
+      p_x: draft.x,
+      p_y: draft.y,
+      p_body: draftText.trim(),
+    });
+    setPosting(false);
+    if (err) return notify.error("Couldn't post the comment.", { description: err.message });
+    setDraft(null);
+    setDraftText("");
+    notify.success(`Comment added to v${selected.number}`);
+    setTab("comments");
+    router.refresh();
+  }
+
+  // C starts commenting, Esc stops it, unless someone is typing.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      const typing =
+        t &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (e.key === "Escape" && (commentMode || draft)) {
+        setCommentMode(false);
+        setDraft(null);
+      } else if (
+        (e.key === "c" || e.key === "C") &&
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        selected &&
+        !editMode
+      ) {
+        e.preventDefault();
+        setDraft(null);
+        setCommentMode((m) => !m);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [commentMode, draft, selected, editMode]);
   const isOwner = role === "owner";
 
   useEffect(() => {
@@ -932,7 +996,9 @@ export function Studio(props: {
               <span className="min-w-0 flex-1 truncate text-xs text-stone-500 max-sm:invisible">
                 {editMode
                   ? "Click an element to edit it. Links and buttons are paused while editing."
-                  : selected?.summary}
+                  : commentMode
+                    ? `Click anywhere on v${selected?.number} to pin a comment. Esc to cancel.`
+                    : selected?.summary}
               </span>
               {hasPreview && view.scale !== "dynamic" && (
                 <span className="hidden text-xs tabular-nums text-stone-500 md:inline">
@@ -953,6 +1019,22 @@ export function Studio(props: {
                   <span className="max-sm:sr-only">Full screen</span>
                 </Button>
               )}
+              {hasPreview && !editMode && (
+                <Button
+                  size="sm"
+                  variant={commentMode ? "default" : "ghost"}
+                  aria-pressed={commentMode}
+                  aria-keyshortcuts="C"
+                  title={commentMode ? "Stop commenting (Esc)" : "Comment (C)"}
+                  onClick={() =>
+                    commentMode ? setCommentMode(false) : startCommenting()
+                  }
+                  className="max-lg:hidden"
+                >
+                  {commentMode ? <X /> : <MessageSquarePlus />}
+                  {commentMode ? "Click to pin" : "Comment"}
+                </Button>
+              )}
               {html && (
                 <Button
                   size="sm"
@@ -968,6 +1050,57 @@ export function Studio(props: {
             </div>
             {presenting && hasPreview && (
               <PresentControls onExit={() => setPresenting(false)} />
+            )}
+            {draft && selected && (
+              <form
+                onSubmit={postComment}
+                className="absolute bottom-6 left-1/2 z-20 w-[min(420px,92%)] -translate-x-1/2 space-y-2.5 rounded-3xl border border-border bg-card p-3.5 shadow-[0_30px_70px_-30px_rgba(28,25,23,.45)]"
+              >
+                <label
+                  htmlFor="studio-comment"
+                  className="block text-[13px] font-semibold"
+                >
+                  New comment on v{selected.number}
+                  <span className="font-normal text-muted-foreground">
+                    {" "}
+                    · the version on screen
+                  </span>
+                </label>
+                <Textarea
+                  id="studio-comment"
+                  autoFocus
+                  rows={3}
+                  maxLength={5000}
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                      postComment(e);
+                  }}
+                  placeholder="What should change here?"
+                  className="field-sizing-fixed resize-none"
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="mr-auto text-[11px] text-muted-foreground">
+                    Shows on the review link too
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setDraft(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    loading={posting}
+                    disabled={!draftText.trim()}
+                  >
+                    <Send />
+                    Post
+                  </Button>
+                </div>
+              </form>
             )}
             <div
               className={cn(
@@ -987,6 +1120,16 @@ export function Studio(props: {
                     <PrototypeFrame
                       src={src}
                       title={`${project.name} v${selected?.number}`}
+                      commentMode={commentMode}
+                      pins={pins}
+                      onPick={(x, y) => {
+                        setDraft({ x, y });
+                        setCommentMode(false);
+                      }}
+                      onSelectPin={() => {
+                        setTab("comments");
+                        setPanelOpen(true);
+                      }}
                     />
                   ) : html ? (
                     editMode && editor.editableHtml ? (
@@ -1001,6 +1144,16 @@ export function Studio(props: {
                       <PrototypeFrame
                         html={html}
                         title={`${project.name} v${selected?.number}`}
+                        commentMode={commentMode}
+                        pins={pins}
+                        onPick={(x, y) => {
+                          setDraft({ x, y });
+                          setCommentMode(false);
+                        }}
+                        onSelectPin={() => {
+                          setTab("comments");
+                          setPanelOpen(true);
+                        }}
                       />
                     )
                   ) : null}
@@ -1527,11 +1680,14 @@ export function Studio(props: {
 
                   <TabsContent value="comments" className="space-y-1 p-3">
                     {versions.length > 0 && (
-                      <Button asChild variant="outline" className="mb-2 w-full">
-                        <Link href={`/p/${project.slug}?comment=1`}>
-                          <MessageSquarePlus />
-                          Add a comment
-                        </Link>
+                      <Button
+                        variant="outline"
+                        className="mb-2 w-full"
+                        onClick={startCommenting}
+                        disabled={!selected}
+                      >
+                        <MessageSquarePlus />
+                        Add a comment on v{selected?.number}
                       </Button>
                     )}
                     {props.round && (
@@ -1583,7 +1739,7 @@ export function Studio(props: {
                           No comments yet
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Tap Add a comment to pin one on the prototype.
+                          Add a comment to pin one on the version on screen.
                           Reviewers do the same from the review link.
                         </p>
                       </div>
@@ -1744,7 +1900,19 @@ export function Studio(props: {
       </div>
 
       {/* Phones: a tab bar that opens the panel drawer on that tab. */}
-      {!editMode && variants.length === 0 && (
+      {commentMode && (
+        <div className="glass mx-2 mb-2 flex shrink-0 rounded-full p-1.5 pb-[max(.375rem,env(safe-area-inset-bottom))] lg:hidden">
+          <Button
+            size="lg"
+            className="flex-1"
+            onClick={() => setCommentMode(false)}
+          >
+            <X />
+            Tap a spot to pin · Cancel
+          </Button>
+        </div>
+      )}
+      {!editMode && !commentMode && variants.length === 0 && (
         <nav
           aria-label="Project panel"
           className="glass mx-2 mb-2 flex shrink-0 items-center rounded-full p-1 pb-[max(.25rem,env(safe-area-inset-bottom))] lg:hidden"
