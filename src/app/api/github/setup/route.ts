@@ -27,7 +27,11 @@ export async function GET(request: NextRequest) {
     redirect_url: `${origin}/api/github/setup/callback`,
     callback_urls: [`${origin}/api/github/callback`],
     request_oauth_on_install: true,
-    default_permissions: { contents: "read", metadata: "read" },
+    default_permissions: {
+      contents: "write",
+      pull_requests: "write",
+      metadata: "read",
+    },
     default_events: ["push"],
   };
   const action = org
