@@ -192,18 +192,28 @@ function PeriodCard({ o }: { o: UsageOverview }) {
             />
             {capPct !== null && capPct < 100 && (
               <div
-                className="absolute inset-y-0 w-0.5 bg-stone-900"
+                className="absolute inset-y-0 w-0.5 bg-foreground"
                 style={{ left: `${capPct}%` }}
                 aria-hidden="true"
               />
             )}
           </div>
-          <div className="mt-1 flex justify-between text-[11px] text-stone-600">
-            <span>$0</span>
-            {o.spend_cap_micros !== null && (
-              <span>Cap {formatUsd(o.spend_cap_micros)}</span>
+          <div className="relative mt-1 h-4 text-[11px] text-stone-600">
+            <span className="absolute left-0">$0</span>
+            {capPct !== null && capPct < 85 && capPct > 10 && (
+              <span
+                className="absolute -translate-x-1/2"
+                style={{ left: `${capPct}%` }}
+              >
+                Cap {formatUsd(o.spend_cap_micros!)}
+              </span>
             )}
-            <span>{formatUsd(o.included_micros, 0)} included</span>
+            <span className="absolute right-0">
+              {formatUsd(o.included_micros, 0)} included
+              {o.spend_cap_micros !== null &&
+                !(capPct !== null && capPct < 85 && capPct > 10) &&
+                ` · cap ${formatUsd(o.spend_cap_micros)}`}
+            </span>
           </div>
         </div>
       )}

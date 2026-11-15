@@ -117,7 +117,7 @@ export function SpendControls({
 
       {canEdit ? (
         <div className="md:col-span-2">
-          <Button onClick={save} loading={saving}>
+          <Button variant="default" onClick={save} loading={saving}>
             Save controls
           </Button>
         </div>
