@@ -133,9 +133,11 @@ See `apps/ios/README.md` and `apps/android/README.md` to run each app.
 Prompts in the Studio go through a plan-then-build loop instead of one big generation:
 
 1. `POST /api/projects/[id]/plan` claims one build, asks the planner model for 1–6 ordered steps, and stores the run in `build_runs`. Short single-line edits skip the planner and run as one step.
-2. The Studio calls `POST /api/projects/[id]/plan/[runId]` once per step. Each step builds on the document the previous step produced, so every request stays inside the function timeout.
-3. The last step saves one version and settles the build with the summed tokens and cost (planner + every step). The chat gets a per-step summary.
+2. The steps run on the server (`src/lib/plan-runner.ts`). Each step runs in its own background call (`POST /api/plan-runs/step`, signed with an HMAC key, answered at once, built in `after()`) with the full 300 s limit, builds on the document the previous step produced, then starts the next step. The Studio only watches the run's row in `build_runs` (status, steps, `progress_chars`), so closing the page, locking the phone or losing the connection doesn't stop the build. Reopening the prototype picks the progress up again.
+3. The last step saves one version (`create_run_version`, attributed to the person who started the run) and settles the build with the summed tokens and cost (planner + every step). The chat gets a per-step summary.
 
-If a step fails after earlier ones succeeded, the finished steps are saved as a version. **Stop** in the Studio ends the run after the current step (`DELETE` on the same route). Variants still use the single-pass `/variants` route.
+If a hand-off between steps is lost, the run is started again: by the Studio when it sees no progress for 45 s (`POST /api/projects/[id]/plan/[runId]`), or by the sweeper cron. Taking a step is a conditional update, so a step never runs twice. Runs with no progress for 15 minutes are settled by `sweep_stale_work`.
 
-- **Setup:** apply `supabase/migrations/0020_build_plans.sql`.
+If a step fails after earlier ones succeeded, the finished steps are saved as a version. **Stop** in the Studio (`DELETE` on the same route) settles the run between steps, or asks the building step to stop; finished steps are kept and the step in progress isn't charged. Variants still use the single-pass `/variants` route.
+
+- **Setup:** apply `supabase/migrations/0020_build_plans.sql` and `0033_background_plan_runs.sql`. On preview deployments with Vercel deployment protection, set `VERCEL_AUTOMATION_BYPASS_SECRET` so steps can call the next one.
