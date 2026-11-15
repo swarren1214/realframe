@@ -48,7 +48,7 @@ export async function POST(
 
   const { data: claimId, error: claimError } = await supabase.rpc(
     "claim_generation",
-    { p_project: id },
+    { p_project: id, p_kind: "ai_copy" },
   );
   if (claimError || !claimId) return limitResponse(claimError?.message);
 

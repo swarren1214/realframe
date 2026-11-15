@@ -252,6 +252,12 @@ export function Studio(props: {
     limit: number;
     remaining: number;
   } | null;
+  /** Set when this period's spend cap has been reached, so new builds are refused. */
+  spendCap?: {
+    capMicros: number;
+    billingHref: string;
+    canChange: boolean;
+  } | null;
   variants: Variant[];
   /** The GitHub repository this prototype builds from, and its recent builds. */
   source?: Source | null;
@@ -280,7 +286,15 @@ export function Studio(props: {
     quota,
     variants,
   } = props;
-  const outOfQuota = quota !== null && quota.remaining <= 0;
+  // A build refused for the spend cap during this visit counts too, until the page reloads.
+  const [capHit, setCapHit] = useState(false);
+  const capBlocked = !!props.spendCap || capHit;
+  const outOfQuota = (quota !== null && quota.remaining <= 0) || capBlocked;
+  /** The error a failed build request should show; notes a reached spend cap. */
+  function requestError(res: Response, data: { error?: string; code?: string }) {
+    if (data.code === "spend_cap") setCapHit(true);
+    return new Error(data.error || `Request failed (${res.status})`);
+  }
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -727,7 +741,7 @@ export function Studio(props: {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok)
-      throw new Error(data.error || `Request failed (${res.status})`);
+      throw requestError(res, data);
     setPrompt("");
     router.refresh();
   }
@@ -761,7 +775,7 @@ export function Studio(props: {
     const data = await res.json().catch(() => ({}));
     setPlanning(false);
     if (!res.ok)
-      throw new Error(data.error || `Request failed (${res.status})`);
+      throw requestError(res, data);
     setPrompt("");
     setTargets([]);
     setSelectMode(false);
@@ -838,7 +852,7 @@ export function Studio(props: {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.error || `Request failed (${res.status})`);
+        throw requestError(res, data);
       setSelectedId(data.versionId);
       setFixPick([]);
       setFixNote("");
@@ -1800,7 +1814,28 @@ export function Studio(props: {
                       </Button>
                     </div>
                   </div>
-                  {outOfQuota && quota?.plan === "free" && (
+                  {capBlocked && (
+                    <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
+                      <p className="font-semibold">
+                        This period&apos;s spend cap is reached.
+                      </p>
+                      <p className="mt-0.5 text-xs text-stone-700">
+                        {props.spendCap?.canChange === false
+                          ? "New builds are paused until a team admin raises the cap or the period resets."
+                          : "New builds are paused until you raise the cap or the period resets."}
+                      </p>
+                      {props.spendCap?.canChange !== false && (
+                        <Button asChild variant="default" size="sm" className="mt-2">
+                          <Link
+                            href={`${props.spendCap?.billingHref ?? "/billing"}?tab=billing#spend-controls`}
+                          >
+                            Raise cap
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {outOfQuota && !capBlocked && quota?.plan === "free" && (
                     <div className="mt-2.5 rounded-2xl border border-raspberry-200 bg-glow-soft p-3 text-[13px]">
                       <p className="font-semibold">
                         You&apos;ve used this month&apos;s free builds.
@@ -1821,6 +1856,7 @@ export function Studio(props: {
                     </div>
                   )}
                   {outOfQuota &&
+                    !capBlocked &&
                     (quota?.plan === "pro" || quota?.plan === "team") &&
                     !error && (
                       <p className="mt-2 text-xs text-stone-600">

@@ -66,6 +66,7 @@ export async function POST(
   for (let i = 0; i < count; i++) {
     const { data, error } = await supabase.rpc("claim_generation", {
       p_project: id,
+      p_kind: "variant",
     });
     if (error || !data) {
       lastError = error?.message;

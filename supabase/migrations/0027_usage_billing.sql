@@ -401,3 +401,29 @@ end
 $$;
 revoke execute on function public.usage_ledger(uuid, timestamptz, int, uuid, text, timestamptz) from public, anon;
 grant execute on function public.usage_ledger(uuid, timestamptz, int, uuid, text, timestamptz) to authenticated;
+
+-- Whether the spend cap stops the caller building on this prototype, for the Studio banner.
+create or replace function public.spend_cap_status(p_project uuid)
+returns table (reached boolean, cap_micros bigint, usage_micros bigint, team_id uuid, can_change boolean)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare q record; a record;
+begin
+  if auth.uid() is null or public.project_role(p_project) is null then return; end if;
+  select * into q from public.build_quota(p_project);
+  if q.plan not in ('pro', 'team') then
+    return query select false, null::bigint, q.usage_micros, q.team_id, false;
+    return;
+  end if;
+  select * into a from public.account_usage(auth.uid(), q.team_id);
+  return query select
+    a.spend_cap_micros is not null and a.usage_micros >= a.spend_cap_micros,
+    a.spend_cap_micros, a.usage_micros, q.team_id,
+    q.team_id is null or public.team_role(q.team_id) = 'admin';
+end
+$$;
+revoke execute on function public.spend_cap_status(uuid) from public, anon;
+grant execute on function public.spend_cap_status(uuid) to authenticated;
