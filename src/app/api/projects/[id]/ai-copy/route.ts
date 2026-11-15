@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { GenerationError, generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype, routeDeadline } from "@/lib/ai";
 import { finishBuild, limitResponse, loadBuildContext } from "@/lib/builds";
 import { snapshotBundle } from "@/lib/snapshot";
 
@@ -16,6 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const deadline = routeDeadline(maxDuration, 40);
   const supabase = await createClient();
   const {
     data: { user },
@@ -72,7 +73,7 @@ export async function POST(
       context,
       currentHtml: snap.html,
       history: [],
-      timeBudgetSeconds: maxDuration - 40,
+      deadline,
     });
     const { data: version, error } = await supabase.rpc("create_version", {
       p_project: id,

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { billUsageWindow } from "@/lib/usage-billing";
 import {
   ACTIVE_STATUSES,
   USAGE_PRODUCT_ID,
@@ -130,59 +131,20 @@ async function addUsageOverage(invoice: Stripe.Invoice) {
     ? perSeat * Math.max(1, Number(team.seats ?? 1))
     : perSeat;
 
-  const from = iso(invoice.period_start)!;
-  const to = iso(invoice.period_end)!;
-  // Personal invoices bill your own builds; team invoices bill every build in team prototypes.
-  let query = admin
-    .from("generations")
-    .select("id, billed_micros")
-    .gte("created_at", from)
-    .lt("created_at", to)
-    .is("billed_invoice_id", null);
-  query = team
-    ? query.eq("team_id", team.id)
-    : query.eq("user_id", profile!.id).is("team_id", null);
-  const { data: rows, error } = await query;
-  if (error) throw new Error(error.message);
-
-  const total = (rows ?? []).reduce(
-    (sum, r) => sum + Number(r.billed_micros ?? 0),
-    0,
+  // The renewal invoice covers the period that just ended; bill that window once.
+  await billUsageWindow(
+    admin,
+    getStripe(),
+    team
+      ? { kind: "team", id: team.id, customerId }
+      : { kind: "user", id: profile!.id, customerId },
+    {
+      start: new Date(invoice.period_start * 1000),
+      end: new Date(invoice.period_end * 1000),
+    },
+    included,
+    { id: invoice.id!, currency: invoice.currency },
   );
-  const overageMicros = total - included;
-  if (overageMicros > 0) {
-    const cents = Math.ceil(overageMicros / 10_000);
-    const fmt = (d: string) =>
-      new Date(d).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      });
-    await getStripe().invoiceItems.create(
-      {
-        customer: customerId,
-        invoice: invoice.id,
-        currency: invoice.currency || "usd",
-        amount: cents,
-        description: `AI usage beyond $${(included / 1_000_000).toFixed(0)} included (${fmt(from)} – ${fmt(to)})`,
-        metadata: {
-          app: "realframe",
-          kind: "usage_overage",
-          product: USAGE_PRODUCT_ID,
-          builds: String(rows?.length ?? 0),
-        },
-      },
-      { idempotencyKey: `overage-${invoice.id}` },
-    );
-  }
-  if (rows?.length) {
-    await admin
-      .from("generations")
-      .update({ billed_invoice_id: invoice.id })
-      .in(
-        "id",
-        rows.map((r) => r.id),
-      );
-  }
 }
 
 export async function POST(request: NextRequest) {

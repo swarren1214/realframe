@@ -9,11 +9,11 @@ import {
 import {
   addMonths,
   finishedWindows,
+  windowsToBill,
   microsToCents,
   overageMicros,
   usageWindow,
 } from "@/lib/usage-window";
-import { planUsageBills } from "@/lib/usage-billing";
 
 const d = (s: string) => new Date(s);
 const iso = (x: Date) => x.toISOString().slice(0, 10);
@@ -75,29 +75,26 @@ describe("usage windows", () => {
   });
 });
 
-describe("planning monthly usage bills for annual plans", () => {
-  const anchor = d("2026-01-15T00:00:00Z");
-  const now = d("2026-04-20T00:00:00Z");
-  const rows = [
-    { id: "a", billed_micros: 6_000_000, created_at: "2026-01-20T00:00:00Z" },
-    { id: "b", billed_micros: 7_000_000, created_at: "2026-02-10T00:00:00Z" },
-    { id: "c", billed_micros: 2_000_000, created_at: "2026-02-20T00:00:00Z" },
-    { id: "d", billed_micros: null, created_at: "2026-03-01T00:00:00Z" },
-    { id: "e", billed_micros: 50_000_000, created_at: "2026-04-16T00:00:00Z" },
-  ];
-  const bills = planUsageBills(rows, anchor, now, 10_000_000);
-
-  it("groups builds by the month they fall in", () => {
-    expect(bills.map((b) => [iso(b.window.start), b.rowIds])).toEqual([
-      ["2026-01-15", ["a", "b"]],
-      ["2026-02-15", ["c", "d"]],
+describe("windows to bill", () => {
+  it("reaches back past the anchor, so the months before a renewal are still billed", () => {
+    const ws = windowsToBill(
+      d("2026-01-15T00:00:00Z"),
+      d("2026-04-20T00:00:00Z"),
+    );
+    expect(iso(ws[0].start)).toBe("2025-03-15");
+    expect(ws.map((w) => iso(w.start)).slice(-4)).toEqual([
+      "2025-12-15",
+      "2026-01-15",
+      "2026-02-15",
+      "2026-03-15",
     ]);
   });
-  it("bills only what's beyond the monthly allowance", () => {
-    expect(bills.map((b) => b.overageMicros)).toEqual([3_000_000, 0]);
-  });
   it("leaves the current, unfinished month alone", () => {
-    expect(bills.flatMap((b) => b.rowIds)).not.toContain("e");
+    const ws = windowsToBill(
+      d("2026-01-15T00:00:00Z"),
+      d("2026-04-20T00:00:00Z"),
+    );
+    expect(ws.at(-1)!.end <= d("2026-04-20T00:00:00Z")).toBe(true);
   });
 });
 

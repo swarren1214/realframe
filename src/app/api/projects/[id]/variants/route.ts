@@ -1,7 +1,7 @@
 import { readReferences, referenceBlocks } from "@/lib/references";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { GenerationError, generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype, routeDeadline } from "@/lib/ai";
 import {
   IMPORTED_APP_MESSAGE,
   finishBuild,
@@ -24,6 +24,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const deadline = routeDeadline(maxDuration);
   const supabase = await createClient();
   const {
     data: { user },
@@ -106,6 +107,7 @@ export async function POST(
         history,
         variantHint: DIRECTIONS[i],
         references,
+        deadline,
       }),
     ),
   );

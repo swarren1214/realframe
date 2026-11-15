@@ -39,7 +39,12 @@ describe("free plan", () => {
   it("allows 30 builds a month, then refuses with free_limit_reached", async () => {
     const bob = await db.user("bob@acme.co");
     const p = await project(db, bob);
-    for (let i = 0; i < 30; i++) expect(await claim(bob, p.id)).toBeTruthy();
+    // One build at a time per prototype, so each finishes before the next.
+    for (let i = 0; i < 30; i++) {
+      const id = await claim(bob, p.id);
+      expect(id).toBeTruthy();
+      await finish(id!, "succeeded", 0);
+    }
     await db.as(bob);
     expect(
       await db.error(`select public.claim_generation($1)`, [p.id]),
@@ -57,7 +62,9 @@ describe("free plan", () => {
       [carol.id],
     );
     const p = await project(db, carol);
-    expect(await claim(carol, p.id)).toBeTruthy();
+    const id = await claim(carol, p.id);
+    expect(id).toBeTruthy();
+    await finish(id!, "succeeded", 0);
     await db.as(carol);
     expect(
       await db.error(`select public.claim_generation($1)`, [p.id]),

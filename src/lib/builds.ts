@@ -44,6 +44,20 @@ export function limitResponse(message: string | undefined) {
       { status: 402 },
     );
   }
+  const busy = message?.match(/build_in_progress: ([^\n]+)/);
+  if (busy) {
+    const who = busy[1].trim();
+    return NextResponse.json(
+      {
+        error:
+          who === "you"
+            ? "You already have a build running on this prototype, maybe in another tab. Wait for it to finish, then try again."
+            : `${who} is building this prototype right now. Wait for their build to finish, then try again, so neither of you loses changes.`,
+        code: "build_in_progress",
+      },
+      { status: 409 },
+    );
+  }
   return NextResponse.json(
     { error: message ?? "Couldn't start the build." },
     { status: 500 },

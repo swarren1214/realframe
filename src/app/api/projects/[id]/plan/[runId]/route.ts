@@ -2,7 +2,7 @@ import { readReferences, referenceBlocks } from "@/lib/references";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { GenerationError, generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype, routeDeadline } from "@/lib/ai";
 import { costMicros } from "@/lib/billing";
 import { loadBuildContext } from "@/lib/builds";
 import { stepPrompt, type PlanStep } from "@/lib/plan";
@@ -56,6 +56,7 @@ function notRunning(run: BuildRun) {
 /** Build the run's next step. Body: { index } — the step the client expects to run. */
 export async function POST(request: NextRequest, { params }: Ctx) {
   const { id, runId } = await params;
+  const deadline = routeDeadline(maxDuration);
   const auth = await authorize(id);
   if ("error" in auth) return auth.error;
   const { supabase, user } = auth;
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       context,
       currentHtml,
       history,
-      timeBudgetSeconds: maxDuration,
+      deadline,
     });
     steps[index] = { ...steps[index], status: "done", summary: result.summary };
     const totals = {
@@ -120,13 +121,17 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     };
 
     if (index === steps.length - 1) {
-      const v = await finalizeRun(supabase, { ...run, ...totals }, {
-        html: result.html,
-        steps,
-        userId: user.id,
-        designSystemId,
-        status: "succeeded",
-      });
+      const v = await finalizeRun(
+        supabase,
+        { ...run, ...totals },
+        {
+          html: result.html,
+          steps,
+          userId: user.id,
+          designSystemId,
+          status: "succeeded",
+        },
+      );
       return NextResponse.json({
         index,
         summary: result.summary,
@@ -165,7 +170,13 @@ export async function POST(request: NextRequest, { params }: Ctx) {
           error: message,
         });
         return NextResponse.json(
-          { error: message, index, partial: true, versionId: v.id, number: v.number },
+          {
+            error: message,
+            index,
+            partial: true,
+            versionId: v.id,
+            number: v.number,
+          },
           { status: 500 },
         );
       } catch (saveErr) {
@@ -205,7 +216,11 @@ export async function DELETE(_request: NextRequest, { params }: Ctx) {
 
   const done = run.next_step;
   if (done > 0 && run.working_html) {
-    const { designSystemId } = await loadBuildContext(supabase, id, run.base_version_id);
+    const { designSystemId } = await loadBuildContext(
+      supabase,
+      id,
+      run.base_version_id,
+    );
     const v = await finalizeRun(supabase, run, {
       html: run.working_html,
       steps: run.steps,
@@ -214,7 +229,11 @@ export async function DELETE(_request: NextRequest, { params }: Ctx) {
       status: "cancelled",
       note: `Stopped after ${done} of ${run.steps.length} steps.`,
     });
-    return NextResponse.json({ stopped: true, versionId: v.id, number: v.number });
+    return NextResponse.json({
+      stopped: true,
+      versionId: v.id,
+      number: v.number,
+    });
   }
   await failRun(supabase, run, {
     steps: run.steps,

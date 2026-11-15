@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { GenerationError, generatePrototype } from "@/lib/ai";
+import { GenerationError, generatePrototype, routeDeadline } from "@/lib/ai";
 import {
   IMPORTED_APP_MESSAGE,
   finishBuild,
@@ -36,6 +36,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const deadline = routeDeadline(maxDuration);
   const supabase = await createClient();
   const {
     data: { user },
@@ -130,7 +131,7 @@ export async function POST(
       context,
       currentHtml: current?.html ?? null,
       history,
-      timeBudgetSeconds: maxDuration,
+      deadline,
     });
     const { data: version, error } = await supabase.rpc("create_version", {
       p_project: id,

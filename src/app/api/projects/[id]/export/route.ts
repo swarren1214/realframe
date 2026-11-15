@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { GenerationError } from "@/lib/ai";
+import { GenerationError, routeDeadline } from "@/lib/ai";
 import { finishBuild, limitResponse } from "@/lib/builds";
 import { exportWithAi } from "@/lib/export-ai";
 import { AI_FORMATS, FORMAT_INFO, readFormat } from "@/lib/export";
@@ -32,6 +32,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const deadline = routeDeadline(maxDuration);
   const supabase = await createClient();
   const {
     data: { user },
@@ -150,7 +151,7 @@ export async function POST(
   if (claimError || !claimId) return limitResponse(claimError?.message);
 
   try {
-    const result = await exportWithAi(format, src);
+    const result = await exportWithAi(format, src, deadline);
     await finishBuild(claimId as string, {
       ok: true,
       input: result.usage.input,

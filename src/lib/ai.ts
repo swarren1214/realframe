@@ -37,6 +37,12 @@ export type GenerateInput = {
   currentHtml: string | null;
   /** Seconds the caller can wait; continuations stop well inside it. */
   timeBudgetSeconds?: number;
+  /**
+   * When the work must be done by (epoch ms), usually the route's own time limit less a margin
+   * for saving. Each AI call is aborted at this point, so the route can fail cleanly instead of
+   * being killed mid-build. Defaults to now + timeBudgetSeconds (or 280 s), less 20 s.
+   */
+  deadline?: number;
   history: { role: "user" | "assistant"; content: string }[];
   /** Reference images and PDFs the person attached, shown to the model first. */
   references?: ReferenceBlock[];
@@ -52,6 +58,28 @@ export class GenerationError extends Error {
   ) {
     super(message);
   }
+}
+
+/** A route's deadline: its time limit from when the request arrived, less a margin to save. */
+export function routeDeadline(maxDurationSeconds: number, marginSeconds = 25) {
+  return Date.now() + (maxDurationSeconds - marginSeconds) * 1000;
+}
+
+/** A continuation round needs at least this long to be worth starting. */
+export const MIN_ROUND_MS = 90_000;
+
+export const TOO_SLOW_MESSAGE =
+  "The build took too long and was stopped before it finished, so it wasn't charged. Try a smaller change, or split it into steps.";
+
+/** Whether an error is the AI call being aborted (by the deadline or the caller). */
+export function isAbort(e: unknown) {
+  const name = (e as { name?: string } | null)?.name ?? "";
+  return (
+    name === "AbortError" ||
+    name === "TimeoutError" ||
+    name === "APIUserAbortError" ||
+    /aborted/i.test((e as Error | null)?.message ?? "")
+  );
 }
 
 export function parseResponse(text: string): GenerateResult {
@@ -122,6 +150,8 @@ export async function generatePrototype(
       : directed,
   };
   const started = Date.now();
+  const deadline =
+    input.deadline ?? started + ((input.timeBudgetSeconds ?? 280) - 20) * 1000;
   let text = "";
   let inTokens = 0;
   let outTokens = 0;
@@ -141,17 +171,37 @@ export async function generatePrototype(
                 "Your reply was cut off by the length limit. Continue exactly where it stopped, starting with the very next character. Don't repeat anything or add commentary, and finish with </document>.",
             },
           ];
-    const message = await client.messages
-      .stream({ model, max_tokens: 32000, system, messages })
-      .finalMessage();
+    const left = deadline - Date.now();
+    if (left < (round === 0 ? 15_000 : MIN_ROUND_MS))
+      throw new GenerationError(
+        round === 0
+          ? TOO_SLOW_MESSAGE
+          : "The prototype was too big to finish in one build. Try asking for fewer screens first, then add more in follow-up prompts.",
+        { input: inTokens, output: outTokens },
+      );
+    let message;
+    try {
+      message = await client.messages
+        .stream(
+          { model, max_tokens: 32000, system, messages },
+          { signal: AbortSignal.timeout(left) },
+        )
+        .finalMessage();
+    } catch (e) {
+      if (isAbort(e))
+        throw new GenerationError(TOO_SLOW_MESSAGE, {
+          input: inTokens,
+          output: outTokens,
+        });
+      throw e;
+    }
     inTokens += message.usage?.input_tokens ?? 0;
     outTokens += message.usage?.output_tokens ?? 0;
     text += message.content
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("");
     if (message.stop_reason !== "max_tokens") break;
-    const elapsed = (Date.now() - started) / 1000;
-    if (round === 2 || elapsed > (input.timeBudgetSeconds ?? 280) * 0.55) {
+    if (round === 2) {
       throw new GenerationError(
         "The prototype was too big to finish in one build. Try asking for fewer screens first, then add more in follow-up prompts.",
         { input: inTokens, output: outTokens },

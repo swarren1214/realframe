@@ -57,11 +57,15 @@ export async function extract(
     },
   ];
 
-  const stream = client.messages.stream({
-    model,
-    max_tokens: 24000,
-    messages: [{ role: "user", content }],
-  });
+  // The sync route allows 300 s; stop well before it so the failure is reported, not killed.
+  const stream = client.messages.stream(
+    {
+      model,
+      max_tokens: 24000,
+      messages: [{ role: "user", content }],
+    },
+    { signal: AbortSignal.timeout(250_000) },
+  );
   const message = await stream.finalMessage();
   const text = message.content
     .map((b) => (b.type === "text" ? b.text : ""))
