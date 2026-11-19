@@ -56,7 +56,7 @@ const PLAN_LIST: Plan[] = [
     popular: true,
     items: [
       `${included} of AI usage included every month`,
-      "Then cost + 50%; failed builds are free",
+      "Failed builds are never billed",
       "Review rounds and fix from feedback",
       "Canvas, variants and visual edits",
       "Password links for clients",
@@ -106,8 +106,8 @@ export function Pricing({ heading = "h2" }: { heading?: "h1" | "h2" }) {
             Pay for builders. Reviewers are free.
           </H>
           <p className="mt-2 text-stone-600">
-            AI usage past what&apos;s included is billed at cost + 50%. Failed
-            builds are never billed.
+            Every paid plan includes AI usage each month. Failed builds are
+            never billed.
           </p>
         </div>
         <div

@@ -62,12 +62,12 @@ export const FAQ_GROUPS: { title: string; id: string; items: Qa[] }[] = [
       },
       {
         q: "How does AI usage billing work?",
-        a: `Pro and each Team builder include ${included} of AI usage every month. Past that, you pay what the model costs us plus 50%, added to your next invoice. A build that fails costs nothing.`,
+        a: `Pro and each Team builder include ${included} of AI usage every month. Heavier months are added to your next invoice, and you can see your usage and set a monthly spend cap anytime in Billing. A build that fails costs nothing.`,
         home: true,
       },
       {
         q: "Do annual plans include usage every month?",
-        a: `Yes. The ${included} allowance resets monthly whether you pay monthly or yearly, and any usage past it is billed at the end of each month.`,
+        a: `Yes. The ${included} allowance resets monthly whether you pay monthly or yearly, and any extra usage is added at the end of each month.`,
         home: true,
       },
       {
