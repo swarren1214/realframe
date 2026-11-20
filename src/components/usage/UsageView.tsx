@@ -227,7 +227,7 @@ function PeriodCard({ o }: { o: UsageOverview }) {
               <>
                 , about{" "}
                 <strong>{formatUsd(forecast - o.included_micros)}</strong> past
-                the included amount, billed at cost + 50%.
+                the included amount, added to your next invoice.
               </>
             ) : (
               ", within the included amount."

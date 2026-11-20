@@ -205,8 +205,8 @@ export function AccountMenuClient({
                   }
                 />
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  Usage past {formatUsd(usage.includedMicros, 0)} is billed at
-                  cost + 50%.
+                  Usage past {formatUsd(usage.includedMicros, 0)} is added to
+                  your next invoice.
                 </p>
               </>
             ) : (

@@ -162,8 +162,8 @@ export default async function BillingPage({
                       {overage > 0
                         ? `${formatUsd(overage)} beyond your included usage so far, added to your next invoice.`
                         : interval === "year"
-                          ? "Your included usage resets every month. Usage beyond it is billed at cost plus 50% when the month ends."
-                          : "Usage beyond what's included is billed at cost plus 50% on your next invoice."}{" "}
+                          ? "Your included usage resets every month. Usage beyond it is added to your invoice when the month ends."
+                          : "Usage beyond what's included is added to your next invoice."}{" "}
                       Failed builds are never billed.{" "}
                       {interval === "year" ? "This month" : "Period"}{" "}
                       {fmtDate(q.period_start)} – {fmtDate(q.period_end)}.
@@ -237,7 +237,7 @@ export default async function BillingPage({
                     "No monthly build cap",
                     "Canvas: every screen and device side by side",
                     `$${PLANS.pro.includedUsdPerMonth} of AI usage included every month`,
-                    "Pay as you go beyond that, at cost plus 50%",
+                    "Pay as you go beyond that",
                     "Failed builds are never billed",
                     "Reviewers are always free",
                   ].map((t) => (
